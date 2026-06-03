@@ -13,7 +13,11 @@ const VARIANT = window.__DROP_VARIANT || 'bullets';
 //  form action URL, ConvertKit form id + public key). Private keys need a
 //  serverless function instead.
 // ─────────────────────────────────────────────────────────────────────────
-const PROVIDER = 'mock'; // 'mock' | 'klaviyo' | 'mailchimp' | 'convertkit' | 'endpoint'
+// Your own backend. The page POSTs {email, variant} to CONFIG.endpoint.url.
+// See drop/BACKEND_CONTRACT.md for the exact request/response shape to build to.
+// (Set to 'mock' temporarily if you want the live preview's success flow to work
+//  before the backend exists.)
+const PROVIDER = 'endpoint'; // 'mock' | 'klaviyo' | 'mailchimp' | 'convertkit' | 'endpoint'
 
 const CONFIG = {
   klaviyo:    { companyId: '', listId: '' },               // public company id (6-char) + list id

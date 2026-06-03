@@ -6,8 +6,8 @@
   var SESSION_ID = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   var PAGE = location.pathname;
   var VARIANT =
-    window.__DROP_VARIANT ||
-    document.documentElement.getAttribute('data-drop-variant') ||
+    window.__DRINK_VARIANT ||
+    document.documentElement.getAttribute('data-drink-variant') ||
     null;
 
   var queue = [];

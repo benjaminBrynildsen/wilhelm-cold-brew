@@ -1,6 +1,6 @@
 # Friday Drop — email capture backend contract
 
-The opt-in page (`/drop`) is fully built. The only missing piece is the backend
+The opt-in page (`/drink`) is fully built. The only missing piece is the backend
 that receives signups. Build a service that satisfies the contract below and the
 page works end-to-end — no frontend changes needed (the frontend already calls it
 via `PROVIDER='endpoint'` in `optin.js`).
@@ -34,7 +34,7 @@ The frontend only checks `res.ok`. No response body is required. Return fast.
 - **Store at least:** `email`, `variant`, `created_at`, and ideally `ip` / `user_agent`
   and `utm_*` if you start passing them. The `variant` column is what makes the
   split test measurable — count signups grouped by `variant`, and divide by
-  exposures (the page fires a `drop_exposure` analytics event per arm).
+  exposures (the page fires a `drink_exposure` analytics event per arm).
 - This list is what the scheduled **Friday 9AM** campaign sends to.
 
 ## Hosting / CORS
@@ -60,8 +60,8 @@ Two ways to satisfy that:
 
 `optin.js` calls a generic `track()` that pushes to `dataLayer` (GA4/GTM),
 `gtag`, and Meta Pixel `fbq` **if those scripts are present on the page**:
-- `drop_exposure` `{ variant }` — on load, once per arm.
-- `drop_signup` `{ variant }` — on successful submit. Also fires Meta `Lead`.
+- `drink_exposure` `{ variant }` — on load, once per arm.
+- `drink_signup` `{ variant }` — on successful submit. Also fires Meta `Lead`.
 
 So you can measure the split test two ways: by `variant` counts in your own DB,
 and/or via these events in GA/Meta. Add the GA/Pixel snippet to `index.html`

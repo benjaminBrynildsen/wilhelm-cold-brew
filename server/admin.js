@@ -5,7 +5,7 @@ import { q } from './db.js';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
 const COOKIE = 'wilhelm_admin';
-const DROP_PAGES = ['/drop/', '/drop'];
+const DRINK_PAGES = ['/drink/', '/drink'];
 
 // ───────── auth ─────────
 function isAdmin(req) {
@@ -62,15 +62,15 @@ export function mountAdmin(app) {
         const p = [w.from, w.to];
         const sessions = await q(
           `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2`, p);
-        const dropSessions = await q(
+        const drinkSessions = await q(
           `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2`,
-          [w.from, w.to, DROP_PAGES]);
+          [w.from, w.to, DRINK_PAGES]);
         const signups = await q(
           `SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2`, p);
-        const ds = dropSessions.rows[0].n, su = signups.rows[0].n;
+        const ds = drinkSessions.rows[0].n, su = signups.rows[0].n;
         out[w.key] = {
           sessions: sessions.rows[0].n,
-          dropSessions: ds,
+          drinkSessions: ds,
           signups: su,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
         };
@@ -80,13 +80,13 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // ───────── /drop funnel (per-step distinct sessions + per-variant) ─────────
+  // ───────── /drink funnel (per-step distinct sessions + per-variant) ─────────
   app.get('/api/admin/funnel', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
       const out = {};
       for (const w of windows(req)) {
-        const args = [w.from, w.to, DROP_PAGES];
+        const args = [w.from, w.to, DRINK_PAGES];
         const ev = await q(
           `SELECT event, COUNT(DISTINCT session_id)::int sessions
              FROM journey_events

@@ -19,15 +19,15 @@
   <script>
     (function () {
       var V = ['minimal', 'image', 'bullets'];
-      var KEY = 'wilhelm_drop_variant';
+      var KEY = 'wilhelm_drink_variant';
       var p = new URLSearchParams(location.search);
       var forced = p.get('v') || p.get('variant');
       var v = V.indexOf(forced) >= 0 ? forced : null;
       if (!v) { try { v = localStorage.getItem(KEY); } catch (e) {} }
       if (V.indexOf(v) < 0) { v = V[Math.floor(Math.random() * V.length)]; }
       try { localStorage.setItem(KEY, v); } catch (e) {}
-      window.__DROP_VARIANT = v;
-      document.documentElement.setAttribute('data-drop-variant', v);
+      window.__DRINK_VARIANT = v;
+      document.documentElement.setAttribute('data-drink-variant', v);
       // Preload the product photo only for variants that show it.
       if (v !== 'minimal') {
         var l = document.createElement('link');

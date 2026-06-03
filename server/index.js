@@ -27,7 +27,7 @@ app.use((req, _res, next) => {
   try {
     if (req.method !== 'GET') return next();
     const p = req.path || '/';
-    if (p !== '/' && p !== '/drop/' && p !== '/drop' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
+    if (p !== '/' && p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
     const ua = (req.headers['user-agent'] || '').toString();
@@ -64,6 +64,12 @@ mountAdmin(app);
 
 // Lightweight liveness check (no DB) — used by Render's health check.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
+
+// Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).
+app.get(['/drop', '/drop/'], (req, res) => {
+  const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(301, '/drink/' + qs);
+});
 
 app.get('/api/health', async (_req, res) => {
   try { await q('SELECT 1'); res.json({ ok: true }); }

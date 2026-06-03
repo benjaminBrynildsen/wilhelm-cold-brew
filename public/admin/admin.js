@@ -3,7 +3,7 @@
 const app = document.getElementById('app');
 
 const STEPS = [
-  { key: 'page_load', label: 'Landed on the drop' },
+  { key: 'page_load', label: 'Landed on the page' },
   { key: 'focus_email', label: 'Focused the email field' },
   { key: 'submit_attempt', label: 'Clicked “Claim My Spot”' },
   { key: 'subscribed', label: 'Joined the list ✓', conversion: true },
@@ -111,12 +111,12 @@ async function showOverview() {
     content().innerHTML = winbar() + `
       <div class="cards">
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
-        <div class="card"><div class="k">Drop-page sessions</div><div class="v">${num(w.dropSessions)}</div></div>
+        <div class="card"><div class="k">Drink-page sessions</div><div class="v">${num(w.drinkSessions)}</div></div>
         <div class="card"><div class="k">Signups</div><div class="v">${num(w.signups)}</div></div>
-        <div class="card"><div class="k">Drop conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
+        <div class="card"><div class="k">Drink conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
       </div>
-      <div class="note">Conversion = signups ÷ drop-page sessions for the selected window.</div>`;
+      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.</div>`;
     wireWinbar(showOverview);
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
@@ -168,7 +168,7 @@ async function showFunnel() {
 
     content().innerHTML = winbar() + `
       <div class="cards">
-        <div class="card"><div class="k">Drop sessions</div><div class="v">${num(w.sessionCount)}</div></div>
+        <div class="card"><div class="k">Drink sessions</div><div class="v">${num(w.sessionCount)}</div></div>
         <div class="card"><div class="k">Median time on page</div><div class="v">${num(w.medianSeconds)}<small>s</small></div></div>
         <div class="card"><div class="k">Overall conversion</div><div class="v">${landed ? pct(ev.subscribed || 0, landed) : '0%'}</div></div>
       </div>

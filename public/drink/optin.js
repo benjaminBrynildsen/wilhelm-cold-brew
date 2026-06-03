@@ -2,7 +2,7 @@
 // State machine: idle → loading → success | error.  +  3-way split test.
 
 // Resolved before paint by the inline <head> script.
-const VARIANT = window.__DROP_VARIANT || 'bullets';
+const VARIANT = window.__DRINK_VARIANT || 'bullets';
 
 // ─────────────────────────────────────────────────────────────────────────
 //  EMAIL CAPTURE — the one place to wire the real ESP.
@@ -14,7 +14,7 @@ const VARIANT = window.__DROP_VARIANT || 'bullets';
 //  serverless function instead.
 // ─────────────────────────────────────────────────────────────────────────
 // Your own backend. The page POSTs {email, variant} to CONFIG.endpoint.url.
-// See drop/BACKEND_CONTRACT.md for the exact request/response shape to build to.
+// See BACKEND_CONTRACT.md for the exact request/response shape to build to.
 // (Set to 'mock' temporarily if you want the live preview's success flow to work
 //  before the backend exists.)
 const PROVIDER = 'endpoint'; // 'mock' | 'klaviyo' | 'mailchimp' | 'convertkit' | 'endpoint'
@@ -51,7 +51,7 @@ async function subscribeEmail(email, variant) {
       const res = await fetch(`https://api.convertkit.com/v3/forms/${formId}/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: apiKey, email, fields: { drop_variant: variant } }),
+        body: JSON.stringify({ api_key: apiKey, email, fields: { drink_variant: variant } }),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;
@@ -69,7 +69,7 @@ async function subscribeEmail(email, variant) {
             data: {
               type: 'subscription',
               attributes: {
-                profile: { data: { type: 'profile', attributes: { email, properties: { drop_variant: variant } } } },
+                profile: { data: { type: 'profile', attributes: { email, properties: { drink_variant: variant } } } },
               },
               relationships: { list: { data: { type: 'list', id: listId } } },
             },
@@ -119,7 +119,7 @@ function funnel(event, props) {
 
   // Split-test exposure — one per variant arm (external analytics; the DB funnel
   // uses journey.js's automatic page_load as the "Landed" step).
-  track('drop_exposure', { variant: VARIANT });
+  track('drink_exposure', { variant: VARIANT });
 
   const showError = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
   const clearError = () => { errorEl.hidden = true; errorEl.textContent = ''; };

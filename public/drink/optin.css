@@ -123,9 +123,9 @@ h1 em { font-style: italic; color: var(--gold); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */
-html[data-drop-variant="image"] .optin-image,
-html[data-drop-variant="bullets"] .optin-image,
-html:not([data-drop-variant]) .optin-image { display: block; }
+html[data-drink-variant="image"] .optin-image,
+html[data-drink-variant="bullets"] .optin-image,
+html:not([data-drink-variant]) .optin-image { display: block; }
 
 /* form */
 .optin-form { display: flex; flex-direction: column; gap: clamp(8px, 1.4vh, 12px); width: 100%; max-width: 420px; margin: 0 auto; }
@@ -152,8 +152,8 @@ html:not([data-drop-variant]) .optin-image { display: block; }
 /* bullets (variant) */
 .optin-bullets { display: none; list-style: none; padding: 0; margin: clamp(14px, 2.2vh, 30px) auto 0; width: 100%; max-width: 420px; text-align: left; }
 .card[data-variant="bullets"] .optin-bullets { display: block; }
-html[data-drop-variant="bullets"] .optin-bullets,
-html:not([data-drop-variant]) .optin-bullets { display: block; }
+html[data-drink-variant="bullets"] .optin-bullets,
+html:not([data-drink-variant]) .optin-bullets { display: block; }
 .optin-bullets li {
   display: flex; align-items: flex-start; gap: 12px;
   font-family: var(--body); font-size: clamp(15px, 2vh, 18px); color: rgba(246,239,218,0.94);

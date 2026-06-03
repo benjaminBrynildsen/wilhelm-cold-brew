@@ -71,7 +71,17 @@ app.get('/api/health', async (_req, res) => {
 });
 
 // ───────── static site ─────────
-app.use(express.static(PUBLIC_DIR, { dotfiles: 'ignore', extensions: ['html'] }));
+app.use(express.static(PUBLIC_DIR, {
+  dotfiles: 'ignore',
+  extensions: ['html'],
+  setHeaders: (res, filePath) => {
+    // Long-cache immutable media (the heavy bytes) so Render's CDN edge-caches them.
+    // HTML/CSS/JS keep the default (revalidate) so deploys take effect immediately.
+    if (/\.(jpe?g|png|webp|gif|svg|ico|woff2?)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 
 // ───────── boot ─────────
 ensureSchema()

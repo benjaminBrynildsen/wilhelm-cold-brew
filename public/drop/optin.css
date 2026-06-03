@@ -1,6 +1,6 @@
 /* Wilhelm — Friday Drop opt-in landing page (above-the-fold, height-aware) */
-
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400;500&display=swap');
+/* Fonts load via <link rel="preconnect"+stylesheet> in index.html — faster than
+   @import, which serializes the font download behind this stylesheet. */
 
 :root {
   --gold: #e8c24a;
@@ -8,7 +8,7 @@
   --gold-soft: rgba(232,194,74,0.16);
   --ink: #0c0a08;
   --ink-2: #15100b;
-  --parchment: #e8d9b5;
+  --parchment: #f6efda;
   --display: 'Bodoni Moda', serif;
   --body: 'Lora', serif;
   --mono: 'DM Mono', monospace;
@@ -55,6 +55,18 @@ body::before {
 .card::-webkit-scrollbar { display: none; }
 .card::after { content: ''; position: absolute; inset: 7px; border: 1px solid rgba(232,194,74,0.2); pointer-events: none; }
 
+/* Desktop: drop the boxed frame — read as clean centered content on the black ground. */
+@media (min-width: 760px) {
+  .card {
+    max-width: 600px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: clamp(24px, 3vh, 48px) 40px;
+  }
+  .card::after { display: none; }
+}
+
 /* state wrappers — mirror the card's own centered column so inner max-widths hold */
 [hidden] { display: none !important; }
 .optin { width: 100%; display: flex; flex-direction: column; align-items: center; }
@@ -100,8 +112,8 @@ h1 em { font-style: italic; color: var(--gold); }
 
 .sub {
   font-family: var(--body); font-style: italic;
-  font-size: clamp(14px, 2.1vh, 20px); line-height: 1.45;
-  color: rgba(232,217,181,0.78); margin: 0 auto clamp(14px, 2.4vh, 32px); max-width: 90%;
+  font-size: clamp(15px, 2.2vh, 21px); line-height: 1.45;
+  color: rgba(246,239,218,0.95); margin: 0 auto clamp(14px, 2.4vh, 32px); max-width: 90%;
   text-wrap: balance;
 }
 
@@ -123,7 +135,7 @@ html:not([data-drop-variant]) .optin-image { display: block; }
   color: var(--parchment); font-family: var(--body); font-size: clamp(15px, 2vh, 17px); text-align: center;
   outline: none; transition: border-color .2s, background .2s;
 }
-.optin-form input[type="email"]::placeholder { color: rgba(232,217,181,0.4); font-style: italic; }
+.optin-form input[type="email"]::placeholder { color: rgba(246,239,218,0.78); font-style: normal; }
 .optin-form input[type="email"]:focus { border-color: var(--gold); background: rgba(232,217,181,0.1); }
 
 .optin-form button {
@@ -135,7 +147,7 @@ html:not([data-drop-variant]) .optin-image { display: block; }
 .optin-form button:hover { filter: brightness(1.08); }
 .optin-form button:active { transform: translateY(1px); }
 
-.fineprint { font-family: var(--mono); font-size: clamp(9px, 1.2vh, 10px); letter-spacing: 1.5px; color: rgba(232,217,181,0.4); margin-top: clamp(10px, 1.8vh, 18px); line-height: 1.6; }
+.fineprint { font-family: var(--mono); font-size: clamp(10px, 1.3vh, 11px); letter-spacing: 1.5px; color: rgba(246,239,218,0.6); margin-top: clamp(10px, 1.8vh, 18px); line-height: 1.6; }
 
 /* bullets (variant) */
 .optin-bullets { display: none; list-style: none; padding: 0; margin: clamp(14px, 2.2vh, 30px) auto 0; width: 100%; max-width: 420px; text-align: left; }
@@ -144,7 +156,7 @@ html[data-drop-variant="bullets"] .optin-bullets,
 html:not([data-drop-variant]) .optin-bullets { display: block; }
 .optin-bullets li {
   display: flex; align-items: flex-start; gap: 12px;
-  font-family: var(--body); font-size: clamp(14px, 1.9vh, 17px); color: rgba(232,217,181,0.82);
+  font-family: var(--body); font-size: clamp(15px, 2vh, 18px); color: rgba(246,239,218,0.94);
   padding: clamp(7px, 1.1vh, 11px) 0; border-top: 1px solid rgba(232,194,74,0.16); line-height: 1.4;
 }
 .optin-bullets li:first-child { border-top: none; }

@@ -5,7 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Wilhelm · Join the Friday Drop List</title>
   <meta name="description" content="Wilhelm Cold Brew's Friday Drop — limited bottles every Friday at 9AM, gone in minutes. Join the list for first access."/>
+
+  <!-- Warm font connections early + load fonts in parallel (display=swap shows text immediately). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400;500&display=swap"/>
+  <!-- Preload the always-visible logo medallion (LCP). -->
+  <link rel="preload" as="image" href="assets/wilhelm-circle.png"/>
   <link rel="stylesheet" href="optin.css"/>
+
   <!-- Split test: resolve the layout variant BEFORE paint (no flash).
        Priority: ?v=<variant> query → persisted assignment → random. -->
   <script>
@@ -20,6 +28,12 @@
       try { localStorage.setItem(KEY, v); } catch (e) {}
       window.__DROP_VARIANT = v;
       document.documentElement.setAttribute('data-drop-variant', v);
+      // Preload the product photo only for variants that show it.
+      if (v !== 'minimal') {
+        var l = document.createElement('link');
+        l.rel = 'preload'; l.as = 'image'; l.href = 'assets/optin-bottle.jpg';
+        document.head.appendChild(l);
+      }
     })();
   </script>
 </head>
@@ -69,7 +83,7 @@
     </div>
   </div>
 
-  <script src="/journey.js"></script>
-  <script src="optin.js"></script>
+  <script src="/journey.js" defer></script>
+  <script src="optin.js" defer></script>
 </body>
 </html>

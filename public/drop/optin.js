@@ -100,6 +100,13 @@ function track(event, props) {
   try { if (window.fbq) window.fbq('trackCustom', event, props); } catch (e) {}
 }
 
+// Funnel touchpoint — records to our own analytics DB (window.wilhelmTrack from
+// journey.js) AND to external analytics. These power the admin Funnel tab.
+function funnel(event, props) {
+  try { if (window.wilhelmTrack) window.wilhelmTrack(event, props); } catch (e) {}
+  track(event, props);
+}
+
 // ───────── UI wiring ─────────
 (function () {
   const form = document.querySelector('.optin-form');
@@ -110,11 +117,20 @@ function track(event, props) {
   const success = document.querySelector('[data-success]');
   const BTN_LABEL = button.textContent;
 
-  // Split-test exposure — one per variant arm.
+  // Split-test exposure — one per variant arm (external analytics; the DB funnel
+  // uses journey.js's automatic page_load as the "Landed" step).
   track('drop_exposure', { variant: VARIANT });
 
   const showError = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
   const clearError = () => { errorEl.hidden = true; errorEl.textContent = ''; };
+
+  // Funnel step: focused the email field (fires once).
+  let focusFired = false;
+  input.addEventListener('focus', () => {
+    if (focusFired) return;
+    focusFired = true;
+    funnel('focus_email', { variant: VARIANT });
+  });
 
   const setLoading = (on) => {
     button.setAttribute('aria-busy', String(on));
@@ -127,8 +143,11 @@ function track(event, props) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    // Funnel step: clicked "Claim My Spot".
+    funnel('submit_attempt', { variant: VARIANT });
     const email = input.value.trim();
     if (!EMAIL_RE.test(email)) {
+      funnel('submit_invalid', { variant: VARIANT });
       showError('Please enter a valid email address.');
       input.focus();
       return;
@@ -137,8 +156,8 @@ function track(event, props) {
     setLoading(true);
     try {
       await subscribeEmail(email, VARIANT);
-      // Split-test conversion + standard Meta Lead event.
-      track('drop_signup', { variant: VARIANT });
+      // Funnel conversion + standard Meta Lead event.
+      funnel('subscribed', { variant: VARIANT });
       try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
       optin.hidden = true;
       success.hidden = false;

@@ -17,6 +17,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
+html { scroll-behavior: smooth; }
 body {
   min-height: 100vh;
   min-height: 100dvh;
@@ -27,11 +28,21 @@ body {
   font-family: var(--body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+/* Opt-in hero — full first screen, centers the card (was on <body>). */
+.optin-hero {
+  position: relative; z-index: 1;
+  min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
   padding: clamp(12px, 2.5vh, 40px) clamp(16px, 4vw, 48px);
 }
+.scroll-cue {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  color: var(--gold); font-size: 28px; line-height: 1; text-decoration: none;
+  opacity: 0.7; animation: bob 2s infinite; z-index: 2;
+}
+@keyframes bob { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-50%,6px)} }
 
 /* subtle film grain */
 body::before {
@@ -178,4 +189,54 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .droptag .dot { animation: none; }
   .success { animation: none; }
+  .scroll-cue { animation: none; }
+  html { scroll-behavior: auto; }
+}
+
+/* ───────── SCROLL SECTIONS (proof / family / bottles) ───────── */
+.sec { position: relative; z-index: 1; padding: clamp(64px, 12vh, 140px) clamp(20px, 5vw, 48px); }
+.sec-inner { max-width: 820px; margin: 0 auto; text-align: center; }
+.sec .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 4px; color: var(--gold); margin-bottom: 22px; text-transform: uppercase; }
+.sec .eyebrow.dark { color: var(--gold-deep); }
+
+/* proof — dark, stat-forward */
+.proof { border-top: 1px solid rgba(232,194,74,0.16); }
+.proof-stat { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
+.proof-stat .big { font-family: var(--display); font-weight: 800; font-size: clamp(64px, 13vw, 132px); line-height: 0.9; color: var(--parchment); letter-spacing: -3px; }
+.proof-stat .big .plus { color: var(--gold); }
+.proof-stat .unit { font-family: var(--display); font-style: italic; font-size: clamp(18px, 3vw, 30px); color: var(--gold); }
+.proof-line { font-family: var(--body); font-size: clamp(16px, 2vw, 20px); line-height: 1.7; color: rgba(246,239,218,0.86); max-width: 620px; margin: 24px auto 0; }
+
+/* family — parchment, like the heritage story */
+.family { background: var(--parchment); color: var(--ink); }
+.family-figure { width: clamp(220px, 34vw, 320px); margin: 0 auto 36px; padding: clamp(18px, 3vw, 28px);
+  background: radial-gradient(ellipse at 50% 38%, #1b1510 0%, #0c0a08 100%);
+  border: 1px solid var(--gold-deep); box-shadow: 0 24px 60px rgba(0,0,0,0.28), inset 0 0 0 4px rgba(200,154,85,0.18); position: relative; }
+.family-figure::after { content: ''; position: absolute; inset: 8px; border: 1px solid rgba(200,154,85,0.25); pointer-events: none; }
+.family-figure img { width: 100%; height: auto; display: block; }
+.family h2 { font-family: var(--display); font-weight: 700; font-style: italic; font-size: clamp(48px, 9vw, 88px); line-height: 0.95; color: var(--ink); margin: 0 0 12px; letter-spacing: -2.5px; }
+.family h2 .yr { color: var(--gold-deep); }
+.family-tag { font-family: var(--display); font-style: italic; font-size: clamp(16px, 2.4vw, 22px); color: rgba(12,10,8,0.7); margin-bottom: 36px; }
+.family p { font-family: var(--body); font-size: clamp(16px, 1.9vw, 21px); line-height: 1.75; color: rgba(12,10,8,0.82); max-width: 680px; margin: 0 auto 24px; }
+.family p.muted { color: rgba(12,10,8,0.62); }
+.family .pull { font-family: var(--display); font-style: italic; font-weight: 500; font-size: clamp(22px, 4vw, 32px); color: var(--ink); margin-top: 32px; }
+
+/* bottles — dark gallery */
+.bottles { border-top: 1px solid rgba(232,194,74,0.16); }
+.bottles-h { font-family: var(--display); font-weight: 700; font-style: italic; font-size: clamp(30px, 5vw, 52px); color: var(--parchment); margin: 0 0 36px; letter-spacing: -1px; }
+.bottle-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(12px, 2.4vw, 24px); }
+.bottle-grid figure { margin: 0; overflow: hidden; border: 1px solid rgba(232,194,74,0.3); background: #0c0a08; }
+.bottle-grid img { width: 100%; height: 100%; object-fit: cover; display: block; aspect-ratio: 4/5; }
+.proof-cta { display: inline-block; margin-top: 40px; background: var(--gold); color: var(--ink); text-decoration: none;
+  font-family: var(--display); font-weight: 700; font-size: clamp(15px, 2vw, 18px); padding: 16px 34px; transition: filter .2s, transform .1s; }
+.proof-cta:hover { filter: brightness(1.08); }
+.proof-cta:active { transform: translateY(1px); }
+
+/* footer */
+.drink-footer { position: relative; z-index: 1; text-align: center; padding: 40px 20px 48px; border-top: 1px solid rgba(232,194,74,0.2);
+  font-family: var(--display); font-weight: 700; letter-spacing: 4px; color: var(--gold); font-size: 18px; }
+.drink-footer .fnote { font-family: var(--mono); font-weight: 400; letter-spacing: 2px; font-size: 10px; color: rgba(246,239,218,0.45); margin-top: 10px; }
+
+@media (max-width: 560px) {
+  .bottle-grid { grid-template-columns: 1fr; }
 }

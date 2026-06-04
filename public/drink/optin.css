@@ -42,8 +42,14 @@ body {
   position: absolute; top: clamp(14px, 2.6vh, 28px); left: clamp(16px, 4vw, 40px);
   z-index: 3; display: flex; align-items: center; gap: 10px; text-decoration: none;
 }
-.hero-logo img { height: 48px; width: 48px; border-radius: 50%; }
-.hero-logo span { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: 3px; color: var(--gold); }
+.hero-logo img { height: 56px; width: 56px; border-radius: 50%; }
+/* price, top-right */
+.hero-price {
+  position: absolute; top: clamp(14px, 2.6vh, 28px); right: clamp(16px, 4vw, 40px); z-index: 3;
+  display: flex; flex-direction: column; align-items: flex-end; line-height: 1;
+  font-family: var(--display); font-weight: 700; font-size: clamp(22px, 3.4vw, 30px); color: var(--gold);
+}
+.hero-price span { font-family: var(--mono); font-weight: 400; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.6); margin-top: 5px; }
 .scroll-cue {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
   color: var(--gold); font-size: 28px; line-height: 1; text-decoration: none;

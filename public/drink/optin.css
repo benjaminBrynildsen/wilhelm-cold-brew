@@ -68,15 +68,12 @@ body::before {
 .card {
   position: relative; z-index: 1;
   width: 100%; max-width: 540px;
-  max-height: calc(100dvh - clamp(24px, 5vh, 80px));
   display: flex; flex-direction: column; align-items: center;
   background: none;
   border: none;
-  padding: clamp(22px, 3.2vh, 48px) clamp(24px, 5vw, 52px) clamp(20px, 2.8vh, 40px);
+  padding: clamp(8px, 1.5vh, 18px) clamp(24px, 5vw, 52px) clamp(16px, 2.4vh, 30px);
   text-align: center;
-  overflow-y: auto; scrollbar-width: none;
 }
-.card::-webkit-scrollbar { display: none; }
 .card::after { display: none; }
 
 /* Desktop: drop the boxed frame — read as clean centered content on the black ground. */

@@ -119,11 +119,22 @@ export function mountAdmin(app) {
            SELECT COUNT(*)::int total,
                   COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dur),0)::int median_s FROM s`, args);
 
+        // distinct sessions that scrolled to each section
+        const secRows = await q(
+          `SELECT data->>'section' section, COUNT(DISTINCT session_id)::int sessions
+             FROM journey_events
+            WHERE page = ANY($3) AND event = 'section_reached'
+              AND created_at >= $1 AND created_at < $2 ${EXCL_JE}
+            GROUP BY data->>'section'`, args);
+        const sections = {};
+        for (const r of secRows.rows) if (r.section) sections[r.section] = r.sessions;
+
         out[w.key] = {
           sessionCount: dur.rows[0].total,
           medianSeconds: dur.rows[0].median_s,
           events,
           byVariant,
+          sections,
         };
       }
       res.json({ windows: out });

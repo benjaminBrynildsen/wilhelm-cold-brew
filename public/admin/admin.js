@@ -5,8 +5,14 @@ const app = document.getElementById('app');
 const STEPS = [
   { key: 'page_load', label: 'Landed on the page' },
   { key: 'focus_email', label: 'Focused the email field' },
-  { key: 'submit_attempt', label: 'Clicked “Claim My Spot”' },
+  { key: 'submit_attempt', label: 'Clicked “Join the List”' },
   { key: 'subscribed', label: 'Joined the list ✓', conversion: true },
+];
+// Scroll-depth funnel (in page order, after the hero).
+const SECTIONS = [
+  { key: 'family', label: 'Scrolled to the story' },
+  { key: 'proof', label: 'Scrolled to the proof' },
+  { key: 'bottles', label: 'Scrolled to the bottles' },
 ];
 const VARIANTS = ['below', 'above'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
@@ -161,6 +167,24 @@ async function showFunnel() {
       prev = c;
     });
 
+    // scroll-depth funnel (sections reached)
+    const sec = w.sections || {};
+    let scrollSteps = '';
+    let sprev = landed;
+    SECTIONS.forEach((s) => {
+      const c = sec[s.key] || 0;
+      const width = landed ? Math.round((c / landed) * 100) : 0;
+      const stepConv = sprev ? (c / sprev) * 100 : 0;
+      scrollSteps += `
+        <div class="step">
+          <div class="lbl"><span>${esc(s.label)}</span>
+            <span><b>${num(c)}</b> &nbsp;<span class="pct">${landed ? pct(c, landed) : '—'}</span>
+            &nbsp;<span class="drop">(${stepConv.toFixed(0)}% of prev)</span></span></div>
+          <div class="bar"><div class="fill" style="width:${width}%"></div></div>
+        </div>`;
+      sprev = c;
+    });
+
     // per-variant split test table
     const bv = w.byVariant || {};
     const variantKeys = Object.keys(bv).length ? Object.keys(bv).sort() : VARIANTS;
@@ -188,6 +212,9 @@ async function showFunnel() {
         <div class="card"><div class="k">Overall conversion</div><div class="v">${landed ? pct(ev.subscribed || 0, landed) : '0%'}</div></div>
       </div>
       <h3>Funnel</h3>${steps}
+      <h3>How far they scroll</h3>
+      <div class="note" style="margin-bottom:10px">Of everyone who landed, how many scrolled down to each section.</div>
+      ${scrollSteps}
       <h3>Split test — by variant</h3>
       <table><thead><tr><th>Variant</th><th class="num">Landed</th><th class="num">Focused</th>
         <th class="num">Clicked</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead>

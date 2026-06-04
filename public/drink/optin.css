@@ -37,6 +37,14 @@ body {
   display: flex; align-items: center; justify-content: center;
   padding: clamp(12px, 2.5vh, 40px) clamp(16px, 4vw, 48px);
 }
+/* corner logo, top-left */
+.hero-logo {
+  position: absolute; top: clamp(14px, 2.6vh, 28px); left: clamp(16px, 4vw, 40px);
+  z-index: 3; display: flex; align-items: center; gap: 10px; text-decoration: none;
+}
+.hero-logo img { height: 42px; width: 42px; border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--gold-deep), 0 0 0 3px var(--ink), 0 0 0 4px var(--gold); }
+.hero-logo span { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: 3px; color: var(--gold); }
 .scroll-cue {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
   color: var(--gold); font-size: 28px; line-height: 1; text-decoration: none;
@@ -129,8 +137,8 @@ h1 em { font-style: italic; color: var(--gold); }
 }
 
 /* image (variant) — height-capped so it never blows the fold */
-.optin-image { display: none; margin: 0 auto clamp(14px, 2.4vh, 32px); position: relative; }
-.optin-image img { width: auto; max-width: min(56%, 230px); max-height: clamp(88px, 19vh, 220px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.optin-image { display: block; margin: 0 auto clamp(14px, 2.4vh, 30px); position: relative; }
+.optin-image img { width: auto; max-width: min(92%, 440px); max-height: clamp(120px, 23vh, 250px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */

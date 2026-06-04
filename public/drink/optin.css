@@ -35,7 +35,7 @@ body {
   position: relative; z-index: 1;
   min-height: 100dvh;
   display: flex; align-items: center; justify-content: center;
-  padding: clamp(12px, 2.5vh, 40px) clamp(16px, 4vw, 48px);
+  padding: clamp(92px, 14vh, 130px) clamp(16px, 4vw, 48px) clamp(20px, 3vh, 44px);
 }
 /* corner logo, top-left */
 .hero-logo {

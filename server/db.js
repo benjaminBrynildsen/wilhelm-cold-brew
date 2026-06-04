@@ -84,6 +84,11 @@ export async function ensureSchema() {
       ip_hash    TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- Columns added after launch (no-op if already present).
+    ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS city   TEXT;
+    ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS region TEXT;
+    ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS country TEXT;
   `);
   console.log('[db] schema ready');
 }

@@ -201,11 +201,20 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 
 /* proof — dark, stat-forward */
 .proof { border-top: 1px solid rgba(232,194,74,0.16); }
-.proof-stat { display: flex; align-items: baseline; justify-content: center; gap: 4px; }
-.proof-stat .big { font-family: var(--display); font-weight: 800; font-size: clamp(64px, 13vw, 132px); line-height: 0.9; color: var(--parchment); letter-spacing: -3px; }
+.proof-inner { display: grid; grid-template-columns: minmax(0, 0.82fr) 1fr; gap: clamp(28px, 5vw, 60px); align-items: center; text-align: left; max-width: 1000px; }
+.proof-photo { margin: 0; }
+.proof-photo img { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.proof .eyebrow { margin-bottom: 18px; }
+.proof-stat { display: flex; align-items: baseline; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
+.proof-stat .big { font-family: var(--display); font-weight: 800; font-size: clamp(64px, 11vw, 120px); line-height: 0.9; color: var(--parchment); letter-spacing: -3px; }
 .proof-stat .big .plus { color: var(--gold); }
-.proof-stat .unit { font-family: var(--display); font-style: italic; font-size: clamp(18px, 3vw, 30px); color: var(--gold); }
-.proof-line { font-family: var(--body); font-size: clamp(16px, 2vw, 20px); line-height: 1.7; color: rgba(246,239,218,0.86); max-width: 620px; margin: 24px auto 0; }
+.proof-stat .unit { font-family: var(--display); font-style: italic; font-size: clamp(18px, 3vw, 28px); color: var(--gold); }
+.proof-line { font-family: var(--body); font-size: clamp(16px, 2vw, 20px); line-height: 1.7; color: rgba(246,239,218,0.86); margin: 18px 0 0; }
+@media (max-width: 760px) {
+  .proof-inner { grid-template-columns: 1fr; text-align: center; }
+  .proof-stat { justify-content: center; }
+  .proof-photo { max-width: 340px; margin: 0 auto; }
+}
 
 /* family — parchment, like the heritage story */
 .family { background: var(--parchment); color: var(--ink); }

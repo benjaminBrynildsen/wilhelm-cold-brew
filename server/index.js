@@ -85,6 +85,26 @@ app.get('/api/e/:token', (req, res) => {
   res.send(PIXEL);
 });
 
+// Unsubscribe — link click (GET) + Gmail one-click (POST). Token identifies the recipient.
+async function handleUnsub(req, res) {
+  const t = String(req.query.t || (req.body && req.body.t) || '').slice(0, 64);
+  if (/^[a-f0-9]{8,64}$/.test(t)) {
+    await q(
+      `UPDATE subscribers SET unsubscribed_at = now()
+        WHERE unsubscribed_at IS NULL
+          AND email = (SELECT email FROM email_sends WHERE token = $1 LIMIT 1)`, [t]
+    ).catch((e) => console.warn('[unsub] failed:', e?.message || e));
+  }
+  if (req.method === 'POST') return res.status(200).send('ok'); // one-click
+  res.set('Content-Type', 'text/html').send(`<!doctype html><html><body style="margin:0;background:#0c0a08;color:#e8d9b5;font-family:Georgia,serif;text-align:center;padding:80px 24px;">
+    <div style="font-family:Georgia,serif;font-size:22px;letter-spacing:3px;color:#e8c24a;">WILHELM COLD BREW</div>
+    <p style="font-size:18px;margin-top:28px;">You've been unsubscribed.</p>
+    <p style="color:rgba(232,217,181,0.6);font-size:14px;">You won't get any more Friday Drop emails. Changed your mind? Just sign up again at wilhelmcoldbrew.com/drink.</p>
+  </body></html>`);
+}
+app.get('/api/unsubscribe', handleUnsub);
+app.post('/api/unsubscribe', handleUnsub);
+
 // Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).
 app.get(['/drop', '/drop/'], (req, res) => {
   const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';

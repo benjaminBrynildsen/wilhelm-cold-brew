@@ -14,10 +14,25 @@ async function registerSend(email, kind, blastId) {
   } catch (e) { console.warn('[mail] registerSend failed:', e?.message || e); }
   return token;
 }
-// 1x1 tracking pixel injected before </body>.
-function withPixel(html, token) {
+const unsubUrl = (token) => `${SITE}/api/unsubscribe?t=${token}`;
+const unsubHeaders = (token) => ({
+  'List-Unsubscribe': `<${unsubUrl(token)}>`,
+  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+});
+
+// Inject tracking pixel + replace the {{UNSUB_URL}} placeholder.
+function finalize(html, token) {
   const px = `<img src="${SITE}/api/e/${token}" width="1" height="1" alt="" style="display:none;border:0"/>`;
-  return html.includes('</body>') ? html.replace('</body>', px + '</body>') : html + px;
+  let out = html.replace(/\{\{UNSUB_URL\}\}/g, unsubUrl(token));
+  return out.includes('</body>') ? out.replace('</body>', px + '</body>') : out + px;
+}
+
+// Footer appended to blast emails (compliance + unsubscribe).
+function blastFooter(token) {
+  return `<div style="max-width:520px;margin:28px auto 0;padding-top:18px;border-top:1px solid #e3dcc8;font-family:Arial,sans-serif;font-size:12px;color:#9a8f78;text-align:center;line-height:1.6;">
+    Wilhelm Cold Brew · Small Batch · St. Louis, MO<br/>
+    <a href="${unsubUrl(token)}" style="color:#9a8f78;text-decoration:underline;">Unsubscribe</a>
+  </div>`;
 }
 
 const HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
@@ -47,6 +62,7 @@ const WELCOME_SUBJECT = "You're in...";
 function welcomeHtml() {
   return `<!doctype html>
 <html><body style="margin:0;background:#0c0a08;padding:0;">
+  <div style="display:none;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">You're on the list for the Friday Drop. Here's how it works.&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0c0a08;">
     <tr><td align="center" style="padding:40px 20px;">
       <table role="presentation" width="100%" style="max-width:520px;font-family:Georgia,'Times New Roman',serif;color:#e8d9b5;">
@@ -61,8 +77,9 @@ function welcomeHtml() {
           <p style="margin:0 0 24px;color:rgba(232,217,181,0.85);">No spam between drops. Just the Friday email when the next batch is ready.</p>
           <p style="margin:0;color:rgba(232,217,181,0.85);">Talk soon,<br/>Ben<br/><span style="color:rgba(232,217,181,0.6);">Wilhelm Cold Brew</span></p>
         </td></tr>
-        <tr><td style="padding-top:28px;border-top:1px solid rgba(232,194,74,0.2);margin-top:24px;font-family:Arial,sans-serif;font-size:11px;color:rgba(232,217,181,0.45);">
-          You're receiving this because you joined the Wilhelm Cold Brew Friday Drop list. Reply "stop" to unsubscribe.
+        <tr><td style="padding-top:28px;border-top:1px solid rgba(232,194,74,0.2);font-family:Arial,sans-serif;font-size:11px;color:rgba(232,217,181,0.45);line-height:1.6;">
+          You're receiving this because you joined the Wilhelm Cold Brew Friday Drop list.<br/>
+          <a href="{{UNSUB_URL}}" style="color:rgba(232,217,181,0.6);text-decoration:underline;">Unsubscribe</a>
         </td></tr>
       </table>
     </td></tr>
@@ -93,8 +110,9 @@ export async function sendWelcome(to) {
     from: FROM,
     to,
     subject: WELCOME_SUBJECT,
-    html: withPixel(welcomeHtml(), token),
-    text: welcomeText(),
+    html: finalize(welcomeHtml(), token),
+    text: welcomeText() + '\n\nUnsubscribe: ' + unsubUrl(token),
+    headers: unsubHeaders(token),
   });
   console.log('[mail] welcome sent to', to);
 }
@@ -117,7 +135,12 @@ export async function sendBulk(recipients, subject, html, opts) {
     const to = recipients[i];
     try {
       const token = await registerSend(to, 'blast', blastId);
-      await transporter.sendMail({ from: FROM, to, subject, html: withPixel(html, token), text });
+      await transporter.sendMail({
+        from: FROM, to, subject,
+        html: finalize(html + blastFooter(token), token),
+        text: text + '\n\nUnsubscribe: ' + unsubUrl(token),
+        headers: unsubHeaders(token),
+      });
       sent++; results.push({ to, ok: true });
     } catch (e) {
       failed++; results.push({ to, ok: false, error: e.message });

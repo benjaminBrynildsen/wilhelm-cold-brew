@@ -34,8 +34,8 @@ body {
 .optin-hero {
   position: relative; z-index: 1;
   min-height: 100dvh;
-  display: flex; align-items: center; justify-content: center;
-  padding: calc(clamp(76px, 9vh, 100px) + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 48px) clamp(16px, 2.5vh, 36px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: calc(clamp(78px, 9vh, 100px) + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 48px) clamp(16px, 2.5vh, 36px);
 }
 /* corner logo, top-left */
 .hero-logo {
@@ -130,7 +130,7 @@ body::before {
 h1 {
   font-family: var(--display); font-weight: 700;
   font-size: clamp(28px, 4.6vh, 50px); line-height: 1.02; letter-spacing: -1.2px;
-  color: var(--parchment); margin: 0 0 clamp(8px, 1.6vh, 18px);
+  color: var(--parchment); margin: 0 0 clamp(8px, 1.4vh, 14px);
 }
 h1 em { font-style: italic; color: var(--gold); }
 
@@ -149,7 +149,7 @@ h1 em { font-style: italic; color: var(--gold); }
 
 /* image (variant) — height-capped so it never blows the fold */
 .optin-image { display: block; margin: 0 auto clamp(14px, 2.4vh, 30px); position: relative; }
-.optin-image img { width: 100%; max-width: min(100%, 560px); max-height: clamp(150px, 25vh, 300px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.optin-image img { width: 100%; max-width: min(100%, 520px); max-height: clamp(140px, 22vh, 270px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */

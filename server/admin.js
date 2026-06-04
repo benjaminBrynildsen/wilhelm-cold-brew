@@ -286,4 +286,53 @@ export function mountAdmin(app) {
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ───────── journeys: per-session activity ─────────
+  app.get('/api/admin/journeys', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit) || 60));
+      const rows = (await q(
+        `SELECT session_id,
+                MIN(created_at) started_at,
+                ROUND(EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at))))::int duration_seconds,
+                COUNT(*)::int event_count,
+                MAX(city) city, MAX(region) region, MAX(country) country,
+                MAX(variant) variant,
+                BOOL_OR(event = 'subscribed') subscribed,
+                MAX(CASE WHEN event = 'page_load' THEN page END) page,
+                MAX((data->>'depth_pct')::int) max_scroll
+           FROM journey_events
+          WHERE created_at > NOW() - INTERVAL '7 days' ${EXCL_JE}
+          GROUP BY session_id
+          ORDER BY MIN(created_at) DESC
+          LIMIT $1`, [limit])).rows;
+      res.json({ sessions: rows });
+    } catch (e) { console.error('[journeys]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/admin/journeys/:sessionId', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const sid = String(req.params.sessionId).slice(0, 80);
+      const rows = (await q(
+        `SELECT event, data, page, variant, city, region, country, user_agent, created_at
+           FROM journey_events
+          WHERE session_id = $1 ORDER BY created_at ASC`, [sid])).rows;
+      if (!rows.length) return res.status(404).json({ error: 'not found' });
+      const first = rows[0], last = rows[rows.length - 1];
+      const duration = Math.round((new Date(last.created_at) - new Date(first.created_at)) / 1000);
+      res.json({
+        sessionId: sid,
+        city: first.city, region: first.region, country: first.country,
+        userAgent: first.user_agent, page: first.page, variant: first.variant,
+        startedAt: first.created_at, durationSeconds: duration, eventCount: rows.length,
+        events: rows.map((e) => ({
+          event: e.event, data: e.data, page: e.page,
+          at: e.created_at,
+          t: Math.round((new Date(e.created_at) - new Date(first.created_at)) / 1000),
+        })),
+      });
+    } catch (e) { console.error('[journey-detail]', e); res.status(500).json({ error: e.message }); }
+  });
 }

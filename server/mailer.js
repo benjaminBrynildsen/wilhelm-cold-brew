@@ -61,25 +61,27 @@ const WELCOME_SUBJECT = "You're in...";
 
 function welcomeHtml() {
   return `<!doctype html>
-<html><body style="margin:0;background:#0c0a08;padding:0;">
+<html><body style="margin:0;background:#e9dcbb;padding:0;">
   <div style="display:none;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">You're on the list for the Friday Drop. Here's how it works.&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0c0a08;">
-    <tr><td align="center" style="padding:40px 20px;">
-      <table role="presentation" width="100%" style="max-width:520px;font-family:Georgia,'Times New Roman',serif;color:#e8d9b5;">
-        <tr><td style="text-align:center;padding-bottom:24px;">
-          <div style="font-family:Georgia,serif;font-size:24px;letter-spacing:3px;color:#e8c24a;font-weight:bold;">WILHELM COLD BREW</div>
-          <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:rgba(232,217,181,0.6);margin-top:6px;">SMALL BATCH · ST. LOUIS, MO</div>
-        </td></tr>
-        <tr><td style="font-size:17px;line-height:1.65;color:#e8d9b5;">
-          <p style="margin:0 0 16px;">Welcome in. Here's how the Friday Drop works: every <strong style="color:#fff;">Friday at 9AM</strong> the purchase link lands in your inbox. We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast. When you see the email, move quick. Blink and they're gone.</p>
-          <p style="margin:0 0 16px;">A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.</p>
-          <p style="margin:0 0 24px;">That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.</p>
-          <p style="margin:0 0 24px;color:rgba(232,217,181,0.85);">No spam between drops. Just the Friday email when the next batch is ready.</p>
-          <p style="margin:0;color:rgba(232,217,181,0.85);">Talk soon,<br/>Ben<br/><span style="color:rgba(232,217,181,0.6);">Wilhelm Cold Brew</span></p>
-        </td></tr>
-        <tr><td style="padding-top:28px;border-top:1px solid rgba(232,194,74,0.2);font-family:Arial,sans-serif;font-size:11px;color:rgba(232,217,181,0.45);line-height:1.6;">
-          You're receiving this because you joined the Wilhelm Cold Brew Friday Drop list.<br/>
-          <a href="{{UNSUB_URL}}" style="color:rgba(232,217,181,0.6);text-decoration:underline;">Unsubscribe</a>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e9dcbb;">
+    <tr><td align="center" style="padding:36px 18px;">
+      <table role="presentation" width="100%" style="max-width:540px;background:#f7f0dd;border:1px solid #ddcfa6;border-radius:6px;">
+        <tr><td style="padding:38px 42px 32px;">
+          <div style="text-align:center;padding-bottom:26px;">
+            <img src="${SITE}/drink/assets/wilhelm-circle.png" width="80" height="80" alt="Wilhelm Cold Brew" style="display:inline-block;border-radius:50%;border:0;"/>
+            <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
+          </div>
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
+            <p style="margin:0 0 16px;">Welcome in. Here's how the Friday Drop works: every <strong style="color:#8a6914;">Friday at 9AM</strong> the purchase link lands in your inbox. We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast. When you see the email, move quick. Blink and they're gone.</p>
+            <p style="margin:0 0 16px;">A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.</p>
+            <p style="margin:0 0 22px;">That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.</p>
+            <p style="margin:0 0 22px;color:#6b6047;">No spam between drops. Just the Friday email when the next batch is ready.</p>
+            <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
+          </div>
+          <div style="margin-top:30px;padding-top:18px;border-top:1px solid #e2d4ad;font-family:Arial,sans-serif;font-size:11px;color:#9a8d6e;line-height:1.6;">
+            You're receiving this because you joined the Wilhelm Cold Brew Friday Drop list.<br/>
+            <a href="{{UNSUB_URL}}" style="color:#b08a2c;text-decoration:underline;">Unsubscribe</a>
+          </div>
         </td></tr>
       </table>
     </td></tr>

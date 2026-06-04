@@ -17,7 +17,7 @@ const SECTIONS = [
 const VARIANTS = ['below', 'above'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '', journeySid: null };
 
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}));
@@ -82,7 +82,7 @@ function renderApp() {
 }
 
 function renderTabs() {
-  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['traffic', 'Traffic'], ['email', 'Email']];
+  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['email', 'Email']];
   document.getElementById('tabs').innerHTML = tabs.map(
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('');
   document.querySelectorAll('.tab').forEach((t) =>
@@ -120,7 +120,85 @@ function show(tab) {
   if (tab === 'overview') return showOverview();
   if (tab === 'funnel') return showFunnel();
   if (tab === 'traffic') return showTraffic();
+  if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
   if (tab === 'email') return showEmail();
+}
+
+// ───────── Journey ─────────
+const dur = (s) => (s == null ? '—' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`);
+const loc = (r) => [r.city, r.region, r.country].filter(Boolean).join(', ') || 'Unknown';
+const ago = (iso) => {
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+};
+function eventLabel(e) {
+  const d = e.data || {};
+  switch (e.event) {
+    case 'page_load': return 'Landed on the page';
+    case 'geo': return 'Location resolved';
+    case 'focus_email': return 'Focused the email field';
+    case 'scroll': return `Scrolled to ${d.depth_pct || '?'}%`;
+    case 'section_reached': return `Reached the “${d.section || '?'}” section`;
+    case 'engaged': return `Still here at ${d.seconds || '?'}s`;
+    case 'click': return `Clicked: ${d.element || '?'}`;
+    case 'submit_attempt': return 'Clicked “Join the List”';
+    case 'submit_invalid': return 'Entered an invalid email';
+    case 'subscribed': return 'Joined the list ✓';
+    case 'exit': return `Left — ${d.time_on_page ?? '?'}s on page, ${d.max_scroll || 0}% scrolled`;
+    case 'drink_exposure': return `Exposure (${d.variant || ''})`;
+    default: return e.event;
+  }
+}
+
+async function showJourney() {
+  state.journeySid = null;
+  loading();
+  try {
+    const d = await api('/api/admin/journeys');
+    const rows = d.sessions.map((s) => `
+      <tr data-sid="${esc(s.session_id)}" style="cursor:pointer">
+        <td>${esc(ago(s.started_at))}</td>
+        <td>${esc(loc(s))}</td>
+        <td class="num">${esc(dur(s.duration_seconds))}</td>
+        <td class="num">${num(s.event_count)}</td>
+        <td>${esc(s.max_scroll != null ? s.max_scroll + '%' : '—')}</td>
+        <td>${esc(s.variant || '—')}</td>
+        <td>${s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : ''}</td>
+      </tr>`).join('');
+    content().innerHTML = `
+      <div class="note" style="margin-bottom:12px">Last 7 days of visitor sessions (your test traffic excluded). Click a row to replay everything they did.</div>
+      <table><thead><tr><th>When</th><th>From</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td class="note" colspan="7">No sessions yet.</td></tr>'}</tbody></table>`;
+    document.querySelectorAll('tr[data-sid]').forEach((tr) =>
+      tr.addEventListener('click', () => { state.journeySid = tr.dataset.sid; showJourneyDetail(tr.dataset.sid); }));
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+async function showJourneyDetail(sid) {
+  loading();
+  try {
+    const d = await api('/api/admin/journeys/' + encodeURIComponent(sid));
+    const timeline = d.events.map((e) => `
+      <div class="step" style="margin:6px 0">
+        <div class="lbl"><span><span class="pct">+${e.t}s</span> &nbsp; ${esc(eventLabel(e))}</span></div>
+      </div>`).join('');
+    const device = /Mobi|Android|iPhone|iPad/i.test(d.userAgent || '') ? 'Mobile' : 'Desktop';
+    content().innerHTML = `
+      <div class="row-actions"><button class="btn ghost" id="jback">← All sessions</button></div>
+      <div class="cards">
+        <div class="card"><div class="k">From</div><div class="v" style="font-size:20px">${esc(loc(d))}</div></div>
+        <div class="card"><div class="k">Time on site</div><div class="v">${esc(dur(d.durationSeconds))}</div></div>
+        <div class="card"><div class="k">Events</div><div class="v">${num(d.eventCount)}</div></div>
+        <div class="card"><div class="k">Device</div><div class="v" style="font-size:20px">${device}</div></div>
+        <div class="card"><div class="k">Variant</div><div class="v" style="font-size:20px">${esc(d.variant || '—')}</div></div>
+      </div>
+      <h3>Activity</h3>
+      ${timeline}`;
+    document.getElementById('jback').addEventListener('click', () => { state.journeySid = null; showJourney(); });
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 
 // ───────── Overview ─────────

@@ -9,9 +9,9 @@ const STEPS = [
   { key: 'subscribed', label: 'Joined the list ✓', conversion: true },
 ];
 const VARIANTS = ['below', 'above'];
-const WINS = [['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
+const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'd7' };
+const state = { authed: false, tab: 'overview', win: 'd7', customFrom: '', customTo: '' };
 
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}));
@@ -84,12 +84,27 @@ function renderTabs() {
 }
 
 function winbar() {
-  return `<div class="winbar">${WINS.map(([k, l]) =>
-    `<div class="win ${state.win === k ? 'active' : ''}" data-win="${k}">${l}</div>`).join('')}</div>`;
+  const btns = WINS.map(([k, l]) =>
+    `<div class="win ${state.win === k ? 'active' : ''}" data-win="${k}">${l}</div>`).join('');
+  return `<div class="winbar">${btns}</div>
+    <div class="winbar" style="margin-top:-8px;align-items:center">
+      <input type="date" id="cfrom" value="${esc(state.customFrom)}" style="background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:6px 8px;color-scheme:dark"/>
+      <input type="date" id="cto" value="${esc(state.customTo)}" style="background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:6px 8px;color-scheme:dark"/>
+      <button class="win ${state.win === 'custom' ? 'active' : ''}" id="capply">Custom range</button>
+    </div>`;
+}
+function winQuery() {
+  return (state.win === 'custom' && state.customFrom && state.customTo)
+    ? `?from=${state.customFrom}&to=${state.customTo}` : '';
 }
 function wireWinbar(reload) {
-  document.querySelectorAll('.win').forEach((w) =>
+  document.querySelectorAll('.win[data-win]').forEach((w) =>
     w.addEventListener('click', () => { state.win = w.dataset.win; reload(); }));
+  const apply = document.getElementById('capply');
+  if (apply) apply.addEventListener('click', () => {
+    const f = document.getElementById('cfrom').value, t = document.getElementById('cto').value;
+    if (f && t) { state.customFrom = f; state.customTo = t; state.win = 'custom'; reload(); }
+  });
 }
 
 const content = () => document.getElementById('content');
@@ -106,7 +121,7 @@ function show(tab) {
 async function showOverview() {
   loading();
   try {
-    const d = await api('/api/admin/overview');
+    const d = await api('/api/admin/overview' + winQuery());
     const w = d.windows[state.win] || {};
     content().innerHTML = winbar() + `
       <div class="cards">
@@ -125,7 +140,7 @@ async function showOverview() {
 async function showFunnel() {
   loading();
   try {
-    const d = await api('/api/admin/funnel');
+    const d = await api('/api/admin/funnel' + winQuery());
     const w = d.windows[state.win] || { events: {}, byVariant: {} };
     const ev = w.events || {};
     const landed = ev.page_load || 0;
@@ -206,6 +221,7 @@ async function showTraffic() {
         <div>${tbl('Top referrers', d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl('Top countries', d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl('UTM campaigns', d.topCampaigns.map((r) => `<tr><td>${esc(r.source)} / ${esc(r.medium)} / ${esc(r.campaign)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / medium / campaign' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl('Top cities', (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
       </div>`;
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

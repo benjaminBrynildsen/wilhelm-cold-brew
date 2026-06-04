@@ -10,19 +10,27 @@
     document.documentElement.getAttribute('data-drink-variant') ||
     null;
 
+  // Internal flag: visiting any page with ?internal=1 marks this device; flagged
+  // events are tagged is_internal:true and excluded from the admin by default.
+  try {
+    if (new URLSearchParams(location.search).get('internal') === '1') {
+      localStorage.setItem('wilhelm_internal', '1');
+    }
+  } catch (e) { /* noop */ }
+  var IS_INTERNAL = false;
+  try { IS_INTERNAL = localStorage.getItem('wilhelm_internal') === '1'; } catch (e) {}
+
   var queue = [];
   var startTime = Date.now();
   var maxScroll = 0;
   var flushTimer = null;
 
-  function track(event, data) {
-    queue.push({
-      sessionId: SESSION_ID,
-      event: String(event),
-      data: data || {},
-      page: PAGE,
-      variant: VARIANT,
-    });
+  function track(event, data, extra) {
+    var d = data || {};
+    if (IS_INTERNAL) d.is_internal = true;
+    var ev = { sessionId: SESSION_ID, event: String(event), data: d, page: PAGE, variant: VARIANT };
+    if (extra) { for (var k in extra) ev[k] = extra[k]; }
+    queue.push(ev);
     scheduleFlush();
   }
   // public hook
@@ -54,6 +62,35 @@
 
   // ───────── auto events ─────────
   track('page_load', { referrer: document.referrer || null, url: location.href });
+
+  // City/region/country via keyless geo lookup (visitor's own IP).
+  try {
+    fetch('https://ipwho.is/?fields=success,city,region,country_code')
+      .then(function (r) { return r.json(); })
+      .then(function (g) {
+        if (!g || !g.success) return;
+        track('geo', {}, { city: g.city || null, region: g.region || null, country: g.country_code || null });
+      })
+      .catch(function () { /* geo is best-effort */ });
+  } catch (e) { /* noop */ }
+
+  // section_reached — fires once when each landing-page section scrolls into view.
+  if ('IntersectionObserver' in window) {
+    var seenSection = {};
+    var secObserver = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (en) {
+          var id = en.target.id;
+          if (en.isIntersecting && id && id !== 'top' && !seenSection[id]) {
+            seenSection[id] = true;
+            track('section_reached', { section: id });
+          }
+        });
+      },
+      { threshold: 0.4 }
+    );
+    document.querySelectorAll('section[id]').forEach(function (s) { secObserver.observe(s); });
+  }
 
   // scroll depth thresholds
   var scrollMarks = [25, 50, 75, 100];

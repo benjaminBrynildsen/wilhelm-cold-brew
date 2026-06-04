@@ -17,19 +17,25 @@ export async function receiveJourney(req, res) {
   const country = countryFrom(req);
   const ua = (req.headers['user-agent'] || '').toString().slice(0, 300);
 
+  const clip = (v, n) => (v ? String(v).slice(0, n) : null);
+
   // Build a single multi-row INSERT.
-  const cols = ['session_id', 'event', 'data', 'ip_hash', 'country', 'user_agent', 'page', 'variant'];
+  const cols = ['session_id', 'event', 'data', 'ip_hash', 'city', 'region', 'country', 'user_agent', 'page', 'variant'];
   const values = [];
   const tuples = [];
   for (const e of events) {
     const base = values.length;
-    tuples.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`);
+    const ph = [];
+    for (let k = 1; k <= cols.length; k++) ph.push(`$${base + k}`);
+    tuples.push(`(${ph.join(',')})`);
     values.push(
       String(e.sessionId || 'unknown').slice(0, 80),
       String(e.event || 'unknown').slice(0, 80),
       JSON.stringify(e.data || {}),
       ipHash,
-      country,
+      clip(e.city, 80),
+      clip(e.region, 80),
+      clip(e.country, 80) || country,
       ua,
       e.page ? String(e.page).slice(0, 256) : null,
       e.variant ? String(e.variant).slice(0, 40) : null

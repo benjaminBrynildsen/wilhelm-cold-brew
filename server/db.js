@@ -78,6 +78,12 @@ export async function ensureSchema() {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
       sent_at         TIMESTAMPTZ
     );
+
+    -- IP hashes flagged internal (Ben's test devices) — excluded from all analytics.
+    CREATE TABLE IF NOT EXISTS internal_ips (
+      ip_hash    TEXT PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
   console.log('[db] schema ready');
 }

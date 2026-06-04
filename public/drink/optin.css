@@ -88,6 +88,29 @@ body::before {
   .card::after { display: none; }
 }
 
+/* Desktop: two-column hero (copy + form left, photo right) so it fits above the fold.
+   Mobile (<900px) keeps the single-column stack + the above/below split test. */
+@media (min-width: 900px) {
+  .optin-hero { align-items: center; padding-top: calc(clamp(40px, 8vh, 80px) + env(safe-area-inset-top, 0px)); }
+  .card { max-width: 940px; }
+  .optin {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    grid-template-areas:
+      "head  photo"
+      "bull  photo"
+      "form  photo";
+    column-gap: clamp(40px, 4.5vw, 76px);
+    row-gap: clamp(14px, 2vh, 24px);
+    align-items: center; align-content: center;
+    width: 100%; text-align: left;
+  }
+  .optin > h1 { grid-area: head; margin: 0; }
+  .optin > .sub-bullets { grid-area: bull; margin: 0; align-self: start; }
+  .optin > .optin-image { grid-area: photo; align-self: center; margin: 0; max-width: 100%; }
+  .optin > .optin-form { grid-area: form; margin: 0; max-width: 440px; }
+}
+
 /* state wrappers — mirror the card's own centered column so inner max-widths hold */
 [hidden] { display: none !important; }
 .optin { width: 100%; display: flex; flex-direction: column; align-items: center; }

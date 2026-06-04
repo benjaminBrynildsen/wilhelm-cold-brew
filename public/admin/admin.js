@@ -8,7 +8,7 @@ const STEPS = [
   { key: 'submit_attempt', label: 'Clicked “Claim My Spot”' },
   { key: 'subscribed', label: 'Joined the list ✓', conversion: true },
 ];
-const VARIANTS = ['minimal', 'image', 'bullets'];
+const VARIANTS = ['below', 'above'];
 const WINS = [['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
 const state = { authed: false, tab: 'overview', win: 'd7' };

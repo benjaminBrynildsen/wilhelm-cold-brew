@@ -72,3 +72,29 @@ export async function sendWelcome(to) {
   });
   console.log('[mail] welcome sent to', to);
 }
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const htmlToText = (html) => String(html).replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Throttled blast to a list. Gmail/Workspace rate-limits rapid sends, so we pace
+// them and cap per run; returns per-recipient results so failures can be retried.
+export async function sendBulk(recipients, subject, html, opts) {
+  if (!transporter) throw new Error('SMTP not configured');
+  const delayMs = (opts && opts.delayMs) || 600;
+  const cap = (opts && opts.cap) || 400; // safety ceiling per run
+  const text = htmlToText(html);
+  const results = [];
+  let sent = 0, failed = 0;
+  const n = Math.min(recipients.length, cap);
+  for (let i = 0; i < n; i++) {
+    const to = recipients[i];
+    try {
+      await transporter.sendMail({ from: FROM, to, subject, html, text });
+      sent++; results.push({ to, ok: true });
+    } catch (e) {
+      failed++; results.push({ to, ok: false, error: e.message });
+    }
+    if (i < n - 1) await wait(delayMs);
+  }
+  return { sent, failed, attempted: n, total: recipients.length, results };
+}

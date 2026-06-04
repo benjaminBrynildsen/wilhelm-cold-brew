@@ -17,7 +17,7 @@ const SECTIONS = [
 const VARIANTS = ['below', 'above'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'd7', customFrom: '', customTo: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '' };
 
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}));
@@ -290,10 +290,11 @@ async function showEmail() {
       <textarea id="bbody" rows="6" placeholder="HTML body…"></textarea>
       <div class="row-actions">
         <button class="btn" id="savedraft">Save draft</button>
-        <button class="btn ghost" id="sendblast">Send now</button>
+        <button class="btn ghost" id="sendtest">Send test to me</button>
+        <button class="btn" id="sendblast">Send to list (${num(subs.total)})</button>
         <span class="note" id="emsg"></span>
       </div>
-      <div class="note">⚠ Sending isn't wired yet — needs SMTP/ESP creds. “Save draft” records it to history.</div>
+      <div class="note">“Send test” emails only the from-address. “Send to list” blasts all ${num(subs.total)} active subscribers (throttled).</div>
 
       <h3>Blast history</h3>
       <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th>Created</th></tr></thead><tbody>${history}</tbody></table>`;
@@ -307,10 +308,25 @@ async function showEmail() {
         showEmail();
       } catch (e) { document.getElementById('emsg').textContent = 'Save failed.'; }
     });
-    document.getElementById('sendblast').addEventListener('click', async () => {
-      const r = await fetch('/api/admin/email/send', { method: 'POST', credentials: 'include' });
-      const j = await r.json().catch(() => ({}));
-      document.getElementById('emsg').textContent = r.ok ? 'Sent.' : (j.error || 'Sending not configured.');
-    });
+    const doSend = async (test) => {
+      const subject = document.getElementById('bsubj').value.trim();
+      const bodyHtml = document.getElementById('bbody').value.trim();
+      const msg = document.getElementById('emsg');
+      if (!subject || !bodyHtml) { msg.textContent = 'Add a subject and body first.'; return; }
+      if (!test && !confirm(`Send "${subject}" to all ${num(subs.total)} subscribers?`)) return;
+      msg.textContent = test ? 'Sending test…' : 'Sending to list…';
+      try {
+        const r = await api('/api/admin/email/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject, bodyHtml, test }),
+        });
+        msg.textContent = test
+          ? 'Test sent to the from-address.'
+          : `Sent: ${r.sent}, failed: ${r.failed} of ${r.total}.`;
+        if (!test) showEmail();
+      } catch (e) { msg.textContent = 'Send failed: ' + e.message; }
+    };
+    document.getElementById('sendtest').addEventListener('click', () => doSend(true));
+    document.getElementById('sendblast').addEventListener('click', () => doSend(false));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

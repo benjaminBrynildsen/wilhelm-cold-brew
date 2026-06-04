@@ -1,6 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
+import { mailReady, sendBulk } from './mailer.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
@@ -247,9 +248,36 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[draft]', e); res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/admin/email/send', (req, res) => {
+  app.post('/api/admin/email/send', async (req, res) => {
     if (!requireAdmin(req, res)) return;
-    // Sending intentionally not wired yet — needs SMTP/ESP creds.
-    res.status(501).json({ error: 'sending not configured — provide SMTP/ESP creds to enable' });
+    if (!mailReady()) return res.status(501).json({ error: 'email not configured — set SMTP creds first' });
+    const subject = String(req.body?.subject || '').trim().slice(0, 300);
+    const bodyHtml = String(req.body?.bodyHtml || '').trim().slice(0, 100000);
+    const test = req.query?.test === '1' || req.body?.test === true;
+    if (!subject || !bodyHtml) return res.status(400).json({ error: 'subject and body required' });
+    try {
+      // Test send goes only to the from-address; real send goes to the active list.
+      let recipients;
+      if (test) {
+        recipients = [(process.env.MAIL_FROM || 'ben@wilhelmcoldbrew.com').replace(/^.*<|>.*$/g, '')];
+      } else {
+        recipients = (await q(
+          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at ASC`
+        )).rows.map((r) => r.email);
+      }
+      if (!recipients.length) return res.status(400).json({ error: 'no recipients' });
+
+      const blast = await q(
+        `INSERT INTO email_blasts (subject, body_html, recipient_count, status)
+         VALUES ($1,$2,$3,'sending') RETURNING id`, [subject, bodyHtml, recipients.length]);
+      const result = await sendBulk(recipients, subject, bodyHtml);
+      await q(
+        `UPDATE email_blasts SET sent_count=$1, failed_count=$2, status='sent', sent_at=now() WHERE id=$3`,
+        [result.sent, result.failed, blast.rows[0].id]);
+      res.json({ ok: true, test, ...result });
+    } catch (e) {
+      console.error('[email/send]', e);
+      res.status(500).json({ error: e.message });
+    }
   });
 }

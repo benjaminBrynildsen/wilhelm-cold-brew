@@ -229,9 +229,15 @@ export function mountAdmin(app) {
     if (!requireAdmin(req, res)) return;
     try {
       const rows = (await q(
-        `SELECT id, subject, recipient_count, sent_count, failed_count, status, created_at, sent_at
-           FROM email_blasts ORDER BY created_at DESC LIMIT 50`)).rows;
-      res.json({ blasts: rows });
+        `SELECT b.id, b.subject, b.recipient_count, b.sent_count, b.failed_count, b.status, b.created_at, b.sent_at,
+                COALESCE(s.opened, 0)::int opened
+           FROM email_blasts b
+           LEFT JOIN (SELECT blast_id, COUNT(first_open_at)::int opened FROM email_sends
+                       WHERE blast_id IS NOT NULL GROUP BY blast_id) s ON s.blast_id = b.id
+          ORDER BY b.created_at DESC LIMIT 50`)).rows;
+      const wel = (await q(
+        `SELECT COUNT(*)::int sent, COUNT(first_open_at)::int opened FROM email_sends WHERE kind='welcome'`)).rows[0];
+      res.json({ blasts: rows, welcome: wel });
     } catch (e) { console.error('[blasts]', e); res.status(500).json({ error: e.message }); }
   });
 
@@ -270,7 +276,7 @@ export function mountAdmin(app) {
       const blast = await q(
         `INSERT INTO email_blasts (subject, body_html, recipient_count, status)
          VALUES ($1,$2,$3,'sending') RETURNING id`, [subject, bodyHtml, recipients.length]);
-      const result = await sendBulk(recipients, subject, bodyHtml);
+      const result = await sendBulk(recipients, subject, bodyHtml, { blastId: test ? null : blast.rows[0].id });
       await q(
         `UPDATE email_blasts SET sent_count=$1, failed_count=$2, status='sent', sent_at=now() WHERE id=$3`,
         [result.sent, result.failed, blast.rows[0].id]);

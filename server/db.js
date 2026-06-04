@@ -89,6 +89,20 @@ export async function ensureSchema() {
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS city   TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS region TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS country TEXT;
+
+    -- One row per email sent (welcome or blast) — powers open tracking via pixel.
+    CREATE TABLE IF NOT EXISTS email_sends (
+      id            BIGSERIAL PRIMARY KEY,
+      token         TEXT UNIQUE NOT NULL,
+      email         TEXT NOT NULL,
+      kind          TEXT NOT NULL,             -- 'welcome' | 'blast'
+      blast_id      BIGINT,
+      sent_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      first_open_at TIMESTAMPTZ,
+      opens         INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS es_blast_idx ON email_sends (blast_id);
+    CREATE INDEX IF NOT EXISTS es_kind_idx  ON email_sends (kind);
   `);
   console.log('[db] schema ready');
 }

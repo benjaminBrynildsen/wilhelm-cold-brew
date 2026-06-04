@@ -72,6 +72,19 @@ mountAdmin(app);
 // Lightweight liveness check (no DB) — used by Render's health check.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 
+// Email open-tracking pixel. Returns a 1x1 transparent GIF, logs the open.
+const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+app.get('/api/e/:token', (req, res) => {
+  const t = String(req.params.token || '').slice(0, 64);
+  if (/^[a-f0-9]{8,64}$/.test(t)) {
+    void q(`UPDATE email_sends SET opens = opens + 1, first_open_at = COALESCE(first_open_at, now()) WHERE token = $1`, [t])
+      .catch((e) => console.warn('[open] log failed:', e?.message || e));
+  }
+  res.set('Content-Type', 'image/gif');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.send(PIXEL);
+});
+
 // Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).
 app.get(['/drop', '/drop/'], (req, res) => {
   const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';

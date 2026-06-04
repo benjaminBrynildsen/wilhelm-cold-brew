@@ -1,5 +1,24 @@
 // Transactional email via SMTP (nodemailer). Sends from ben@wilhelmcoldbrew.com.
 import nodemailer from 'nodemailer';
+import crypto from 'node:crypto';
+import { q } from './db.js';
+
+const SITE = process.env.SITE_URL || 'https://wilhelmcoldbrew.com';
+
+// Register a send and return its open-tracking token.
+async function registerSend(email, kind, blastId) {
+  const token = crypto.randomBytes(16).toString('hex');
+  try {
+    await q(`INSERT INTO email_sends (token, email, kind, blast_id) VALUES ($1,$2,$3,$4)`,
+      [token, email, kind, blastId || null]);
+  } catch (e) { console.warn('[mail] registerSend failed:', e?.message || e); }
+  return token;
+}
+// 1x1 tracking pixel injected before </body>.
+function withPixel(html, token) {
+  const px = `<img src="${SITE}/api/e/${token}" width="1" height="1" alt="" style="display:none;border:0"/>`;
+  return html.includes('</body>') ? html.replace('</body>', px + '</body>') : html + px;
+}
 
 const HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const PORT = parseInt(process.env.SMTP_PORT || '587', 10);
@@ -23,7 +42,7 @@ if (USER && PASS) {
 export function mailReady() { return !!transporter; }
 
 // ───────── Welcome email (sent on each new signup) ─────────
-const WELCOME_SUBJECT = 'You made the list';
+const WELCOME_SUBJECT = "You're in...";
 
 function welcomeHtml() {
   return `<!doctype html>
@@ -36,8 +55,10 @@ function welcomeHtml() {
           <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:rgba(232,217,181,0.6);margin-top:6px;">SMALL BATCH · ST. LOUIS, MO</div>
         </td></tr>
         <tr><td style="font-size:17px;line-height:1.65;color:#e8d9b5;">
-          <p style="margin:0 0 16px;font-size:22px;color:#e8c24a;">You made the list.</p>
-          <p style="margin:0 0 24px;">Welcome in. Every <strong style="color:#fff;">Friday at 9AM</strong> the drop link hits your inbox. Fewer than 100 bottles, and they go fast, so when it lands, don't wait.</p>
+          <p style="margin:0 0 16px;">Welcome in. Here's how the Friday Drop works: every <strong style="color:#fff;">Friday at 9AM</strong> the purchase link lands in your inbox. We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast. When you see the email, move quick. Blink and they're gone.</p>
+          <p style="margin:0 0 16px;">A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.</p>
+          <p style="margin:0 0 24px;">That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.</p>
+          <p style="margin:0 0 24px;color:rgba(232,217,181,0.85);">No spam between drops. Just the Friday email when the next batch is ready.</p>
           <p style="margin:0;color:rgba(232,217,181,0.85);">Talk soon,<br/>Ben<br/><span style="color:rgba(232,217,181,0.6);">Wilhelm Cold Brew</span></p>
         </td></tr>
         <tr><td style="padding-top:28px;border-top:1px solid rgba(232,194,74,0.2);margin-top:24px;font-family:Arial,sans-serif;font-size:11px;color:rgba(232,217,181,0.45);">
@@ -51,9 +72,13 @@ function welcomeHtml() {
 
 function welcomeText() {
   return [
-    'You made the list.',
+    "Welcome in. Here's how the Friday Drop works: every Friday at 9AM the purchase link lands in your inbox. We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast. When you see the email, move quick. Blink and they're gone.",
     '',
-    "Welcome in. Every Friday at 9AM the drop link hits your inbox. Fewer than 100 bottles, and they go fast, so when it lands, don't wait.",
+    'A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.',
+    '',
+    "That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.",
+    '',
+    'No spam between drops. Just the Friday email when the next batch is ready.',
     '',
     'Talk soon,',
     'Ben',
@@ -63,11 +88,12 @@ function welcomeText() {
 
 export async function sendWelcome(to) {
   if (!transporter) { console.warn('[mail] skip welcome (SMTP not configured):', to); return; }
+  const token = await registerSend(to, 'welcome', null);
   await transporter.sendMail({
     from: FROM,
     to,
     subject: WELCOME_SUBJECT,
-    html: welcomeHtml(),
+    html: withPixel(welcomeHtml(), token),
     text: welcomeText(),
   });
   console.log('[mail] welcome sent to', to);
@@ -82,6 +108,7 @@ export async function sendBulk(recipients, subject, html, opts) {
   if (!transporter) throw new Error('SMTP not configured');
   const delayMs = (opts && opts.delayMs) || 600;
   const cap = (opts && opts.cap) || 400; // safety ceiling per run
+  const blastId = opts && opts.blastId;
   const text = htmlToText(html);
   const results = [];
   let sent = 0, failed = 0;
@@ -89,7 +116,8 @@ export async function sendBulk(recipients, subject, html, opts) {
   for (let i = 0; i < n; i++) {
     const to = recipients[i];
     try {
-      await transporter.sendMail({ from: FROM, to, subject, html, text });
+      const token = await registerSend(to, 'blast', blastId);
+      await transporter.sendMail({ from: FROM, to, subject, html: withPixel(html, token), text });
       sent++; results.push({ to, ok: true });
     } catch (e) {
       failed++; results.push({ to, ok: false, error: e.message });

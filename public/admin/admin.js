@@ -262,13 +262,16 @@ async function showEmail() {
     const recent = subs.recent.map((r) =>
       `<tr><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td></tr>`).join('');
     const history = blasts.blasts.length
-      ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td>${esc((b.created_at || '').slice(0, 10))}</td></tr>`).join('')
-      : '<tr><td class="note" colspan="4">No blasts yet.</td></tr>';
+      ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.recipient_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="5">No blasts yet.</td></tr>';
+    const wel = blasts.welcome || { sent: 0, opened: 0 };
 
     content().innerHTML = `
       <div class="cards">
         <div class="card"><div class="k">List size</div><div class="v">${num(subs.total)}</div></div>
         <div class="card"><div class="k">New (7d)</div><div class="v">${num(subs.last7)}</div></div>
+        <div class="card"><div class="k">Welcome open rate</div><div class="v">${pct(wel.opened, wel.sent)}</div></div>
+        <div class="card"><div class="k">Welcomes opened</div><div class="v">${num(wel.opened)}<small>/${num(wel.sent)}</small></div></div>
       </div>
       <div class="row-actions">
         <a class="btn" href="/api/admin/subscribers?format=csv">Export CSV</a>
@@ -297,7 +300,8 @@ async function showEmail() {
       <div class="note">“Send test” emails only the from-address. “Send to list” blasts all ${num(subs.total)} active subscribers (throttled).</div>
 
       <h3>Blast history</h3>
-      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th>Created</th></tr></thead><tbody>${history}</tbody></table>`;
+      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th></tr></thead><tbody>${history}</tbody></table>
+      <div class="note">Open rates are directional — Apple Mail &amp; Gmail prefetch images, which inflates opens.</div>`;
 
     document.getElementById('savedraft').addEventListener('click', async () => {
       const subject = document.getElementById('bsubj').value;

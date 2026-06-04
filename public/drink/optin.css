@@ -88,27 +88,30 @@ body::before {
   .card::after { display: none; }
 }
 
-/* Desktop: two-column hero (copy + form left, photo right) so it fits above the fold.
+/* Desktop: split-screen hero — content on the left, photo full-bleed on the right half.
    Mobile (<900px) keeps the single-column stack + the above/below split test. */
 @media (min-width: 900px) {
-  .optin-hero { align-items: center; padding-top: calc(clamp(40px, 8vh, 80px) + env(safe-area-inset-top, 0px)); }
-  .card { max-width: 940px; }
-  .optin {
-    display: grid;
-    grid-template-columns: 1.05fr 0.95fr;
-    grid-template-areas:
-      "head  photo"
-      "bull  photo"
-      "form  photo";
-    column-gap: clamp(40px, 4.5vw, 76px);
-    row-gap: clamp(14px, 2vh, 24px);
-    align-items: center; align-content: center;
-    width: 100%; text-align: left;
+  .optin-hero {
+    align-items: center; justify-content: flex-start;
+    padding: clamp(40px, 7vh, 88px) calc(50vw + clamp(36px, 3.5vw, 72px)) clamp(40px, 7vh, 88px) clamp(44px, 5.5vw, 104px);
   }
-  .optin > h1 { grid-area: head; margin: 0; }
-  .optin > .sub-bullets { grid-area: bull; margin: 0; align-self: start; }
-  .optin > .optin-image { grid-area: photo; align-self: center; margin: 0; max-width: 100%; }
-  .optin > .optin-form { grid-area: form; margin: 0; max-width: 440px; }
+  .card { position: static; max-width: 560px; padding: 0; align-items: flex-start; }
+  /* photo fills the entire right half */
+  .optin-image {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 50vw; height: 100%;
+    margin: 0; max-width: none;
+  }
+  .optin-image img {
+    width: 100%; height: 100%; object-fit: cover; object-position: 50% center;
+    border: none; border-radius: 0; box-shadow: none;
+  }
+  /* left content stack, left-aligned (photo is out of flow) */
+  .optin { width: 100%; text-align: left; align-items: flex-start; }
+  .optin > h1 { text-align: left; margin: 0 0 clamp(18px, 2.4vh, 26px); }
+  .sub-bullets { margin: 0 0 clamp(26px, 3.4vh, 40px); }
+  .optin-form { margin: 0; }
+  .success { align-items: flex-start; text-align: left; }
+  .success p { margin-left: 0; }
 }
 
 /* state wrappers — mirror the card's own centered column so inner max-widths hold */

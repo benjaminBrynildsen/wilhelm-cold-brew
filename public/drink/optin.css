@@ -35,17 +35,17 @@ body {
   position: relative; z-index: 1;
   min-height: 100dvh;
   display: flex; align-items: center; justify-content: center;
-  padding: clamp(84px, 11vh, 110px) clamp(16px, 4vw, 48px) clamp(20px, 3vh, 44px);
+  padding: calc(clamp(76px, 9vh, 100px) + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 48px) clamp(16px, 2.5vh, 36px);
 }
 /* corner logo, top-left */
 .hero-logo {
-  position: absolute; top: clamp(14px, 2.6vh, 28px); left: clamp(16px, 4vw, 40px);
+  position: absolute; top: calc(clamp(10px, 1.6vh, 18px) + env(safe-area-inset-top, 0px)); left: clamp(16px, 4vw, 40px);
   z-index: 3; display: flex; align-items: center; gap: 10px; text-decoration: none;
 }
 .hero-logo img { height: 56px; width: 56px; border-radius: 50%; }
 /* price, top-right */
 .hero-price {
-  position: absolute; top: clamp(14px, 2.6vh, 28px); right: clamp(16px, 4vw, 40px); z-index: 3;
+  position: absolute; top: calc(clamp(10px, 1.6vh, 18px) + env(safe-area-inset-top, 0px)); right: clamp(16px, 4vw, 40px); z-index: 3;
   display: flex; flex-direction: column; align-items: flex-end; line-height: 1;
   font-family: var(--mono); font-weight: 500; font-size: clamp(24px, 3.8vw, 32px); color: var(--gold);
   text-shadow: 0 1px 8px rgba(0,0,0,0.6);
@@ -149,7 +149,7 @@ h1 em { font-style: italic; color: var(--gold); }
 
 /* image (variant) — height-capped so it never blows the fold */
 .optin-image { display: block; margin: 0 auto clamp(14px, 2.4vh, 30px); position: relative; }
-.optin-image img { width: 100%; max-width: min(100%, 560px); max-height: clamp(190px, 34vh, 380px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.optin-image img { width: 100%; max-width: min(100%, 560px); max-height: clamp(150px, 25vh, 300px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */

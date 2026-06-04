@@ -292,14 +292,17 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 /* Mobile: a swipeable, full-bleed carousel instead of a tall stack. */
 @media (max-width: 700px) {
   .gallery {
-    display: flex; gap: 14px;
+    display: flex; gap: 12px;
     overflow-x: auto; scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    /* full-bleed to the screen edges */
     margin: 0 calc(-1 * clamp(20px, 5vw, 48px));
-    padding: 4px clamp(20px, 5vw, 48px) 2px;
+    /* ~12% side inset so the FIRST slide loads centered with the next one peeking */
+    padding: 4px 12% 2px;
+    scroll-padding-inline: 12%;
   }
   .gallery::-webkit-scrollbar { display: none; }
-  .plate { flex: 0 0 82%; scroll-snap-align: center; }
+  .plate { flex: 0 0 76%; scroll-snap-align: center; }
   .plate figcaption { text-align: center; }
   .swipe-cue { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(12,10,8,0.5); margin-top: 18px; }
 }

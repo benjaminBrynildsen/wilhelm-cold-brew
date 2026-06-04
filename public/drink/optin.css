@@ -42,8 +42,7 @@ body {
   position: absolute; top: clamp(14px, 2.6vh, 28px); left: clamp(16px, 4vw, 40px);
   z-index: 3; display: flex; align-items: center; gap: 10px; text-decoration: none;
 }
-.hero-logo img { height: 42px; width: 42px; border-radius: 50%;
-  box-shadow: 0 0 0 1px var(--gold-deep), 0 0 0 3px var(--ink), 0 0 0 4px var(--gold); }
+.hero-logo img { height: 48px; width: 48px; border-radius: 50%; }
 .hero-logo span { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: 3px; color: var(--gold); }
 .scroll-cue {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
@@ -64,15 +63,14 @@ body::before {
   width: 100%; max-width: 540px;
   max-height: calc(100dvh - clamp(24px, 5vh, 80px));
   display: flex; flex-direction: column; align-items: center;
-  background: linear-gradient(180deg, rgba(26,19,8,0.55) 0%, rgba(12,10,8,0.55) 100%);
-  border: 1px solid rgba(232,194,74,0.42);
+  background: none;
+  border: none;
   padding: clamp(22px, 3.2vh, 48px) clamp(24px, 5vw, 52px) clamp(20px, 2.8vh, 40px);
   text-align: center;
-  box-shadow: 0 40px 120px rgba(0,0,0,0.6);
   overflow-y: auto; scrollbar-width: none;
 }
 .card::-webkit-scrollbar { display: none; }
-.card::after { content: ''; position: absolute; inset: 7px; border: 1px solid rgba(232,194,74,0.2); pointer-events: none; }
+.card::after { display: none; }
 
 /* Desktop: drop the boxed frame — read as clean centered content on the black ground. */
 @media (min-width: 760px) {
@@ -138,7 +136,7 @@ h1 em { font-style: italic; color: var(--gold); }
 
 /* image (variant) — height-capped so it never blows the fold */
 .optin-image { display: block; margin: 0 auto clamp(14px, 2.4vh, 30px); position: relative; }
-.optin-image img { width: auto; max-width: min(92%, 440px); max-height: clamp(120px, 23vh, 250px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.optin-image img { width: 100%; max-width: min(100%, 560px); max-height: clamp(190px, 34vh, 380px); height: auto; display: block; margin: 0 auto; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */

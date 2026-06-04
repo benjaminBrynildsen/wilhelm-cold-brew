@@ -1,6 +1,7 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE } from './util.js';
+import { sendWelcome } from './mailer.js';
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
 export async function receiveJourney(req, res) {
@@ -52,13 +53,18 @@ export async function subscribe(req, res) {
     return res.status(400).json({ error: 'invalid email' });
   }
   try {
-    await q(
+    const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country)
        VALUES ($1,$2,'friday_drop',$3,$4)
-       ON CONFLICT (email) DO NOTHING`,
+       ON CONFLICT (email) DO NOTHING
+       RETURNING id`,
       [email, variant, hashIp(getClientIp(req)), countryFrom(req)]
     );
     res.json({ ok: true });
+    // New subscriber only (RETURNING is empty on duplicate). Fire-and-forget welcome.
+    if (r.rows.length) {
+      sendWelcome(email).catch((e) => console.warn('[subscribe] welcome email failed:', e?.message || e));
+    }
   } catch (err) {
     console.warn('[subscribe] insert failed:', err?.message || err);
     res.status(500).json({ error: 'subscribe failed' });

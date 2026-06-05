@@ -1,7 +1,7 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE } from './util.js';
-import { sendWelcome } from './mailer.js';
+import { sendWelcome, sendSignupAlert } from './mailer.js';
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
 export async function receiveJourney(req, res) {
@@ -71,9 +71,12 @@ export async function subscribe(req, res) {
       [email, variant, hashIp(getClientIp(req)), countryFrom(req)]
     );
     res.json({ ok: true });
-    // New subscriber only (RETURNING is empty on duplicate). Fire-and-forget welcome.
+    // New subscriber only (RETURNING is empty on duplicate). Fire-and-forget
+    // welcome to the subscriber + internal alert to Ben.
     if (r.rows.length) {
       sendWelcome(email).catch((e) => console.warn('[subscribe] welcome email failed:', e?.message || e));
+      sendSignupAlert(email, { variant, country: countryFrom(req) })
+        .catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
     }
   } catch (err) {
     console.warn('[subscribe] insert failed:', err?.message || err);

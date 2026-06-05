@@ -40,6 +40,9 @@ const PORT = parseInt(process.env.SMTP_PORT || '587', 10);
 const USER = process.env.SMTP_USER || '';
 const PASS = process.env.SMTP_PASS || '';
 const FROM = process.env.MAIL_FROM || 'Wilhelm Cold Brew <ben@wilhelmcoldbrew.com>';
+// Internal "new signup" alert recipient — pinged the moment someone joins.
+// Defaults to the sending account; override with SIGNUP_NOTIFY for a personal inbox.
+const SIGNUP_NOTIFY = process.env.SIGNUP_NOTIFY || USER;
 
 let transporter = null;
 if (USER && PASS) {
@@ -117,6 +120,34 @@ export async function sendWelcome(to) {
     headers: unsubHeaders(token),
   });
   console.log('[mail] welcome sent to', to);
+}
+
+// ───────── Internal new-signup alert (to Ben, not the subscriber) ─────────
+// Plain notification: no tracking pixel, no unsubscribe link, not logged to
+// email_sends. Fire-and-forget so it never blocks or breaks the signup flow.
+export async function sendSignupAlert(email, meta = {}) {
+  if (!transporter || !SIGNUP_NOTIFY) return;
+  const where = [meta.city, meta.region, meta.country].filter(Boolean).join(', ');
+  const lines = [
+    `New Friday Drop signup:`,
+    ``,
+    `  Email:   ${email}`,
+    meta.variant ? `  Variant: ${meta.variant}` : null,
+    where ? `  From:    ${where}` : null,
+    ``,
+    `See the dashboard: ${SITE}/admin`,
+  ].filter((l) => l !== null);
+  try {
+    await transporter.sendMail({
+      from: FROM,
+      to: SIGNUP_NOTIFY,
+      subject: `New signup: ${email}`,
+      text: lines.join('\n'),
+    });
+    console.log('[mail] signup alert sent for', email);
+  } catch (e) {
+    console.warn('[mail] signup alert failed:', e?.message || e);
+  }
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

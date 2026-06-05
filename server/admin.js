@@ -237,8 +237,39 @@ export function mountAdmin(app) {
           ORDER BY b.created_at DESC LIMIT 50`)).rows;
       const wel = (await q(
         `SELECT COUNT(*)::int sent, COUNT(first_open_at)::int opened FROM email_sends WHERE kind='welcome'`)).rows[0];
-      res.json({ blasts: rows, welcome: wel });
+      // Open-rate summary per email type (welcome / blast / order / …).
+      const byKind = (await q(
+        `SELECT kind, COUNT(*)::int sent, COUNT(first_open_at)::int opened
+           FROM email_sends GROUP BY kind ORDER BY sent DESC`)).rows;
+      res.json({ blasts: rows, welcome: wel, byKind });
     } catch (e) { console.error('[blasts]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Per-send history (every email, opened or not) — filter by kind and/or blast.
+  app.get('/api/admin/email/history', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit) || 200));
+      const conds = [];
+      const args = [];
+      if (req.query?.kind) { args.push(String(req.query.kind).slice(0, 40)); conds.push(`es.kind = $${args.length}`); }
+      if (req.query?.blastId) { args.push(parseInt(req.query.blastId, 10)); conds.push(`es.blast_id = $${args.length}`); }
+      const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+      args.push(limit);
+      const rows = (await q(
+        `SELECT es.email, es.kind, es.sent_at, es.first_open_at, es.opens,
+                CASE
+                  WHEN es.kind = 'welcome' THEN 'You''re in…'
+                  WHEN es.kind = 'order'   THEN 'Your Wilhelm order is confirmed'
+                  ELSE b.subject
+                END AS subject,
+                EXTRACT(EPOCH FROM (es.first_open_at - es.sent_at))::int AS seconds_to_open
+           FROM email_sends es
+           LEFT JOIN email_blasts b ON b.id = es.blast_id
+           ${where}
+          ORDER BY es.sent_at DESC LIMIT $${args.length}`, args)).rows;
+      res.json({ sends: rows });
+    } catch (e) { console.error('[email/history]', e); res.status(500).json({ error: e.message }); }
   });
 
   app.post('/api/admin/email/draft', async (req, res) => {
@@ -334,5 +365,68 @@ export function mountAdmin(app) {
         })),
       });
     } catch (e) { console.error('[journey-detail]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── orders (real money — no internal-IP exclusion) ─────────
+  app.get('/api/admin/orders', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const agg = (await q(
+        `SELECT COUNT(*) FILTER (WHERE status='paid')::int paid,
+                COALESCE(SUM(amount_total_cents) FILTER (WHERE status='paid'),0)::bigint revenue_cents,
+                COUNT(*)::int total FROM orders`)).rows[0];
+      const orders = (await q(
+        `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
+                o.variant, o.created_at, o.paid_at, d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          ORDER BY o.created_at DESC LIMIT 100`)).rows;
+      const live = (await q(
+        `SELECT id, name, price_cents, bottle_cap, status,
+                (SELECT COUNT(*)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
+           FROM drops WHERE status='live' ORDER BY opens_at DESC NULLS LAST, id DESC LIMIT 1`)).rows[0] || null;
+      if (live) live.remaining = Math.max(0, live.bottle_cap - live.sold);
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live });
+    } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── drops (inventory management) ─────────
+  app.get('/api/admin/drops', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(
+        `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at,
+                (SELECT COUNT(*)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
+           FROM drops d ORDER BY d.created_at DESC LIMIT 50`)).rows;
+      res.json({ drops: rows });
+    } catch (e) { console.error('[drops]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/admin/drops', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const name = String(req.body?.name || '').slice(0, 200) || null;
+      const priceCents = parseInt(req.body?.priceCents, 10);
+      const bottleCap = parseInt(req.body?.bottleCap, 10);
+      if (!(priceCents > 0) || !(bottleCap > 0)) return res.status(400).json({ error: 'priceCents and bottleCap must be positive' });
+      let opensAt = null;
+      if (req.body?.opensAt) { const d = new Date(req.body.opensAt); if (!isNaN(d)) opensAt = d.toISOString(); }
+      const r = await q(
+        `INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status)
+         VALUES ($1,$2,$3,$4,'scheduled') RETURNING id`, [name, priceCents, bottleCap, opensAt]);
+      res.json({ ok: true, id: r.rows[0].id });
+    } catch (e) { console.error('[drops/create]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/admin/drops/:id/status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const status = String(req.body?.status || '');
+      if (!['scheduled', 'live', 'soldout', 'closed'].includes(status)) return res.status(400).json({ error: 'bad status' });
+      // Only one drop is live at a time — close any other live drop first.
+      if (status === 'live') await q(`UPDATE drops SET status='closed' WHERE status='live' AND id <> $1`, [id]);
+      await q(`UPDATE drops SET status=$1 WHERE id=$2`, [status, id]);
+      res.json({ ok: true });
+    } catch (e) { console.error('[drops/status]', e); res.status(500).json({ error: e.message }); }
   });
 }

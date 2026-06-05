@@ -150,6 +150,89 @@ export async function sendSignupAlert(email, meta = {}) {
   }
 }
 
+// ───────── Order confirmation (to the buyer) + order alert (to Ben) ─────────
+const ORDER_SUBJECT = 'Your Wilhelm order is confirmed';
+const money = (c) => (c == null ? null : '$' + (c / 100).toFixed(2));
+
+function orderHtml({ amountCents, shippingName, dropName }) {
+  const total = money(amountCents);
+  const greet = shippingName ? `Thank you, ${shippingName}.` : 'Thank you.';
+  return `<!doctype html>
+<html><body style="margin:0;background:#e9dcbb;padding:0;">
+  <div style="display:none;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Your Wilhelm Cold Brew order is confirmed. Here's what happens next.&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e9dcbb;">
+    <tr><td align="center" style="padding:36px 18px;">
+      <table role="presentation" width="100%" style="max-width:540px;background:#f7f0dd;border:1px solid #ddcfa6;border-radius:6px;">
+        <tr><td style="padding:38px 42px 32px;">
+          <div style="text-align:center;padding-bottom:26px;">
+            <img src="${SITE}/drink/assets/wilhelm-circle.png" width="80" height="80" alt="Wilhelm Cold Brew" style="display:inline-block;border-radius:50%;border:0;"/>
+            <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
+          </div>
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
+            <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">Order confirmed.</p>
+            <p style="margin:0 0 16px;">${greet} Your bottle of Wilhelm Cold Brew is reserved${dropName ? ` from <strong>${dropName}</strong>` : ''}. ${total ? `We charged <strong>${total}</strong> to your card.` : ''}</p>
+            <p style="margin:0 0 22px;">It's hand-packed and ships within a few business days. You'll get a note when it's on its way. If you need anything, just reply to this email.</p>
+            <p style="margin:0 0 22px;color:#6b6047;">Bourbon-barrel-aged, single origin, no alcohol. Pour it over a big cube and take your time.</p>
+            <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+function orderText({ amountCents, shippingName, dropName }) {
+  const total = money(amountCents);
+  return [
+    'Order confirmed.',
+    '',
+    `${shippingName ? `Thank you, ${shippingName}.` : 'Thank you.'} Your bottle of Wilhelm Cold Brew is reserved${dropName ? ` from ${dropName}` : ''}.${total ? ` We charged ${total} to your card.` : ''}`,
+    '',
+    "It's hand-packed and ships within a few business days. You'll get a note when it's on its way. If you need anything, just reply to this email.",
+    '',
+    'Talk soon,',
+    'Ben',
+    'Wilhelm Cold Brew',
+  ].join('\n');
+}
+
+export async function sendOrderConfirmation(to, meta = {}) {
+  if (!transporter) { console.warn('[mail] skip order confirmation (SMTP not configured):', to); return; }
+  const token = await registerSend(to, 'order', null);
+  await transporter.sendMail({
+    from: FROM, to, subject: ORDER_SUBJECT,
+    html: finalize(orderHtml(meta), token),
+    text: orderText(meta),
+  });
+  console.log('[mail] order confirmation sent to', to);
+}
+
+// Internal "new order" alert to Ben. Plain, untracked, not logged to email_sends.
+export async function sendOrderAlert({ email, amountCents, dropName, shippingName }) {
+  if (!transporter || !SIGNUP_NOTIFY) return;
+  const lines = [
+    'New order:',
+    '',
+    `  Email:    ${email || '(unknown)'}`,
+    amountCents != null ? `  Total:    ${money(amountCents)}` : null,
+    shippingName ? `  Ship to:  ${shippingName}` : null,
+    dropName ? `  Drop:     ${dropName}` : null,
+    '',
+    `See orders: ${SITE}/admin`,
+  ].filter((l) => l !== null);
+  try {
+    await transporter.sendMail({
+      from: FROM, to: SIGNUP_NOTIFY,
+      subject: `New order: ${email || 'Wilhelm Cold Brew'}`,
+      text: lines.join('\n'),
+    });
+    console.log('[mail] order alert sent for', email);
+  } catch (e) {
+    console.warn('[mail] order alert failed:', e?.message || e);
+  }
+}
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const htmlToText = (html) => String(html).replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 

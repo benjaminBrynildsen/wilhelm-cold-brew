@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Wilhelm · Buy the Drop</title>
+  <meta name="description" content="This week's Wilhelm Cold Brew drop — bourbon-barrel-aged, single origin, non-alcoholic. Limited bottles, secure checkout."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400;500&display=swap"/>
+  <link rel="preload" as="image" href="/drink/assets/wilhelm-circle.png"/>
+  <link rel="preload" as="image" href="/drink/assets/bottle-library.jpg"/>
+  <link rel="stylesheet" href="/store.css"/>
+
+  <!-- X (Twitter) conversion tracking base code -->
+  <script>
+    !function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);
+    },s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',
+    a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
+    twq('config','rcsfa');
+  </script>
+  <!-- End X conversion tracking base code -->
+</head>
+<body>
+  <section class="hero" id="top">
+    <a class="hero-logo" href="/" aria-label="Wilhelm Cold Brew">
+      <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="56" height="56"/>
+    </a>
+    <div class="hero-price" id="hero-price">$49<span>750ml bottle</span></div>
+
+    <div class="card" id="card" hidden>
+      <div class="product-image">
+        <img src="/drink/assets/bottle-library.jpg" alt="Wilhelm Cold Brew bottle and glass among the law-library shelves" width="1000" height="667"/>
+      </div>
+      <h1>The Barrel Series. <em>750ml.</em></h1>
+      <p class="lede">Bourbon-barrel-aged cold brew. Single origin, ninety nights in oak, no alcohol. Best served neat over one large cube.</p>
+      <div class="scarcity" id="scarcity"><span class="dot"></span><span id="scarcity-text">This week's drop</span></div>
+      <button class="btn-primary" id="buy" type="button">Buy now</button>
+      <div class="fineprint">Secure checkout via Stripe · Ships in the US · Hand-packed, ships in a few business days</div>
+    </div>
+  </section>
+
+  <script src="/journey.js" defer></script>
+  <script src="buy.js" defer></script>
+</body>
+</html>

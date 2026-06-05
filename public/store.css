@@ -1,0 +1,134 @@
+/* Wilhelm — storefront pages (buy / thank-you / sold-out). Shares the Friday-Drop
+   brand tokens with optin.css. Fonts load via <link> in each page's <head>. */
+
+:root {
+  --gold: #e8c24a;
+  --gold-deep: #b8922f;
+  --gold-soft: rgba(232,194,74,0.16);
+  --ink: #0c0a08;
+  --ink-2: #15100b;
+  --parchment: #f6efda;
+  --display: 'Bodoni Moda', serif;
+  --body: 'Lora', serif;
+  --mono: 'DM Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  min-height: 100vh; min-height: 100dvh;
+  background: radial-gradient(ellipse at 50% 0%, #1a1308 0%, var(--ink) 60%), var(--ink);
+  color: var(--parchment); font-family: var(--body);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+/* subtle film grain (matches the opt-in page) */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.04; mix-blend-mode: overlay;
+}
+
+.hero {
+  position: relative; z-index: 1; min-height: 100dvh;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: calc(clamp(78px, 9vh, 100px) + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 48px) clamp(16px, 2.5vh, 36px);
+}
+@media (min-width: 760px) { .hero { align-items: center; padding-top: calc(clamp(40px, 6vh, 72px) + env(safe-area-inset-top, 0px)); } }
+
+.hero-logo {
+  position: absolute; top: calc(clamp(10px, 1.6vh, 18px) + env(safe-area-inset-top, 0px)); left: clamp(16px, 4vw, 40px);
+  z-index: 3; display: flex; align-items: center; text-decoration: none;
+}
+.hero-logo img { height: 56px; width: 56px; border-radius: 50%; }
+.hero-price {
+  position: absolute; top: calc(clamp(10px, 1.6vh, 18px) + env(safe-area-inset-top, 0px)); right: clamp(16px, 4vw, 40px); z-index: 3;
+  display: flex; flex-direction: column; align-items: flex-end; line-height: 1;
+  font-family: var(--mono); font-weight: 500; font-size: clamp(24px, 3.8vw, 32px); color: var(--gold);
+  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+}
+.hero-price span { font-family: var(--mono); font-weight: 500; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.85); margin-top: 6px; white-space: nowrap; }
+
+.card {
+  position: relative; z-index: 1; width: 100%; max-width: 540px;
+  display: flex; flex-direction: column; align-items: center;
+  padding: clamp(8px, 1.5vh, 18px) clamp(24px, 5vw, 52px) clamp(16px, 2.4vh, 30px);
+  text-align: center;
+}
+@media (min-width: 760px) { .card { max-width: 600px; padding: clamp(24px, 3vh, 48px) 40px; } }
+
+h1 {
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(28px, 4.6vh, 50px); line-height: 1.04; letter-spacing: -1.2px;
+  color: var(--parchment); margin: 0 0 clamp(8px, 1.4vh, 14px);
+}
+h1 em { font-style: italic; color: var(--gold); }
+
+.lede {
+  font-family: var(--body); font-style: italic;
+  font-size: clamp(15px, 2.2vh, 20px); line-height: 1.5;
+  color: rgba(246,239,218,0.92); margin: 0 auto clamp(14px, 2.4vh, 26px); max-width: 90%;
+  text-wrap: balance;
+}
+
+.product-image { display: block; width: 100%; max-width: 420px; margin: clamp(16px, 3vh, 30px) auto; }
+.product-image img { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.35); border-radius: 5px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+@media (min-width: 760px) { .product-image img { max-height: 42vh; width: auto; max-width: 100%; margin: 0 auto; } }
+
+/* scarcity line */
+.scarcity {
+  font-family: var(--mono); font-size: clamp(11px, 1.5vh, 13px); letter-spacing: 2px; text-transform: uppercase;
+  color: var(--gold); margin: 0 auto clamp(14px, 2.2vh, 22px);
+  border: 1px solid rgba(232,194,74,0.4); padding: 8px 16px; display: inline-flex; align-items: center; gap: 9px;
+}
+.scarcity .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); animation: pulse 2.4s infinite; }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(232,194,74,0.5)} 70%{box-shadow:0 0 0 8px rgba(232,194,74,0)} 100%{box-shadow:0 0 0 0 rgba(232,194,74,0)} }
+
+/* primary action button (square, gold — matches opt-in) */
+.btn-primary {
+  width: 100%; max-width: 420px; height: clamp(50px, 7vh, 60px); border: none; cursor: pointer;
+  background: var(--gold); color: var(--ink);
+  font-family: var(--display); font-weight: 700; font-size: clamp(16px, 2.4vh, 19px); letter-spacing: 0.5px;
+  transition: filter .2s, transform .08s;
+}
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary[aria-busy="true"] { opacity: 0.72; cursor: progress; }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.fineprint { font-family: var(--mono); font-size: clamp(10px, 1.3vh, 11px); letter-spacing: 1.5px; color: rgba(246,239,218,0.6); margin-top: clamp(12px, 2vh, 20px); line-height: 1.7; }
+.fineprint a { color: rgba(246,239,218,0.6); }
+
+/* email capture (sold-out page) — mirrors opt-in form */
+.cap-form { display: flex; flex-direction: column; gap: clamp(8px, 1.4vh, 12px); width: 100%; max-width: 420px; margin: clamp(8px,1.6vh,16px) auto 0; }
+.cap-form input[type="email"] {
+  width: 100%; height: clamp(48px, 7vh, 58px); padding: 0 20px;
+  background: rgba(232,217,181,0.06); border: 1px solid rgba(232,194,74,0.35);
+  color: var(--parchment); font-family: var(--body); font-size: clamp(15px, 2vh, 17px); text-align: center;
+  outline: none; transition: border-color .2s, background .2s;
+}
+.cap-form input[type="email"]::placeholder { color: rgba(246,239,218,0.78); }
+.cap-form input[type="email"]:focus { border-color: var(--gold); background: rgba(232,217,181,0.1); }
+.cap-error { width: 100%; max-width: 420px; margin: 8px auto 0; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; color: #f0c14a; border: 1px solid rgba(232,194,74,0.5); background: rgba(232,194,74,0.08); padding: 8px 12px; text-align: center; }
+
+/* seal + success/confirmation (matches opt-in success) */
+.seal { width: clamp(64px, 11vh, 84px); height: clamp(64px, 11vh, 84px); border-radius: 50%; border: 1px solid var(--gold); display: flex; align-items: center; justify-content: center; position: relative; margin: 0 auto clamp(12px,2vh,18px); }
+.seal::after { content: ''; position: absolute; inset: 6px; border: 1px solid rgba(232,194,74,0.3); border-radius: 50%; }
+.seal svg { width: clamp(30px, 5vh, 38px); height: clamp(30px, 5vh, 38px); }
+.confirm-h { font-family: var(--display); font-weight: 700; font-style: italic; font-size: clamp(28px, 5.5vh, 42px); color: var(--gold); margin: 0 0 clamp(10px,1.8vh,16px); letter-spacing: -0.5px; }
+.confirm-p { font-family: var(--body); font-size: clamp(15px, 2.2vh, 19px); line-height: 1.55; color: rgba(232,217,181,0.85); margin: 0 auto clamp(10px,1.6vh,14px); max-width: 420px; }
+.confirm-p strong { color: var(--parchment); }
+.meta { font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: rgba(232,217,181,0.5); margin-top: 10px; }
+
+.eyebrow { font-family: var(--mono); font-size: clamp(10px,1.4vh,12px); letter-spacing: 4px; text-transform: uppercase; color: var(--gold); margin: 0 0 clamp(12px,2vh,18px); }
+.link-quiet { display: inline-block; margin-top: clamp(14px,2.2vh,22px); font-family: var(--mono); font-size: 12px; letter-spacing: 1.5px; color: rgba(246,239,218,0.7); text-decoration: none; border-bottom: 1px solid rgba(232,194,74,0.4); padding-bottom: 3px; }
+.link-quiet:hover { color: var(--gold); }
+
+[hidden] { display: none !important; }
+.rise { animation: rise .5s cubic-bezier(.2,.7,.3,1); }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rise, .scarcity .dot { animation: none; } html { scroll-behavior: auto; } }
+
+footer.store-footer { position: relative; z-index: 1; text-align: center; padding: 28px 16px 36px; font-family: var(--mono); }
+footer.store-footer .wm { font-size: 13px; letter-spacing: 3px; color: rgba(246,239,218,0.7); }
+footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(246,239,218,0.4); margin-top: 6px; }

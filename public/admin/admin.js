@@ -17,7 +17,9 @@ const SECTIONS = [
 const VARIANTS = ['below', 'above'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '', journeySid: null };
+const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '' };
+
+const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}));
@@ -82,7 +84,7 @@ function renderApp() {
 }
 
 function renderTabs() {
-  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['email', 'Email']];
+  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
   document.getElementById('tabs').innerHTML = tabs.map(
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('');
   document.querySelectorAll('.tab').forEach((t) =>
@@ -121,6 +123,7 @@ function show(tab) {
   if (tab === 'funnel') return showFunnel();
   if (tab === 'traffic') return showTraffic();
   if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
+  if (tab === 'orders') return showOrders();
   if (tab === 'email') return showEmail();
 }
 
@@ -331,18 +334,150 @@ async function showTraffic() {
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 
+// ───────── Orders ─────────
+const FLD_DARK = 'background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:7px 9px;color-scheme:dark';
+function orderStatusBadge(s) {
+  const color = s === 'paid' ? 'var(--good)' : s === 'pending' ? 'rgba(246,239,218,.6)' : '#e0833f';
+  return `<span style="color:${color};font-weight:600">${esc(s)}</span>`;
+}
+function dropActions(d) {
+  if (d.status === 'live') return `<button class="btn ghost dstatus" data-id="${d.id}" data-status="closed">Close</button>`;
+  if (d.status === 'soldout' || d.status === 'closed') return `<button class="btn ghost dstatus" data-id="${d.id}" data-status="live">Re-open</button>`;
+  return `<button class="btn dstatus" data-id="${d.id}" data-status="live">Go live</button>`;
+}
+
+async function showOrders() {
+  loading();
+  try {
+    const [o, dd] = await Promise.all([api('/api/admin/orders'), api('/api/admin/drops')]);
+    const live = o.liveDrop;
+    const orderRows = o.orders.length
+      ? o.orders.map((r) => `<tr>
+          <td>${esc((r.created_at || '').slice(0, 10))}</td>
+          <td>${esc(r.email || '—')}</td>
+          <td>${esc(r.drop_name || '—')}</td>
+          <td>${esc(r.shipping_name || '—')}</td>
+          <td class="num">${money(r.amount_total_cents)}</td>
+          <td>${orderStatusBadge(r.status)}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="6">No orders yet.</td></tr>';
+    const dropRows = dd.drops.length
+      ? dd.drops.map((d) => `<tr>
+          <td>${esc(d.name || '(unnamed)')}</td>
+          <td class="num">${money(d.price_cents)}</td>
+          <td class="num">${num(d.sold)}/${num(d.bottle_cap)}</td>
+          <td>${esc(d.status)}</td>
+          <td>${esc(d.opens_at ? (d.opens_at).slice(0, 10) : '—')}</td>
+          <td>${dropActions(d)}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="6">No drops yet — create one below.</td></tr>';
+
+    content().innerHTML = `
+      <div class="cards">
+        <div class="card"><div class="k">Paid orders</div><div class="v">${num(o.paid)}</div></div>
+        <div class="card"><div class="k">Revenue</div><div class="v">${money(o.revenueCents)}</div></div>
+        <div class="card"><div class="k">This drop</div><div class="v" style="font-size:22px">${live ? num(live.sold) + '<small>/' + num(live.bottle_cap) + ' sold</small>' : 'none live'}</div></div>
+        <div class="card"><div class="k">Remaining</div><div class="v">${live ? num(live.remaining) : '—'}</div></div>
+      </div>
+
+      <h3>Recent orders</h3>
+      <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th>Ship to</th><th class="num">Total</th><th>Status</th></tr></thead>
+        <tbody>${orderRows}</tbody></table>
+
+      <h3>Drops</h3>
+      <table><thead><tr><th>Name</th><th class="num">Price</th><th class="num">Sold</th><th>Status</th><th>Opens</th><th></th></tr></thead>
+        <tbody>${dropRows}</tbody></table>
+      <div class="note">Only one drop is "live" at a time — going live closes any other. A drop auto-closes to "soldout" when it hits its cap.</div>
+
+      <h3>Schedule a drop</h3>
+      <input class="fld" id="dname" placeholder="Name (e.g. Friday Drop — Jun 13)"/>
+      <div class="row-actions" style="align-items:center;flex-wrap:wrap">
+        <label class="note">Price $<input id="dprice" type="number" min="1" step="0.01" value="49" style="width:90px;${FLD_DARK}"/></label>
+        <label class="note">Bottles <input id="dcap" type="number" min="1" step="1" value="100" style="width:80px;${FLD_DARK}"/></label>
+        <label class="note">Opens <input id="dopens" type="datetime-local" style="${FLD_DARK}"/></label>
+        <button class="btn" id="dcreate">Create drop</button>
+        <span class="note" id="dmsg"></span>
+      </div>`;
+
+    document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await api(`/api/admin/drops/${b.dataset.id}/status`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: b.dataset.status }),
+        });
+        showOrders();
+      } catch (e) { document.getElementById('dmsg').textContent = 'Failed: ' + e.message; }
+    }));
+    document.getElementById('dcreate').addEventListener('click', async () => {
+      const name = document.getElementById('dname').value.trim();
+      const priceCents = Math.round(parseFloat(document.getElementById('dprice').value) * 100);
+      const bottleCap = parseInt(document.getElementById('dcap').value, 10);
+      const opensRaw = document.getElementById('dopens').value;
+      const opensAt = opensRaw ? new Date(opensRaw).toISOString() : null;
+      const msg = document.getElementById('dmsg');
+      if (!(priceCents > 0) || !(bottleCap > 0)) { msg.textContent = 'Set a price and bottle count.'; return; }
+      try {
+        await api('/api/admin/drops', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, priceCents, bottleCap, opensAt }),
+        });
+        msg.textContent = 'Drop created (scheduled). Click "Go live" when ready.';
+        showOrders();
+      } catch (e) { msg.textContent = 'Create failed: ' + e.message; }
+    });
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
 // ───────── Email ─────────
+const KIND_LABEL = { welcome: 'Welcome', blast: 'Blast', order: 'Order' };
+function toOpen(sec) {
+  if (sec == null) return '';
+  if (sec < 60) return sec + 's';
+  if (sec < 3600) return Math.round(sec / 60) + 'm';
+  if (sec < 86400) return Math.round(sec / 3600) + 'h';
+  return Math.round(sec / 86400) + 'd';
+}
+function historyQuery() {
+  const p = [];
+  if (state.emailKind) p.push('kind=' + encodeURIComponent(state.emailKind));
+  if (state.emailBlast) p.push('blastId=' + encodeURIComponent(state.emailBlast));
+  return p.length ? '?' + p.join('&') : '';
+}
+
 async function showEmail() {
   loading();
   try {
-    const [subs, blasts] = await Promise.all([api('/api/admin/subscribers'), api('/api/admin/email/blasts')]);
+    const [subs, blasts, history] = await Promise.all([
+      api('/api/admin/subscribers'),
+      api('/api/admin/email/blasts'),
+      api('/api/admin/email/history' + historyQuery()),
+    ]);
     const bvRows = subs.byVariant.map((r) => `<tr><td>${esc(r.variant)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
     const recent = subs.recent.map((r) =>
       `<tr><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td></tr>`).join('');
-    const history = blasts.blasts.length
+    const blastHistory = blasts.blasts.length
       ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.recipient_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td></tr>`).join('')
       : '<tr><td class="note" colspan="5">No blasts yet.</td></tr>';
     const wel = blasts.welcome || { sent: 0, opened: 0 };
+
+    // Open-rate-by-type summary + per-send history.
+    const kindRows = (blasts.byKind || []).length
+      ? blasts.byKind.map((r) => `<tr><td>${esc(KIND_LABEL[r.kind] || r.kind)}</td><td class="num">${num(r.sent)}</td><td class="num">${num(r.opened)}</td><td class="num">${pct(r.opened, r.sent)}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="4">No sends yet.</td></tr>';
+    const kindOptions = ['', 'welcome', 'blast', 'order'].map((k) =>
+      `<option value="${k}" ${state.emailKind === k ? 'selected' : ''}>${k ? (KIND_LABEL[k] || k) : 'All types'}</option>`).join('');
+    const blastOptions = `<option value="">All blasts</option>` + blasts.blasts.map((b) =>
+      `<option value="${b.id}" ${String(state.emailBlast) === String(b.id) ? 'selected' : ''}>${esc((b.subject || '(no subject)') + ' — ' + (b.created_at || '').slice(0, 10))}</option>`).join('');
+    const openCell = (r) => r.first_open_at
+      ? `<span style="color:var(--good)">✓ ${esc(toOpen(r.seconds_to_open))}</span>`
+      : '<span class="note">—</span>';
+    const sendRows = history.sends.length
+      ? history.sends.map((r) => `<tr>
+          <td>${esc(ago(r.sent_at))}</td>
+          <td>${esc(KIND_LABEL[r.kind] || r.kind)}</td>
+          <td>${esc(r.email)}</td>
+          <td>${esc(r.subject || '—')}</td>
+          <td>${openCell(r)}</td>
+          <td class="num">${num(r.opens)}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="6">No sends match this filter.</td></tr>';
 
     content().innerHTML = `
       <div class="cards">
@@ -378,8 +513,18 @@ async function showEmail() {
       <div class="note">“Send test” emails only the from-address. “Send to list” blasts all ${num(subs.total)} active subscribers (throttled).</div>
 
       <h3>Blast history</h3>
-      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th></tr></thead><tbody>${history}</tbody></table>
-      <div class="note">Open rates are directional — Apple Mail &amp; Gmail prefetch images, which inflates opens.</div>`;
+      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th></tr></thead><tbody>${blastHistory}</tbody></table>
+
+      <h3>Open rate by type</h3>
+      <table><thead><tr><th>Type</th><th class="num">Sent</th><th class="num">Opened</th><th class="num">Open rate</th></tr></thead><tbody>${kindRows}</tbody></table>
+
+      <h3>Send history</h3>
+      <div class="row-actions" style="align-items:center;flex-wrap:wrap">
+        <label class="note">Type <select id="hkind" style="${FLD_DARK}">${kindOptions}</select></label>
+        <label class="note">Blast <select id="hblast" style="${FLD_DARK}">${blastOptions}</select></label>
+      </div>
+      <table><thead><tr><th>When</th><th>Type</th><th>To</th><th>Subject</th><th>Opened</th><th class="num">Opens</th></tr></thead><tbody>${sendRows}</tbody></table>
+      <div class="note">Open rates are directional — Apple Mail &amp; Gmail prefetch images, which inflates opens. "Opened" shows time from send to first open.</div>`;
 
     document.getElementById('savedraft').addEventListener('click', async () => {
       const subject = document.getElementById('bsubj').value;
@@ -410,5 +555,7 @@ async function showEmail() {
     };
     document.getElementById('sendtest').addEventListener('click', () => doSend(true));
     document.getElementById('sendblast').addEventListener('click', () => doSend(false));
+    document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });
+    document.getElementById('hblast').addEventListener('change', (e) => { state.emailBlast = e.target.value; showEmail(); });
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

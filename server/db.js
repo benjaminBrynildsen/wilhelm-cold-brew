@@ -103,6 +103,41 @@ export async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS es_blast_idx ON email_sends (blast_id);
     CREATE INDEX IF NOT EXISTS es_kind_idx  ON email_sends (kind);
+    CREATE INDEX IF NOT EXISTS es_sent_idx  ON email_sends (sent_at);
+
+    -- Weekly Friday Drops: each is a limited, priced batch of bottles.
+    CREATE TABLE IF NOT EXISTS drops (
+      id          BIGSERIAL PRIMARY KEY,
+      name        TEXT,
+      price_cents INTEGER NOT NULL,
+      bottle_cap  INTEGER NOT NULL,
+      opens_at    TIMESTAMPTZ,
+      closes_at   TIMESTAMPTZ,
+      status      TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled | live | soldout | closed
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS drops_status_idx ON drops (status);
+
+    -- Orders against a drop. status: pending (checkout created) | paid | failed | refunded.
+    CREATE TABLE IF NOT EXISTS orders (
+      id                    BIGSERIAL PRIMARY KEY,
+      drop_id               BIGINT,
+      email                 TEXT,
+      quantity              INTEGER NOT NULL DEFAULT 1,
+      amount_total_cents    INTEGER,
+      currency              TEXT DEFAULT 'usd',
+      status                TEXT NOT NULL DEFAULT 'pending',
+      stripe_session_id     TEXT UNIQUE,
+      stripe_payment_intent TEXT,
+      shipping_name         TEXT,
+      shipping_address      JSONB,
+      variant               TEXT,
+      twclid                TEXT,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+      paid_at               TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS orders_drop_idx   ON orders (drop_id);
+    CREATE INDEX IF NOT EXISTS orders_status_idx ON orders (status);
   `);
   console.log('[db] schema ready');
 }

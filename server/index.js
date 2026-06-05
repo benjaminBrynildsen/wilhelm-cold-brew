@@ -8,6 +8,7 @@ import { ensureSchema, q } from './db.js';
 import { getClientIp, hashIp, countryFrom, hostFrom, BOT_RE } from './util.js';
 import { receiveJourney, subscribe } from './ingest.js';
 import { mountAdmin } from './admin.js';
+import { mountCheckout, stripeWebhook } from './checkout.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -17,6 +18,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'wilhelm-dev-session-secret
 const app = express();
 app.set('trust proxy', true);
 app.use(cookieParser(SESSION_SECRET));
+// Stripe webhook needs the raw, unparsed body for signature verification — mount it
+// BEFORE express.json() so the JSON parser doesn't consume the stream.
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 app.use(express.json({ limit: '256kb' }));
 
 // ───────── pageview middleware (top-level HTML GETs only) ─────────
@@ -67,6 +71,7 @@ app.post('/api/journey', receiveJourney);
 app.post('/api/beacon', receiveJourney); // sendBeacon target (same handler)
 app.post('/api/subscribe', subscribe);
 mountAdmin(app);
+mountCheckout(app);
 
 // Lightweight liveness check (no DB) — used by Render's health check.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));

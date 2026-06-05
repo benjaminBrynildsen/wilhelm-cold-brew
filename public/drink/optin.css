@@ -306,3 +306,51 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
   .plate figcaption { text-align: center; }
   .swipe-cue { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(12,10,8,0.5); margin-top: 18px; }
 }
+
+/* ───────── COUNTDOWN ───────── */
+.countdown { font-family: var(--mono); text-align: center; }
+/* compact (in the hero form, above the input) */
+.cd-compact { display: flex; gap: 8px; align-items: baseline; justify-content: center; margin-bottom: 2px; font-size: clamp(12px, 1.7vh, 14px); }
+.cd-compact .cd-label { color: rgba(246,239,218,0.65); text-transform: uppercase; letter-spacing: 2px; font-size: 0.82em; }
+.cd-compact .cd-value { color: var(--gold); font-weight: 500; letter-spacing: 0.5px; }
+/* large (bottom final CTA) */
+.finalcta .countdown { margin: 0 auto clamp(18px, 3vh, 28px); }
+.finalcta .cd-label { display: block; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: rgba(246,239,218,0.6); margin-bottom: 8px; }
+.finalcta .cd-value { display: block; font-family: var(--mono); font-weight: 500; font-size: clamp(28px, 6vw, 42px); color: var(--gold); letter-spacing: 1px; }
+.finalcta .cd-sub { display: block; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.45); margin-top: 8px; }
+
+/* ───────── FINAL CTA (dark, closes the page) ───────── */
+.finalcta { border-top: 1px solid rgba(232,194,74,0.16); text-align: center; }
+.finalcta .sec-inner { max-width: 540px; }
+.finalcta-h { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 5vw, 46px); line-height: 1.05; color: var(--parchment); letter-spacing: -1px; margin: 0 0 clamp(16px, 2.6vh, 24px); }
+.finalcta-h em { font-style: italic; color: var(--gold); }
+.finalcta .fineprint { text-align: center; }
+
+/* ───────── STICKY JOIN BUTTON ───────── */
+.sticky-join {
+  position: fixed; left: 50%; bottom: clamp(14px, 3vh, 22px); transform: translate(-50%, 160%);
+  z-index: 40; border: none; cursor: pointer; white-space: nowrap;
+  background: var(--gold); color: var(--ink);
+  font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: 0.5px;
+  padding: 14px 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  opacity: 0; transition: transform .35s cubic-bezier(.2,.7,.3,1), opacity .35s, filter .2s;
+}
+.sticky-join.show { transform: translate(-50%, 0); opacity: 1; }
+.sticky-join:hover { filter: brightness(1.08); }
+.sticky-join:active { filter: brightness(1.04); }
+
+/* ───────── TIMED NUDGE (slide-down) ───────── */
+.nudge {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 45;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0)) 16px 10px;
+  background: rgba(12,10,8,0.96); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(232,194,74,0.3);
+  transform: translateY(-110%); transition: transform .4s cubic-bezier(.2,.7,.3,1);
+}
+.nudge.show { transform: translateY(0); }
+.nudge-text { font-family: var(--body); font-size: clamp(13px, 1.7vh, 15px); color: var(--parchment); }
+.nudge-join { background: var(--gold); color: var(--ink); border: none; cursor: pointer; font-family: var(--display); font-weight: 700; font-size: 13px; padding: 8px 16px; white-space: nowrap; }
+.nudge-close { background: none; border: none; color: rgba(246,239,218,0.6); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px; }
+@media (max-width: 520px) { .nudge { gap: 8px; } .nudge-text { font-size: 12px; } }
+@media (prefers-reduced-motion: reduce) { .sticky-join, .nudge { transition: opacity .2s; } }

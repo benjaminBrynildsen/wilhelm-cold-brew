@@ -56,7 +56,7 @@
       }
     })();
   </script>
-  <div class="card">
+  <div class="card" data-capture>
     <!-- OPT-IN STATE -->
     <div class="optin" data-state>
       <h1>To buy, you have to be <em>on the list.</em></h1>
@@ -72,6 +72,7 @@
       </ul>
 
       <form class="optin-form" novalidate>
+        <div class="countdown cd-compact" data-countdown><span class="cd-label">Next drop in</span> <span class="cd-value" data-countdown-value>…</span></div>
         <input
           type="email" inputmode="email" autocomplete="email"
           placeholder="you@email.com" aria-label="Email address" required/>
@@ -156,7 +157,34 @@
         </figure>
       </div>
       <div class="swipe-cue" aria-hidden="true">‹ swipe ›</div>
-      <a class="proof-cta" href="#top">Be first to the next drop →</a>
+    </div>
+  </section>
+
+  <!-- FINAL CTA — capture the engaged readers right where they finish -->
+  <section class="sec finalcta" id="join">
+    <div class="sec-inner" data-capture>
+      <div data-state>
+        <div class="eyebrow">✦&nbsp;&nbsp;DON'T MISS THE NEXT ONE</div>
+        <h2 class="finalcta-h">You read this far. <em>Get the link first.</em></h2>
+        <div class="countdown" data-countdown>
+          <span class="cd-label">Next drop in</span>
+          <span class="cd-value" data-countdown-value>…</span>
+          <span class="cd-sub">Friday 9:00 AM ET</span>
+        </div>
+        <form class="optin-form" novalidate>
+          <input type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" aria-label="Email address" required/>
+          <button type="submit" data-submit>Join the List</button>
+          <div class="optin-error" data-error hidden role="alert"></div>
+        </form>
+        <div class="fineprint">No spam. One email Friday at 9:00 AM ET.</div>
+      </div>
+      <div class="success" data-success hidden>
+        <div class="seal">
+          <svg viewBox="0 0 38 38" fill="none" stroke="var(--gold)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 20l7 7L29 12"/></svg>
+        </div>
+        <h2>You're on the list.</h2>
+        <p>Watch your inbox for the next drop. The early birds get the bottles.</p>
+      </div>
     </div>
   </section>
 
@@ -164,6 +192,16 @@
     <div>WILHELM COLD BREW</div>
     <div class="fnote">EST. 2022 · SMALL BATCH · ST. LOUIS, MO</div>
   </footer>
+
+  <!-- Sticky CTA (appears once the hero form scrolls away) -->
+  <button class="sticky-join" id="sticky-join" type="button">Join the Friday Drop</button>
+
+  <!-- Timed slide-down nudge -->
+  <div class="nudge" id="nudge" role="region" aria-label="Friday Drop reminder">
+    <span class="nudge-text">Fewer than 100 bottles. Be first to the next drop.</span>
+    <button class="nudge-join" data-nudge-join type="button">Join</button>
+    <button class="nudge-close" data-nudge-close type="button" aria-label="Dismiss">×</button>
+  </div>
 
   <script src="/journey.js" defer></script>
   <script src="optin.js" defer></script>

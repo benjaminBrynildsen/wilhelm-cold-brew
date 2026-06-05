@@ -150,6 +150,9 @@ function eventLabel(e) {
     case 'submit_attempt': return 'Clicked “Join the List”';
     case 'submit_invalid': return 'Entered an invalid email';
     case 'subscribed': return 'Joined the list ✓';
+    case 'sticky_click': return 'Tapped the sticky “Join” button';
+    case 'nudge_shown': return 'Saw the timed nudge';
+    case 'nudge_join': return 'Tapped “Join” on the nudge';
     case 'exit': return `Left — ${d.time_on_page ?? '?'}s on page, ${d.max_scroll || 0}% scrolled`;
     case 'drink_exposure': return `Exposure (${d.variant || ''})`;
     default: return e.event;

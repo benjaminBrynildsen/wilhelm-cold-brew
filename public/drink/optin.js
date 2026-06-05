@@ -109,65 +109,175 @@ function funnel(event, props) {
 
 // ───────── UI wiring ─────────
 (function () {
-  const form = document.querySelector('.optin-form');
-  const input = form.querySelector('input[type="email"]');
-  const button = form.querySelector('[data-submit]');
-  const errorEl = form.querySelector('[data-error]');
-  const optin = document.querySelector('[data-state]');
-  const success = document.querySelector('[data-success]');
-  const BTN_LABEL = button.textContent;
+  let focusFired = false;   // focus_email fires once across all forms
+  let converted = false;
 
-  // Split-test exposure — one per variant arm (external analytics; the DB funnel
-  // uses journey.js's automatic page_load as the "Landed" step).
+  const sticky = document.getElementById('sticky-join');
+  const nudge = document.getElementById('nudge');
+
+  function onConverted() {
+    converted = true;
+    if (sticky) sticky.classList.remove('show');
+    if (nudge) nudge.classList.remove('show');
+  }
+
+  // Jump to the bottom join form and focus it (used by the sticky button + nudge).
+  function scrollToJoin() {
+    const join = document.getElementById('join');
+    (join || document.getElementById('top'))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => {
+      const f = (join || document).querySelector('input[type="email"]');
+      if (f) try { f.focus({ preventScroll: true }); } catch (e) { f.focus(); }
+    }, 500);
+  }
+
+  // Wire a capture form (hero + bottom). Each sits in a [data-capture] wrapper
+  // holding a [data-state] (form view) and a [data-success] (confirmation).
+  function wireForm(form) {
+    const wrap = form.closest('[data-capture]');
+    if (!wrap) return;
+    const input = form.querySelector('input[type="email"]');
+    const button = form.querySelector('[data-submit]');
+    const errorEl = form.querySelector('[data-error]');
+    const stateEl = wrap.querySelector('[data-state]');
+    const successEl = wrap.querySelector('[data-success]');
+    const BTN_LABEL = button.textContent;
+    const showError = (m) => { errorEl.textContent = m; errorEl.hidden = false; };
+
+    input.addEventListener('input', () => { errorEl.hidden = true; errorEl.textContent = ''; });
+    input.addEventListener('focus', () => {
+      if (focusFired) return;
+      focusFired = true;
+      funnel('focus_email', { variant: VARIANT });
+    });
+    const setLoading = (on) => {
+      button.setAttribute('aria-busy', String(on));
+      button.disabled = on; input.disabled = on;
+      button.textContent = on ? 'Joining…' : BTN_LABEL;
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      funnel('submit_attempt', { variant: VARIANT });
+      const email = input.value.trim();
+      if (!EMAIL_RE.test(email)) {
+        funnel('submit_invalid', { variant: VARIANT });
+        showError('Please enter a valid email address.');
+        input.focus();
+        return;
+      }
+      errorEl.hidden = true;
+      setLoading(true);
+      try {
+        await subscribeEmail(email, VARIANT);
+        funnel('subscribed', { variant: VARIANT });
+        try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
+        try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
+        if (stateEl) stateEl.hidden = true;
+        if (successEl) successEl.hidden = false;
+        onConverted();
+      } catch (err) {
+        console.error(err);
+        setLoading(false);
+        showError('Something went wrong — please try again.');
+      }
+    });
+  }
+
+  // Split-test exposure — one per variant arm (external analytics).
   track('drink_exposure', { variant: VARIANT });
+  document.querySelectorAll('.optin-form').forEach(wireForm);
 
-  const showError = (msg) => { errorEl.textContent = msg; errorEl.hidden = false; };
-  const clearError = () => { errorEl.hidden = true; errorEl.textContent = ''; };
+  // Sticky "Join the Friday Drop" — appears once the hero CTA scrolls away, hides
+  // at the bottom form and after converting. Taps jump to the bottom form.
+  (function stickyBar() {
+    if (!sticky || !('IntersectionObserver' in window)) return;
+    const heroForm = document.querySelector('.optin .optin-form');
+    const join = document.getElementById('join');
+    let pastHero = false, atJoin = false;
+    const update = () => sticky.classList.toggle('show', pastHero && !atJoin && !converted);
+    if (heroForm) new IntersectionObserver(([e]) => { pastHero = !e.isIntersecting; update(); },
+      { rootMargin: '-40px 0px 0px 0px' }).observe(heroForm);
+    if (join) new IntersectionObserver(([e]) => { atJoin = e.isIntersecting; update(); },
+      { threshold: 0.2 }).observe(join);
+    sticky.addEventListener('click', () => { funnel('sticky_click', { variant: VARIANT }); scrollToJoin(); });
+  })();
 
-  // Funnel step: focused the email field (fires once).
-  let focusFired = false;
-  input.addEventListener('focus', () => {
-    if (focusFired) return;
-    focusFired = true;
-    funnel('focus_email', { variant: VARIANT });
-  });
+  // 45s / deep-scroll nudge — slide-down bar, once per session, suppressed if engaged.
+  (function nudgeBar() {
+    if (!nudge) return;
+    let shown = false;
+    try { if (sessionStorage.getItem('wilhelm_nudge')) shown = true; } catch (e) {}
+    const close = nudge.querySelector('[data-nudge-close]');
+    const join = nudge.querySelector('[data-nudge-join]');
+    const reveal = () => {
+      if (shown || converted || focusFired) return;
+      shown = true;
+      try { sessionStorage.setItem('wilhelm_nudge', '1'); } catch (e) {}
+      nudge.classList.add('show');
+      funnel('nudge_shown', { variant: VARIANT });
+    };
+    const hide = () => nudge.classList.remove('show');
+    if (close) close.addEventListener('click', hide);
+    if (join) join.addEventListener('click', () => { hide(); funnel('nudge_join', { variant: VARIANT }); scrollToJoin(); });
+    setTimeout(reveal, 45000);
+    const bottles = document.getElementById('bottles');
+    if (bottles && 'IntersectionObserver' in window)
+      new IntersectionObserver(([e]) => { if (e.isIntersecting) reveal(); }, { threshold: 0.3 }).observe(bottles);
+  })();
 
-  const setLoading = (on) => {
-    button.setAttribute('aria-busy', String(on));
-    button.disabled = on;
-    input.disabled = on;
-    button.textContent = on ? 'Joining…' : BTN_LABEL;
-  };
+  // Countdown to the next drop — exact scheduled time if one exists, else next
+  // Friday 9:00 AM ET. Updates every second across all [data-countdown] blocks.
+  (function countdown() {
+    const valEls = document.querySelectorAll('[data-countdown-value]');
+    if (!valEls.length) return;
 
-  input.addEventListener('input', clearError);
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    // Funnel step: clicked "Claim My Spot".
-    funnel('submit_attempt', { variant: VARIANT });
-    const email = input.value.trim();
-    if (!EMAIL_RE.test(email)) {
-      funnel('submit_invalid', { variant: VARIANT });
-      showError('Please enter a valid email address.');
-      input.focus();
-      return;
+    function etOffsetMin(date) {
+      const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        .formatToParts(date).reduce((a, x) => (a[x.type] = x.value, a), {});
+      const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+      return (asUTC - date.getTime()) / 60000;
     }
-    clearError();
-    setLoading(true);
-    try {
-      await subscribeEmail(email, VARIANT);
-      // Funnel conversion + standard Meta Lead event + X Sign up conversion.
-      funnel('subscribed', { variant: VARIANT });
-      try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
-      try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
-      optin.hidden = true;
-      success.hidden = false;
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
-      showError('Something went wrong — please try again.');
+    function nextFridayNineET() {
+      const now = Date.now();
+      for (let i = 0; i < 10; i++) {
+        const probe = new Date(now + i * 86400000);
+        const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short',
+          year: 'numeric', month: '2-digit', day: '2-digit' })
+          .formatToParts(probe).reduce((a, x) => (a[x.type] = x.value, a), {});
+        if (p.weekday === 'Fri') {
+          const guess = Date.UTC(+p.year, +p.month - 1, +p.day, 9, 0, 0);
+          const target = guess - etOffsetMin(new Date(guess)) * 60000;
+          if (target > now) return target;
+        }
+      }
+      return now + 7 * 86400000;
     }
-  });
+    function targetMs() {
+      const s = window.__NEXT_DROP_AT;
+      if (s) { const t = new Date(s).getTime(); if (!isNaN(t) && t > Date.now()) return t; }
+      return nextFridayNineET();
+    }
+    let target = targetMs();
+    function render() {
+      let ms = target - Date.now();
+      if (ms <= 0) { target = targetMs(); ms = Math.max(0, target - Date.now()); }
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+            m = Math.floor((s % 3600) / 60), sec = s % 60;
+      const txt = d > 0
+        ? d + 'd ' + h + 'h ' + String(m).padStart(2, '0') + 'm'
+        : h + 'h ' + String(m).padStart(2, '0') + 'm ' + String(sec).padStart(2, '0') + 's';
+      valEls.forEach((el) => { el.textContent = txt; });
+    }
+    render();
+    setInterval(render, 1000);
+    fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
+      .then((r) => r.json())
+      .then((dd) => { if (dd && dd.nextDropAt) { window.__NEXT_DROP_AT = dd.nextDropAt; target = targetMs(); render(); } })
+      .catch(() => {});
+  })();
 })();
 
 function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }

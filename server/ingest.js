@@ -1,6 +1,6 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
-import { getClientIp, hashIp, countryFrom, EMAIL_RE } from './util.js';
+import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE } from './util.js';
 import { sendWelcome } from './mailer.js';
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
@@ -13,9 +13,13 @@ export async function receiveJourney(req, res) {
     return res.status(400).json({ error: 'max 100 events per batch' });
   }
 
+  const ua = (req.headers['user-agent'] || '').toString().slice(0, 300);
+  // Drop bots/crawlers silently so they never inflate the funnel. Ack as ok so
+  // the client doesn't retry; we just don't store the rows.
+  if (!ua || BOT_RE.test(ua)) return res.json({ ok: true, count: 0, skipped: true });
+
   const ipHash = hashIp(getClientIp(req));
   const country = countryFrom(req);
-  const ua = (req.headers['user-agent'] || '').toString().slice(0, 300);
 
   const clip = (v, n) => (v ? String(v).slice(0, n) : null);
 

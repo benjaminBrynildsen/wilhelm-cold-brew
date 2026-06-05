@@ -156,9 +156,10 @@ function funnel(event, props) {
     setLoading(true);
     try {
       await subscribeEmail(email, VARIANT);
-      // Funnel conversion + standard Meta Lead event.
+      // Funnel conversion + standard Meta Lead event + X Sign up conversion.
       funnel('subscribed', { variant: VARIANT });
       try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
+      try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
       optin.hidden = true;
       success.hidden = false;
     } catch (err) {

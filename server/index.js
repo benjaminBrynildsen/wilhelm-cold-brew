@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSchema, q } from './db.js';
-import { getClientIp, hashIp, countryFrom, hostFrom } from './util.js';
+import { getClientIp, hashIp, countryFrom, hostFrom, BOT_RE } from './util.js';
 import { receiveJourney, subscribe } from './ingest.js';
 import { mountAdmin } from './admin.js';
 
@@ -21,7 +21,6 @@ app.use(express.json({ limit: '256kb' }));
 
 // ───────── pageview middleware (top-level HTML GETs only) ─────────
 const SKIP_PREFIXES = ['/api', '/assets', '/journey.js', '/admin', '/favicon', '/healthz'];
-const BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|preview|monitor|curl|wget|python-requests|headless|lighthouse|pingdom|uptime/i;
 
 app.use((req, _res, next) => {
   try {

@@ -266,9 +266,8 @@ function funnel(event, props) {
       const s = Math.floor(ms / 1000);
       const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
             m = Math.floor((s % 3600) / 60), sec = s % 60;
-      const txt = d > 0
-        ? d + 'd ' + h + 'h ' + String(m).padStart(2, '0') + 'm'
-        : h + 'h ' + String(m).padStart(2, '0') + 'm ' + String(sec).padStart(2, '0') + 's';
+      const txt = (d > 0 ? d + 'd ' : '')
+        + h + 'h ' + String(m).padStart(2, '0') + 'm ' + String(sec).padStart(2, '0') + 's';
       valEls.forEach((el) => { el.textContent = txt; });
     }
     render();

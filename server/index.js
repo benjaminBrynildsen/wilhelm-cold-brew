@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSchema, q } from './db.js';
-import { getClientIp, hashIp, countryFrom, hostFrom, BOT_RE } from './util.js';
+import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE } from './util.js';
 import { receiveJourney, subscribe } from './ingest.js';
 import { mountAdmin } from './admin.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
@@ -55,11 +55,11 @@ app.use((req, _res, next) => {
         ua.slice(0, 512),
         hashIp(getClientIp(req)),
         countryFrom(req),
-        query.utm_source ? String(query.utm_source).slice(0, 128) : null,
-        query.utm_medium ? String(query.utm_medium).slice(0, 128) : null,
-        query.utm_campaign ? String(query.utm_campaign).slice(0, 128) : null,
-        query.utm_content ? String(query.utm_content).slice(0, 128) : null,
-        query.utm_term ? String(query.utm_term).slice(0, 128) : null,
+        normUtm(query.utm_source),
+        normUtm(query.utm_medium),
+        normUtm(query.utm_campaign),
+        normUtm(query.utm_content),
+        normUtm(query.utm_term),
       ]
     ).catch((err) => console.warn('[pageviews] insert failed:', err?.message || err));
   } catch (err) {

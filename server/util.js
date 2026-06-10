@@ -33,6 +33,21 @@ export function hostFrom(url) {
   catch { return null; }
 }
 
+// Normalize a UTM value so the same ad rolls up to one row regardless of how the
+// link was built. Express decodes query params once; ad builders that
+// double-encode (e.g. utm_content=expensive%2520shelf) leave a residual %20, so
+// decode any remaining percent-escapes. Also treats '+' as space. Returns null
+// for empty/whitespace.
+export function normUtm(v) {
+  if (v == null) return null;
+  let s = String(v);
+  for (let i = 0; i < 2 && /%[0-9a-fA-F]{2}/.test(s); i++) {
+    try { s = decodeURIComponent(s); } catch { break; }
+  }
+  s = s.replace(/\+/g, ' ').trim();
+  return s ? s.slice(0, 128) : null;
+}
+
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 // Bots / link-preview crawlers / scanners — excluded from analytics.

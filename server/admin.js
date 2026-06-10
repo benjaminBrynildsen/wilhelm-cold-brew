@@ -349,20 +349,37 @@ export function mountAdmin(app) {
     try {
       const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit) || 60));
       const rows = (await q(
-        `SELECT session_id,
-                MIN(created_at) started_at,
-                ROUND(EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at))))::int duration_seconds,
-                COUNT(*)::int event_count,
-                MAX(city) city, MAX(region) region, MAX(country) country,
-                MAX(variant) variant,
-                BOOL_OR(event = 'subscribed') subscribed,
-                MAX(CASE WHEN event = 'page_load' THEN page END) page,
-                MAX((data->>'depth_pct')::int) max_scroll
-           FROM journey_events
-          WHERE created_at > NOW() - INTERVAL '7 days' ${EXCL_JE}
-          GROUP BY session_id
-          ORDER BY MIN(created_at) DESC
-          LIMIT $1`, [limit])).rows;
+        `WITH s AS (
+           SELECT session_id,
+                  MIN(created_at) started_at, MAX(created_at) ended_at,
+                  ROUND(EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at))))::int duration_seconds,
+                  COUNT(*)::int event_count,
+                  MAX(city) city, MAX(region) region, MAX(country) country,
+                  MAX(variant) variant,
+                  BOOL_OR(event = 'subscribed') subscribed,
+                  MAX(CASE WHEN event = 'page_load' THEN page END) page,
+                  MAX((data->>'depth_pct')::int) max_scroll,
+                  MAX(ip_hash) ip_hash
+             FROM journey_events
+            WHERE created_at > NOW() - INTERVAL '7 days' ${EXCL_JE}
+            GROUP BY session_id
+            ORDER BY MIN(created_at) DESC
+            LIMIT $1
+         )
+         SELECT s.session_id, s.started_at, s.duration_seconds, s.event_count,
+                s.city, s.region, s.country, s.variant, s.subscribed, s.page, s.max_scroll,
+                a.utm_source, a.utm_campaign, a.utm_content, a.referrer_host
+           FROM s
+           LEFT JOIN LATERAL (
+             SELECT utm_source, utm_campaign, utm_content, referrer_host
+               FROM page_views pv
+              WHERE pv.ip_hash = s.ip_hash
+                AND pv.created_at BETWEEN s.started_at - INTERVAL '2 minutes'
+                                      AND s.ended_at + INTERVAL '2 minutes'
+              ORDER BY (pv.utm_source IS NOT NULL) DESC, pv.created_at ASC
+              LIMIT 1
+           ) a ON true
+          ORDER BY s.started_at DESC`, [limit])).rows;
       res.json({ sessions: rows });
     } catch (e) { console.error('[journeys]', e); res.status(500).json({ error: e.message }); }
   });

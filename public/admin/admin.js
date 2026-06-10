@@ -164,6 +164,11 @@ async function showJourney() {
   loading();
   try {
     const d = await api('/api/admin/journeys');
+    const utmCell = (s) => {
+      if (s.utm_source) return `${esc(s.utm_source)}${s.utm_campaign ? ' / ' + esc(s.utm_campaign) : ''}${s.utm_content ? ' / <b>' + esc(s.utm_content) + '</b>' : ''}`;
+      if (s.referrer_host) return `<span class="note">${esc(s.referrer_host)}</span>`;
+      return '<span class="note">direct</span>';
+    };
     const rows = d.sessions.map((s) => `
       <tr data-sid="${esc(s.session_id)}" style="cursor:pointer">
         <td>${esc(ago(s.started_at))}</td>
@@ -172,12 +177,13 @@ async function showJourney() {
         <td class="num">${num(s.event_count)}</td>
         <td>${esc(s.max_scroll != null ? s.max_scroll + '%' : '—')}</td>
         <td>${esc(s.variant || '—')}</td>
+        <td style="font-size:12px">${utmCell(s)}</td>
         <td>${s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : ''}</td>
       </tr>`).join('');
     content().innerHTML = `
       <div class="note" style="margin-bottom:12px">Last 7 days of visitor sessions (your test traffic excluded). Click a row to replay everything they did.</div>
-      <table><thead><tr><th>When</th><th>From</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="7">No sessions yet.</td></tr>'}</tbody></table>`;
+      <table><thead><tr><th>When</th><th>From</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th>UTM / Source</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td class="note" colspan="8">No sessions yet.</td></tr>'}</tbody></table>`;
     document.querySelectorAll('tr[data-sid]').forEach((tr) =>
       tr.addEventListener('click', () => { state.journeySid = tr.dataset.sid; showJourneyDetail(tr.dataset.sid); }));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }

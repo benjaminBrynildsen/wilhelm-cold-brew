@@ -26,7 +26,7 @@
       var forced = p.get('v') || p.get('variant');
       var v = V.indexOf(forced) >= 0 ? forced : 'dark';                    // default dark; light only via ?v=light
       window.__DRINK_VARIANT = v;
-      document.documentElement.setAttribute('data-drink-variant', 'above'); // layout locked to the winning arm
+      document.documentElement.setAttribute('data-drink-variant', 'below'); // bullets below the photo (preferred look; arms ran ~even)
       document.documentElement.setAttribute('data-drink-bg', v);
     })();
   </script>

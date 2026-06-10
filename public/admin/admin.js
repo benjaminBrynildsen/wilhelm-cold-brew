@@ -14,7 +14,7 @@ const SECTIONS = [
   { key: 'proof', label: 'Scrolled to the proof' },
   { key: 'bottles', label: 'Scrolled to the bottles' },
 ];
-const VARIANTS = ['dark', 'light'];
+const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
 const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '' };

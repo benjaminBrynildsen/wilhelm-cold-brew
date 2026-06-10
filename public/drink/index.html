@@ -15,19 +15,30 @@
   <link rel="preload" as="image" href="assets/bottle-cigars.jpg"/>
   <link rel="stylesheet" href="optin.css"/>
 
-  <!-- Background: DARK is the default for everyone (light washed out / risked
-       hurting conversion). The light treatment still exists and can be previewed
-       with ?v=light, but it is NOT served to real visitors. Layout is locked to
-       the winning "above" arrangement. -->
+  <!-- /drink config, resolved BEFORE paint (no flash):
+        • Background: DARK default for everyone; light preview only via ?v=light.
+        • Layout: locked to 'below' (bullets under the photo).
+        • Headline A/B test — A = "...on the list."  B = "...sell out in minutes?"
+          50/50 random, persisted; force with ?h=on-the-list | ?h=sells-out.
+       The chosen headline arm is what gets tracked as the split-test variant. -->
   <script>
     (function () {
-      var V = ['dark', 'light'];
       var p = new URLSearchParams(location.search);
-      var forced = p.get('v') || p.get('variant');
-      var v = V.indexOf(forced) >= 0 ? forced : 'dark';                    // default dark; light only via ?v=light
-      window.__DRINK_VARIANT = v;
-      document.documentElement.setAttribute('data-drink-variant', 'below'); // bullets below the photo (preferred look; arms ran ~even)
-      document.documentElement.setAttribute('data-drink-bg', v);
+      var bg = (p.get('v') === 'light') ? 'light' : 'dark';   // dark default; light only via ?v=light
+
+      var HL = ['on-the-list', 'sells-out'];
+      var HKEY = 'wilhelm_drink_hl';
+      var forcedH = p.get('h');
+      var hl = HL.indexOf(forcedH) >= 0 ? forcedH : null;
+      if (!hl) { try { hl = localStorage.getItem(HKEY); } catch (e) {} }
+      if (HL.indexOf(hl) < 0) { hl = HL[Math.floor(Math.random() * HL.length)]; }
+      try { localStorage.setItem(HKEY, hl); } catch (e) {}
+
+      window.__DRINK_HL = hl;
+      window.__DRINK_VARIANT = hl;                                          // tracked split-test arm
+      document.documentElement.setAttribute('data-drink-variant', 'below'); // layout (bullets below the photo)
+      document.documentElement.setAttribute('data-drink-bg', bg);
+      document.documentElement.setAttribute('data-drink-hl', hl);
     })();
   </script>
 
@@ -58,7 +69,15 @@
   <div class="card" data-capture>
     <!-- OPT-IN STATE -->
     <div class="optin" data-state>
-      <h1>To buy, you have to be <em>on the list.</em></h1>
+      <h1 id="optin-h1">To buy, you have to be <em>on the list.</em></h1>
+      <script>
+        /* Headline A/B — swap to variant B before paint (synchronous, runs right
+           after the <h1> during parse). A stays as the default markup above. */
+        if (window.__DRINK_HL === 'sells-out') {
+          var __h1 = document.getElementById('optin-h1');
+          if (__h1) __h1.innerHTML = 'Why does a $49 cold brew <em>sell out in minutes?</em>';
+        }
+      </script>
 
       <div class="optin-image">
         <img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/>

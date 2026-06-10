@@ -50,6 +50,8 @@ export async function ensureSchema() {
       utm_source    TEXT,
       utm_medium    TEXT,
       utm_campaign  TEXT,
+      utm_content   TEXT,
+      utm_term      TEXT,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS pv_created_idx ON page_views (created_at);
@@ -89,6 +91,8 @@ export async function ensureSchema() {
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS city   TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS region TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS country TEXT;
+    ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_content TEXT;
+    ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_term    TEXT;
 
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (

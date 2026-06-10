@@ -46,8 +46,8 @@ app.use((req, _res, next) => {
     const referrer = (req.headers.referer || req.headers.referrer || '').toString() || null;
     const query = req.query || {};
     void q(
-      `INSERT INTO page_views (path, referrer, referrer_host, user_agent, ip_hash, country, utm_source, utm_medium, utm_campaign)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      `INSERT INTO page_views (path, referrer, referrer_host, user_agent, ip_hash, country, utm_source, utm_medium, utm_campaign, utm_content, utm_term)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         p.slice(0, 512),
         referrer ? referrer.slice(0, 512) : null,
@@ -58,6 +58,8 @@ app.use((req, _res, next) => {
         query.utm_source ? String(query.utm_source).slice(0, 128) : null,
         query.utm_medium ? String(query.utm_medium).slice(0, 128) : null,
         query.utm_campaign ? String(query.utm_campaign).slice(0, 128) : null,
+        query.utm_content ? String(query.utm_content).slice(0, 128) : null,
+        query.utm_term ? String(query.utm_term).slice(0, 128) : null,
       ]
     ).catch((err) => console.warn('[pageviews] insert failed:', err?.message || err));
   } catch (err) {

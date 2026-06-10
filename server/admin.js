@@ -167,9 +167,9 @@ export function mountAdmin(app) {
       const countries = await top('country');
       const paths = await top('path');
       const campaigns = (await q(
-        `SELECT utm_source source, utm_medium medium, utm_campaign campaign, COUNT(*)::int n
+        `SELECT utm_source source, utm_medium medium, utm_campaign campaign, utm_content content, COUNT(*)::int n
            FROM page_views WHERE created_at > $1 AND utm_source IS NOT NULL ${EXCL_PV}
-          GROUP BY utm_source, utm_medium, utm_campaign ORDER BY n DESC LIMIT 10`, [month])).rows;
+          GROUP BY utm_source, utm_medium, utm_campaign, utm_content ORDER BY n DESC LIMIT 15`, [month])).rows;
 
       // Joiners (subscribers) attributed to the last UTM-tagged page view they
       // hit at/before signing up, matched by ip_hash. Signups don't store their
@@ -181,15 +181,15 @@ export function mountAdmin(app) {
             WHERE s.ip_hash IS NOT NULL ${EXCL_PV}
          ),
          attrib AS (
-           SELECT j.id, pv.utm_source, pv.utm_medium, pv.utm_campaign,
+           SELECT j.id, pv.utm_source, pv.utm_medium, pv.utm_campaign, pv.utm_content,
                   ROW_NUMBER() OVER (PARTITION BY j.id ORDER BY pv.created_at DESC) rn
              FROM joined j
              JOIN page_views pv
                ON pv.ip_hash = j.ip_hash AND pv.created_at <= j.created_at AND pv.utm_source IS NOT NULL
          )
-         SELECT utm_source source, utm_medium medium, utm_campaign campaign, COUNT(*)::int n
+         SELECT utm_source source, utm_medium medium, utm_campaign campaign, utm_content content, COUNT(*)::int n
            FROM attrib WHERE rn = 1
-          GROUP BY 1,2,3 ORDER BY n DESC LIMIT 20`)).rows;
+          GROUP BY 1,2,3,4 ORDER BY n DESC LIMIT 20`)).rows;
       const joinersTotalRow = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
       const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.n, 0);
@@ -211,8 +211,8 @@ export function mountAdmin(app) {
         topReferrers: referrers.map((r) => ({ host: r.k || 'direct', count: r.n })),
         topCountries: countries.map((r) => ({ country: r.k || '??', count: r.n })),
         topPaths: paths.map((r) => ({ path: r.k, count: r.n })),
-        topCampaigns: campaigns.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, count: r.n })),
-        joinersByUtm: joinersByUtm.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, count: r.n })),
+        topCampaigns: campaigns.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, content: r.content, count: r.n })),
+        joinersByUtm: joinersByUtm.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, content: r.content, count: r.n })),
         joiners: { total: joinersTotalRow.n, attributed: joinersAttributed, direct: joinersTotalRow.n - joinersAttributed },
         topCities: cities.map((r) => ({ city: r.city, region: r.region, country: r.country, count: r.n })),
         daily: daily.map((r) => ({ day: r.bucket, views: r.views, visitors: r.visitors })),

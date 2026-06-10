@@ -15,23 +15,19 @@
   <link rel="preload" as="image" href="assets/bottle-cigars.jpg"/>
   <link rel="stylesheet" href="optin.css"/>
 
-  <!-- Split test: LIGHT vs DARK above-the-fold background. Resolved BEFORE paint (no flash).
-       The bullets-above-vs-below test is retired — layout is locked to the winning
-       "above" arrangement; the variant now drives only the background.
-       Priority: ?v=light|dark → persisted assignment → random 50/50. -->
+  <!-- Background: DARK is the default for everyone (light washed out / risked
+       hurting conversion). The light treatment still exists and can be previewed
+       with ?v=light, but it is NOT served to real visitors. Layout is locked to
+       the winning "above" arrangement. -->
   <script>
     (function () {
       var V = ['dark', 'light'];
-      var KEY = 'wilhelm_drink_bg';
       var p = new URLSearchParams(location.search);
       var forced = p.get('v') || p.get('variant');
-      var v = V.indexOf(forced) >= 0 ? forced : null;
-      if (!v) { try { v = localStorage.getItem(KEY); } catch (e) {} }
-      if (V.indexOf(v) < 0) { v = V[Math.floor(Math.random() * V.length)]; }
-      try { localStorage.setItem(KEY, v); } catch (e) {}
-      window.__DRINK_VARIANT = v;                                          // tracked split-test arm: dark | light
+      var v = V.indexOf(forced) >= 0 ? forced : 'dark';                    // default dark; light only via ?v=light
+      window.__DRINK_VARIANT = v;
       document.documentElement.setAttribute('data-drink-variant', 'above'); // layout locked to the winning arm
-      document.documentElement.setAttribute('data-drink-bg', v);           // drives the above-the-fold background
+      document.documentElement.setAttribute('data-drink-bg', v);
     })();
   </script>
 

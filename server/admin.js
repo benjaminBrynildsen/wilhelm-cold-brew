@@ -170,6 +170,29 @@ export function mountAdmin(app) {
         `SELECT utm_source source, utm_medium medium, utm_campaign campaign, COUNT(*)::int n
            FROM page_views WHERE created_at > $1 AND utm_source IS NOT NULL ${EXCL_PV}
           GROUP BY utm_source, utm_medium, utm_campaign ORDER BY n DESC LIMIT 10`, [month])).rows;
+
+      // Joiners (subscribers) attributed to the last UTM-tagged page view they
+      // hit at/before signing up, matched by ip_hash. Signups don't store their
+      // own UTM, so this IP-hash join is the only attribution path. All-time
+      // (not a 30d window) because joiners are sparse.
+      const joinersByUtm = (await q(
+        `WITH joined AS (
+           SELECT s.id, s.created_at, s.ip_hash FROM subscribers s
+            WHERE s.ip_hash IS NOT NULL ${EXCL_PV}
+         ),
+         attrib AS (
+           SELECT j.id, pv.utm_source, pv.utm_medium, pv.utm_campaign,
+                  ROW_NUMBER() OVER (PARTITION BY j.id ORDER BY pv.created_at DESC) rn
+             FROM joined j
+             JOIN page_views pv
+               ON pv.ip_hash = j.ip_hash AND pv.created_at <= j.created_at AND pv.utm_source IS NOT NULL
+         )
+         SELECT utm_source source, utm_medium medium, utm_campaign campaign, COUNT(*)::int n
+           FROM attrib WHERE rn = 1
+          GROUP BY 1,2,3 ORDER BY n DESC LIMIT 20`)).rows;
+      const joinersTotalRow = (await q(
+        `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
+      const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.n, 0);
       const daily = (await q(
         `SELECT date_trunc('day', created_at) AS bucket, COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
            FROM page_views WHERE created_at > NOW() - INTERVAL '14 days' ${EXCL_PV}
@@ -189,6 +212,8 @@ export function mountAdmin(app) {
         topCountries: countries.map((r) => ({ country: r.k || '??', count: r.n })),
         topPaths: paths.map((r) => ({ path: r.k, count: r.n })),
         topCampaigns: campaigns.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, count: r.n })),
+        joinersByUtm: joinersByUtm.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, count: r.n })),
+        joiners: { total: joinersTotalRow.n, attributed: joinersAttributed, direct: joinersTotalRow.n - joinersAttributed },
         topCities: cities.map((r) => ({ city: r.city, region: r.region, country: r.country, count: r.n })),
         daily: daily.map((r) => ({ day: r.bucket, views: r.views, visitors: r.visitors })),
       });

@@ -192,6 +192,12 @@ async function showJourneyDetail(sid) {
         <div class="lbl"><span><span class="pct">+${e.t}s</span> &nbsp; ${esc(eventLabel(e))}</span></div>
       </div>`).join('');
     const device = /Mobi|Android|iPhone|iPad/i.test(d.userAgent || '') ? 'Mobile' : 'Desktop';
+    const a = d.attribution;
+    const utmStr = a
+      ? (a.source
+          ? `${esc(a.source)}${a.campaign ? ' / ' + esc(a.campaign) : ''}${a.content ? ' / <b>' + esc(a.content) + '</b>' : ''}`
+          : (a.referrer ? `${esc(a.referrer)} <span class="note">(no utm)</span>` : '<span class="note">direct</span>'))
+      : '<span class="note">—</span>';
     content().innerHTML = `
       <div class="row-actions"><button class="btn ghost" id="jback">← All sessions</button></div>
       <div class="cards">
@@ -200,6 +206,7 @@ async function showJourneyDetail(sid) {
         <div class="card"><div class="k">Events</div><div class="v">${num(d.eventCount)}</div></div>
         <div class="card"><div class="k">Device</div><div class="v" style="font-size:20px">${device}</div></div>
         <div class="card"><div class="k">Variant</div><div class="v" style="font-size:20px">${esc(d.variant || '—')}</div></div>
+        <div class="card" style="grid-column:1/-1"><div class="k">Source / UTM</div><div class="v" style="font-size:16px;line-height:1.4">${utmStr}</div></div>
       </div>
       <h3>Activity</h3>
       ${timeline}`;

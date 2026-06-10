@@ -372,16 +372,38 @@ export function mountAdmin(app) {
     try {
       const sid = String(req.params.sessionId).slice(0, 80);
       const rows = (await q(
-        `SELECT event, data, page, variant, city, region, country, user_agent, created_at
+        `SELECT event, data, page, variant, city, region, country, user_agent, ip_hash, created_at
            FROM journey_events
           WHERE session_id = $1 ORDER BY created_at ASC`, [sid])).rows;
       if (!rows.length) return res.status(404).json({ error: 'not found' });
       const first = rows[0], last = rows[rows.length - 1];
       const duration = Math.round((new Date(last.created_at) - new Date(first.created_at)) / 1000);
+
+      // Attribution for THIS session: journey_events carry no UTM, so match the
+      // session's ip_hash to its landing page view (within the session window,
+      // padded a little for clock/ordering). Prefer a UTM-tagged view; fall back
+      // to the earliest view so at least the referrer shows.
+      let attribution = null;
+      if (first.ip_hash) {
+        const pv = (await q(
+          `SELECT utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer_host
+             FROM page_views
+            WHERE ip_hash = $1
+              AND created_at BETWEEN $2::timestamptz - INTERVAL '2 minutes'
+                                 AND $3::timestamptz + INTERVAL '2 minutes'
+            ORDER BY (utm_source IS NOT NULL) DESC, created_at ASC
+            LIMIT 1`, [first.ip_hash, first.created_at, last.created_at])).rows[0];
+        if (pv) attribution = {
+          source: pv.utm_source, medium: pv.utm_medium, campaign: pv.utm_campaign,
+          content: pv.utm_content, term: pv.utm_term, referrer: pv.referrer_host,
+        };
+      }
+
       res.json({
         sessionId: sid,
         city: first.city, region: first.region, country: first.country,
         userAgent: first.user_agent, page: first.page, variant: first.variant,
+        attribution,
         startedAt: first.created_at, durationSeconds: duration, eventCount: rows.length,
         events: rows.map((e) => ({
           event: e.event, data: e.data, page: e.page,

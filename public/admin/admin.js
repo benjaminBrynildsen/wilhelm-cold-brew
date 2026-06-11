@@ -17,7 +17,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '' };
 
 const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
@@ -91,27 +91,28 @@ function renderTabs() {
     t.addEventListener('click', () => { state.tab = t.dataset.tab; renderTabs(); show(state.tab); }));
 }
 
-function winbar() {
+function winbar(key = 'win') {
+  const sel = state[key];
   const btns = WINS.map(([k, l]) =>
-    `<div class="win ${state.win === k ? 'active' : ''}" data-win="${k}">${l}</div>`).join('');
+    `<div class="win ${sel === k ? 'active' : ''}" data-win="${k}">${l}</div>`).join('');
   return `<div class="winbar">${btns}</div>
     <div class="winbar" style="margin-top:-8px;align-items:center">
       <input type="date" id="cfrom" value="${esc(state.customFrom)}" style="background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:6px 8px;color-scheme:dark"/>
       <input type="date" id="cto" value="${esc(state.customTo)}" style="background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:6px 8px;color-scheme:dark"/>
-      <button class="win ${state.win === 'custom' ? 'active' : ''}" id="capply">Custom range</button>
+      <button class="win ${sel === 'custom' ? 'active' : ''}" id="capply">Custom range</button>
     </div>`;
 }
-function winQuery() {
-  return (state.win === 'custom' && state.customFrom && state.customTo)
+function winQuery(key = 'win') {
+  return (state[key] === 'custom' && state.customFrom && state.customTo)
     ? `?from=${state.customFrom}&to=${state.customTo}` : '';
 }
-function wireWinbar(reload) {
+function wireWinbar(reload, key = 'win') {
   document.querySelectorAll('.win[data-win]').forEach((w) =>
-    w.addEventListener('click', () => { state.win = w.dataset.win; reload(); }));
+    w.addEventListener('click', () => { state[key] = w.dataset.win; reload(); }));
   const apply = document.getElementById('capply');
   if (apply) apply.addEventListener('click', () => {
     const f = document.getElementById('cfrom').value, t = document.getElementById('cto').value;
-    if (f && t) { state.customFrom = f; state.customTo = t; state.win = 'custom'; reload(); }
+    if (f && t) { state.customFrom = f; state.customTo = t; state[key] = 'custom'; reload(); }
   });
 }
 
@@ -227,7 +228,10 @@ async function showJourney() {
   state.journeySid = null;
   loading();
   try {
-    const d = await api('/api/admin/journeys');
+    const wq = (state.journeyWin === 'custom' && state.customFrom && state.customTo)
+      ? `?win=custom&from=${state.customFrom}&to=${state.customTo}`
+      : `?win=${state.journeyWin}`;
+    const d = await api('/api/admin/journeys' + wq);
     const utmCell = (s) => {
       if (s.utm_source) return `${esc(s.utm_source)}${s.utm_campaign ? ' / ' + esc(s.utm_campaign) : ''}${s.utm_content ? ' / <b>' + esc(s.utm_content) + '</b>' : ''}`;
       if (s.referrer_host) return `<span class="note">${esc(s.referrer_host)}</span>`;
@@ -244,10 +248,11 @@ async function showJourney() {
         <td style="font-size:12px">${utmCell(s)}</td>
         <td>${s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : ''}</td>
       </tr>`).join('');
-    content().innerHTML = `
-      <div class="note" style="margin-bottom:12px">Last 7 days of visitor sessions (your test traffic excluded). Click a row to replay everything they did.</div>
+    content().innerHTML = winbar('journeyWin') + `
+      <div class="note" style="margin:8px 0 12px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did.</div>
       <table><thead><tr><th>When</th><th>From</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th>UTM / Source</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="8">No sessions yet.</td></tr>'}</tbody></table>`;
+        <tbody>${rows || '<tr><td class="note" colspan="8">No sessions in this window.</td></tr>'}</tbody></table>`;
+    wireWinbar(showJourney, 'journeyWin');
     document.querySelectorAll('tr[data-sid]').forEach((tr) =>
       tr.addEventListener('click', () => { state.journeySid = tr.dataset.sid; showJourneyDetail(tr.dataset.sid); }));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }

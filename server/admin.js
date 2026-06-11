@@ -364,7 +364,12 @@ export function mountAdmin(app) {
   app.get('/api/admin/journeys', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit) || 60));
+      const limit = Math.min(2000, Math.max(1, parseInt(req.query?.limit) || 1000));
+      // Honor the dashboard time-window selector (?win=h1|today|d7|d30|all or
+      // ?from&to). Defaults to 30 days so the list isn't truncated to a sliver.
+      const wins = windows(req);
+      const wkey = String(req.query?.win || 'd30');
+      const w = wins.find((x) => x.key === wkey) || wins.find((x) => x.key === 'd30');
       const rows = (await q(
         `WITH s AS (
            SELECT session_id,
@@ -378,10 +383,10 @@ export function mountAdmin(app) {
                   MAX((data->>'depth_pct')::int) max_scroll,
                   MAX(ip_hash) ip_hash
              FROM journey_events
-            WHERE created_at > NOW() - INTERVAL '7 days' ${EXCL_JE}
+            WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}
             GROUP BY session_id
             ORDER BY MIN(created_at) DESC
-            LIMIT $1
+            LIMIT $3
          )
          SELECT s.session_id, s.started_at, s.duration_seconds, s.event_count,
                 s.city, s.region, s.country, s.variant, s.subscribed, s.page, s.max_scroll,
@@ -396,8 +401,8 @@ export function mountAdmin(app) {
               ORDER BY (pv.utm_source IS NOT NULL) DESC, pv.created_at ASC
               LIMIT 1
            ) a ON true
-          ORDER BY s.started_at DESC`, [limit])).rows;
-      res.json({ sessions: rows });
+          ORDER BY s.started_at DESC`, [w.from, w.to, limit])).rows;
+      res.json({ sessions: rows, window: wkey });
     } catch (e) { console.error('[journeys]', e); res.status(500).json({ error: e.message }); }
   });
 

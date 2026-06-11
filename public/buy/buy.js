@@ -12,7 +12,15 @@
     express: $('express-wrap'), divider: $('pay-divider'),
     payErr: $('pay-error'), payBtn: $('pay-card'),
     classic: $('classic-checkout'),
+    notesBtn: $('notes-btn'), notesModal: $('notes-modal'), notesTitle: $('notes-title'), notesList: $('notes-list'),
   };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var DEFAULT_NOTES = [
+    'Vanilla Bean — soft, the first thing you meet on the tongue',
+    'Charred Oak — a whisper of smoke, the cask saying hello',
+    'Dark Cherry — stone fruit, not sweet; almost grown-up',
+    'Cocoa Nib — bittersweet, dry, lingering long after the sip',
+  ].join('\n');
 
   // Carry the split-test arm (set by /drink) + the X click id (from the ad URL).
   function variant() { try { return localStorage.getItem('wilhelm_drink_hl') || localStorage.getItem('wilhelm_drink_variant') || null; } catch (e) { return null; } }
@@ -26,7 +34,7 @@
   function totalCents() { return state.qty * state.priceCents + state.shipCents; }
   function dollars(c) { return '$' + Math.round(c / 100); }
   function renderTotal() {
-    if (els.subLabel) els.subLabel.textContent = state.qty + (state.qty > 1 ? ' bottles (' + dollars(state.priceCents) + ' ea)' : ' bottle');
+    if (els.subLabel) els.subLabel.textContent = state.qty + ' bottle' + (state.qty > 1 ? 's' : '') + ' · 750mL' + (state.qty > 1 ? ' (' + dollars(state.priceCents) + ' ea)' : '');
     if (els.sub) els.sub.textContent = dollars(state.qty * state.priceCents);
     if (els.ship) els.ship.textContent = dollars(state.shipCents);
     if (els.total) els.total.textContent = money(totalCents());
@@ -50,6 +58,8 @@
       if (els.batchNum) els.batchNum.textContent = d.name || ('Batch № ' + d.dropId);
       if (els.countNum) els.countNum.textContent = d.remaining;
       if (els.countBox) els.countBox.hidden = false;
+      state.notes = d.tastingNotes || DEFAULT_NOTES;
+      state.batchName = d.name || 'Wilhelm Cold Brew';
       els.card.hidden = false;
       updateQtyUI(); renderTotal();
       fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant() });
@@ -192,6 +202,22 @@
       .catch(function () { showErr('Checkout is unavailable right now — please try again.'); });
   }
   if (els.classic) els.classic.addEventListener('click', startClassic);
+
+  // ── Tasting notes modal ──
+  function renderNotes() {
+    if (els.notesTitle) els.notesTitle.textContent = state.batchName || 'Wilhelm Cold Brew';
+    var lines = String(state.notes || DEFAULT_NOTES).split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (els.notesList) els.notesList.innerHTML = lines.map(function (l) {
+      var parts = l.split(/\s*[—–-]\s+/);
+      if (parts.length >= 2) return '<li><b>' + esc(parts[0].trim()) + '</b><span>' + esc(parts.slice(1).join(' — ').trim()) + '</span></li>';
+      return '<li><span>' + esc(l) + '</span></li>';
+    }).join('');
+  }
+  function openNotes() { renderNotes(); if (els.notesModal) els.notesModal.hidden = false; document.body.style.overflow = 'hidden'; fund('tasting_notes_open', {}); }
+  function closeNotes() { if (els.notesModal) els.notesModal.hidden = true; document.body.style.overflow = ''; }
+  if (els.notesBtn) els.notesBtn.addEventListener('click', openNotes);
+  if (els.notesModal) Array.prototype.forEach.call(els.notesModal.querySelectorAll('[data-close]'), function (el) { el.addEventListener('click', closeNotes); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNotes(); });
 
   // If Stripe.js / publishable key is unavailable, make the classic link the CTA.
   function degradeToClassic() {

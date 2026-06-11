@@ -93,6 +93,7 @@ export async function ensureSchema() {
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS country TEXT;
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_content TEXT;
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_term    TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS tasting_notes TEXT;
 
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
@@ -117,8 +118,9 @@ export async function ensureSchema() {
       bottle_cap  INTEGER NOT NULL,
       opens_at    TIMESTAMPTZ,
       closes_at   TIMESTAMPTZ,
-      status      TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled | live | soldout | closed
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      status        TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled | live | soldout | closed
+      tasting_notes TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS drops_status_idx ON drops (status);
 

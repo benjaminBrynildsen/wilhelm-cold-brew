@@ -222,3 +222,31 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 .batch-head { text-align: center; margin: 0 auto clamp(10px,1.8vh,16px); }
 .batch-num { font-family: var(--display); font-weight: 700; font-style: italic; font-size: clamp(26px,5vh,42px); color: var(--gold); letter-spacing: -0.5px; line-height: 1.05; }
 .batch-sub { font-family: var(--mono); font-size: clamp(9px,1.3vh,11px); letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.6); margin-top: 7px; }
+
+/* ── Tasting notes: button (replaces subtitle) + gold "designer card" modal ── */
+.notes-btn { display: inline-block; margin: 9px auto 0; background: transparent; cursor: pointer;
+  border: 1px solid rgba(232,194,74,0.5); border-radius: 999px; padding: 8px 20px;
+  font-family: var(--mono); font-size: clamp(10px,1.4vh,12px); letter-spacing: 2px; text-transform: uppercase;
+  color: var(--gold); transition: background .2s, transform .08s; }
+.notes-btn:hover { background: rgba(232,194,74,0.1); }
+.notes-btn:active { transform: translateY(1px); }
+
+.notes-modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 22px; }
+.notes-overlay { position: absolute; inset: 0; background: rgba(6,5,4,0.8); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.notes-card { position: relative; z-index: 1; width: 100%; max-width: 380px;
+  background: linear-gradient(155deg, #f8ead0 0%, #ecc657 42%, #cf9f2e 100%);
+  color: #28200d; border-radius: 16px; padding: 32px 28px 24px; text-align: center;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6); border: 1px solid rgba(120,90,20,0.45);
+  animation: rise .35s cubic-bezier(.2,.7,.3,1); }
+.notes-card::before { content: ''; position: absolute; inset: 9px; border: 1px solid rgba(90,65,15,0.4); border-radius: 10px; pointer-events: none; }
+.notes-close { position: absolute; top: 8px; right: 14px; background: none; border: none; font-size: 28px; line-height: 1; color: rgba(60,42,8,0.55); cursor: pointer; padding: 4px; }
+.notes-emblem { font-size: 16px; color: #7a5a14; }
+.notes-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: #6e500f; margin-top: 5px; }
+.notes-title { font-family: var(--display); font-weight: 700; font-style: italic; font-size: 30px; color: #22190a; margin: 4px 0 0; letter-spacing: -0.5px; line-height: 1.1; }
+.notes-rule { width: 46px; height: 1px; background: rgba(90,65,15,0.55); margin: 13px auto 14px; }
+.notes-list { list-style: none; padding: 0; margin: 0; text-align: left; }
+.notes-list li { padding: 10px 2px; border-bottom: 1px solid rgba(90,65,15,0.18); }
+.notes-list li:last-child { border-bottom: none; }
+.notes-list li b { display: block; font-family: var(--display); font-style: italic; font-weight: 700; font-size: 18px; color: #2a1d08; }
+.notes-list li span { display: block; font-family: var(--body); font-size: 14px; line-height: 1.45; color: rgba(40,32,13,0.82); margin-top: 2px; }
+.notes-foot { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #6e500f; margin-top: 16px; }

@@ -35,7 +35,7 @@
     <div class="card" id="card" hidden>
       <div class="batch-head">
         <div class="batch-num" id="batch-num">This week's drop</div>
-        <div class="batch-sub">750ml · Bourbon-barrel-aged · 0.0% alcohol</div>
+        <button class="notes-btn" id="notes-btn" type="button">✦&nbsp; Tasting Notes &nbsp;✦</button>
       </div>
       <div class="product-image">
         <img src="/drink/assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/>
@@ -107,6 +107,20 @@
   </section>
 
   <footer class="store-footer">WILHELM COLD BREW · SMALL BATCH · ST. LOUIS, MO</footer>
+
+  <!-- Tasting notes modal — gold "designer card" -->
+  <div class="notes-modal" id="notes-modal" hidden>
+    <div class="notes-overlay" data-close></div>
+    <div class="notes-card" role="dialog" aria-modal="true" aria-label="Tasting notes">
+      <button class="notes-close" data-close aria-label="Close">×</button>
+      <div class="notes-emblem">✦</div>
+      <div class="notes-kicker">Tasting Notes</div>
+      <h3 class="notes-title" id="notes-title">Wilhelm Cold Brew</h3>
+      <div class="notes-rule"></div>
+      <ul class="notes-list" id="notes-list"></ul>
+      <div class="notes-foot">750ml · 90 nights in oak · 0.0% alcohol</div>
+    </div>
+  </div>
 
   <script src="/journey.js" defer></script>
   <script src="buy.js" defer></script>

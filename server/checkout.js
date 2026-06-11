@@ -70,6 +70,7 @@ export function mountCheckout(app) {
           available: true, dropId: d.id, name: d.name,
           priceCents: d.price_cents, remaining: d.remaining,
           maxPerOrder: Math.min(MAX_PER_ORDER, d.remaining),
+          tastingNotes: d.tasting_notes || null,
           shipCents: SHIP_CENTS, nextDropAt,
         });
       }

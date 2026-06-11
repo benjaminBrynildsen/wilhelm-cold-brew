@@ -491,7 +491,7 @@ export function mountAdmin(app) {
     if (!requireAdmin(req, res)) return;
     try {
       const rows = (await q(
-        `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at,
+        `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at, d.tasting_notes,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
            FROM drops d ORDER BY d.created_at DESC LIMIT 50`)).rows;
       res.json({ drops: rows });
@@ -507,9 +507,10 @@ export function mountAdmin(app) {
       if (!(priceCents > 0) || !(bottleCap > 0)) return res.status(400).json({ error: 'priceCents and bottleCap must be positive' });
       let opensAt = null;
       if (req.body?.opensAt) { const d = new Date(req.body.opensAt); if (!isNaN(d)) opensAt = d.toISOString(); }
+      const tastingNotes = req.body?.tastingNotes ? String(req.body.tastingNotes).slice(0, 4000) : null;
       const r = await q(
-        `INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status)
-         VALUES ($1,$2,$3,$4,'scheduled') RETURNING id`, [name, priceCents, bottleCap, opensAt]);
+        `INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status, tasting_notes)
+         VALUES ($1,$2,$3,$4,'scheduled',$5) RETURNING id`, [name, priceCents, bottleCap, opensAt, tastingNotes]);
       res.json({ ok: true, id: r.rows[0].id });
     } catch (e) { console.error('[drops/create]', e); res.status(500).json({ error: e.message }); }
   });
@@ -537,5 +538,16 @@ export function mountAdmin(app) {
       await q(`UPDATE drops SET name=$1 WHERE id=$2`, [name, id]);
       res.json({ ok: true });
     } catch (e) { console.error('[drops/rename]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Edit a drop's tasting notes any time — shown in the buy-page tasting-notes modal.
+  app.post('/api/admin/drops/:id/notes', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const notes = req.body?.tastingNotes ? String(req.body.tastingNotes).slice(0, 4000) : null;
+      await q(`UPDATE drops SET tasting_notes=$1 WHERE id=$2`, [notes, id]);
+      res.json({ ok: true });
+    } catch (e) { console.error('[drops/notes]', e); res.status(500).json({ error: e.message }); }
   });
 }

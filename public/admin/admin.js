@@ -485,6 +485,11 @@ async function showOrders() {
       <table><thead><tr><th>Name</th><th class="num">Price</th><th class="num">Sold</th><th>Status</th><th>Opens</th><th></th></tr></thead>
         <tbody>${dropRows}</tbody></table>
       <div class="note">Only one drop is "live" at a time — going live closes any other. A drop auto-closes to "soldout" when it hits its cap.</div>
+      ${(() => { const nd = dd.drops.find((d) => d.status === 'live') || dd.drops[0]; return nd ? `
+      <h3>Tasting notes — ${esc(nd.name || 'latest batch')}</h3>
+      <textarea id="dnotes" rows="5" placeholder="One note per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5">${esc(nd.tasting_notes || '')}</textarea>
+      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save tasting notes</button><span class="note" id="dnotes-msg"></span></div>
+      <div class="note" style="margin-top:4px">Shown in the "Tasting Notes" popup on the buy page. One per line; text before a "—" is emphasized. Leave blank to use the default notes.</div>` : ''; })()}
 
       <h3>Schedule a drop</h3>
       <input class="fld" id="dname" placeholder="Name (e.g. Friday Drop — Jun 13)"/>
@@ -506,6 +511,17 @@ async function showOrders() {
         showOrders();
       } catch (e) { document.getElementById('dmsg').textContent = 'Failed: ' + e.message; }
     }));
+    const notesSave = document.getElementById('dnotes-save');
+    if (notesSave) notesSave.addEventListener('click', async () => {
+      const msg = document.getElementById('dnotes-msg');
+      try {
+        await api(`/api/admin/drops/${notesSave.dataset.id}/notes`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tastingNotes: document.getElementById('dnotes').value }),
+        });
+        msg.textContent = 'Saved ✓';
+      } catch (e) { msg.textContent = 'Failed: ' + e.message; }
+    });
     document.querySelectorAll('.drename').forEach((b) => b.addEventListener('click', async () => {
       const name = window.prompt('Batch name (this is the title shown on the buy page):', b.dataset.name || '');
       if (name === null) return; // cancelled

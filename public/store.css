@@ -188,3 +188,12 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 .btn-secondary:hover { background: rgba(232,194,74,0.08); }
 .btn-secondary:active { transform: translateY(1px); }
 .qty-total-sub { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.5px; color: rgba(246,239,218,0.5); margin-top: 3px; text-transform: none; }
+
+/* ── Itemized order summary (shipping shown as its own line) ── */
+.qty-label { font-family: var(--mono); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(246,239,218,0.7); }
+.order-summary { width: 100%; max-width: 420px; margin: 0 auto clamp(16px,2.4vh,22px); border: 1px solid rgba(232,194,74,0.25); border-radius: 8px; padding: 10px 16px; background: rgba(232,217,181,0.03); }
+.os-row { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--body); font-size: 15px; color: rgba(246,239,218,0.82); padding: 5px 0; text-align: left; }
+.os-row em { font-family: var(--mono); font-style: normal; font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--gold); }
+.os-ship span:last-child { color: var(--parchment); font-weight: 600; }
+.os-total { border-top: 1px solid rgba(232,194,74,0.2); margin-top: 4px; padding-top: 10px; font-family: var(--display); font-size: 20px; color: var(--parchment); }
+.os-total span:last-child { color: var(--gold); font-weight: 700; }

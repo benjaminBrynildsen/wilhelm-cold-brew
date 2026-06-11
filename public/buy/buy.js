@@ -8,7 +8,7 @@
   var els = {
     card: $('card'), price: $('hero-price'), scarcity: $('scarcity-text'),
     qty: $('qty'), qtyMinus: $('qty-minus'), qtyPlus: $('qty-plus'),
-    total: $('total-amt'), breakdown: $('total-breakdown'), sticky: $('sticky-amt'),
+    total: $('total-amt'), subLabel: $('os-sub-label'), sub: $('os-sub'), ship: $('os-ship'), sticky: $('sticky-amt'),
     express: $('express-wrap'), divider: $('pay-divider'),
     payErr: $('pay-error'), payBtn: $('pay-card'),
     classic: $('classic-checkout'),
@@ -26,12 +26,10 @@
   function totalCents() { return state.qty * state.priceCents + state.shipCents; }
   function dollars(c) { return '$' + Math.round(c / 100); }
   function renderTotal() {
+    if (els.subLabel) els.subLabel.textContent = state.qty + (state.qty > 1 ? ' bottles (' + dollars(state.priceCents) + ' ea)' : ' bottle');
+    if (els.sub) els.sub.textContent = dollars(state.qty * state.priceCents);
+    if (els.ship) els.ship.textContent = dollars(state.shipCents);
     if (els.total) els.total.textContent = money(totalCents());
-    // Always show shipping is separate, and that it stays flat as quantity rises.
-    if (els.breakdown) {
-      els.breakdown.textContent = (state.qty > 1 ? dollars(state.priceCents) + ' × ' + state.qty : dollars(state.priceCents))
-        + ' + ' + dollars(state.shipCents) + ' shipping' + (state.qty > 1 ? ' (flat)' : '');
-    }
     if (els.sticky) els.sticky.textContent = money(totalCents());
     if (els.payBtn) els.payBtn.textContent = 'Pay ' + money(totalCents());
   }
@@ -79,6 +77,7 @@
       stripe = Stripe(c.publishableKey);
       elements = stripe.elements({
         mode: 'payment', amount: totalCents(), currency: 'usd',
+        paymentMethodTypes: ['card', 'amazon_pay', 'link'], // no Cash App / US bank
         appearance: {
           theme: 'night',
           variables: {
@@ -101,8 +100,13 @@
         },
       });
 
-      // Express Checkout Element — Apple Pay / Google Pay / Link, one tap.
-      var ece = elements.create('expressCheckout', { buttonHeight: 50 });
+      // Express Checkout Element — Apple Pay / Google Pay / Amazon Pay / Link.
+      // Apple Pay leads automatically on Apple devices; Google Pay on Android.
+      var ece = elements.create('expressCheckout', {
+        buttonHeight: 50,
+        paymentMethods: { paypal: 'never' },
+        layout: { maxColumns: 1, maxRows: 4, overflow: 'never' },
+      });
       ece.on('ready', function (e) {
         var have = e && e.availablePaymentMethods;
         if (!have) { if (els.express) els.express.hidden = true; if (els.divider) els.divider.hidden = true; }

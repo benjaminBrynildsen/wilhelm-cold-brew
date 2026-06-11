@@ -38,14 +38,21 @@
       <p class="lede">Bourbon-barrel-aged. Single origin, ninety nights in oak, zero alcohol. Best served neat over one large cube.</p>
       <div class="scarcity" id="scarcity"><span class="dot"></span><span id="scarcity-text">This week's drop</span></div>
 
-      <!-- Quantity + live total -->
+      <!-- Quantity -->
       <div class="qty-row">
+        <span class="qty-label">How many?</span>
         <div class="qty-stepper" role="group" aria-label="Quantity">
           <button id="qty-minus" type="button" aria-label="Decrease quantity">−</button>
           <span id="qty" aria-live="polite">1</span>
           <button id="qty-plus" type="button" aria-label="Increase quantity">+</button>
         </div>
-        <div class="qty-total"><span class="qty-total-label">Total</span><span id="total-amt">$57.00</span><span class="qty-total-sub" id="total-breakdown">$49 + $8 shipping</span></div>
+      </div>
+
+      <!-- Itemized summary (shipping shown explicitly) -->
+      <div class="order-summary">
+        <div class="os-row"><span id="os-sub-label">1 bottle</span><span id="os-sub">$49</span></div>
+        <div class="os-row os-ship"><span>Shipping <em>· flat, any quantity</em></span><span id="os-ship">$8</span></div>
+        <div class="os-row os-total"><span>Total</span><span id="total-amt">$57.00</span></div>
       </div>
 
       <!-- Express wallets (Apple Pay / Google Pay / Link) -->

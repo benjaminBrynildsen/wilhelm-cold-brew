@@ -6,7 +6,7 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var els = {
-    card: $('card'), price: $('hero-price'), scarcity: $('scarcity-text'),
+    card: $('card'), batchNum: $('batch-num'), countNum: $('count-num'), countBox: $('count-box'),
     qty: $('qty'), qtyMinus: $('qty-minus'), qtyPlus: $('qty-plus'),
     total: $('total-amt'), subLabel: $('os-sub-label'), sub: $('os-sub'), ship: $('os-ship'), sticky: $('sticky-amt'),
     express: $('express-wrap'), divider: $('pay-divider'),
@@ -47,8 +47,9 @@
       if (!d.available) { location.replace('/sold-out'); return; }
       state.priceCents = d.priceCents; state.shipCents = d.shipCents;
       state.dropId = d.dropId; state.max = Math.max(1, d.maxPerOrder || 1);
-      if (els.price && els.price.firstChild) els.price.firstChild.textContent = '$' + Math.round(d.priceCents / 100);
-      els.scarcity.textContent = 'Only ' + d.remaining + ' left — act quick';
+      if (els.batchNum) els.batchNum.textContent = d.name || ('Batch № ' + d.dropId);
+      if (els.countNum) els.countNum.textContent = d.remaining;
+      if (els.countBox) els.countBox.hidden = false;
       els.card.hidden = false;
       updateQtyUI(); renderTotal();
       fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant() });

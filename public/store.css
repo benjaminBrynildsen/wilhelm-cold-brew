@@ -187,3 +187,4 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
   font-family: var(--display); font-weight: 600; font-size: clamp(15px,2.2vh,17px); letter-spacing: 0.3px; transition: background .2s; }
 .btn-secondary:hover { background: rgba(232,194,74,0.08); }
 .btn-secondary:active { transform: translateY(1px); }
+.qty-total-sub { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.5px; color: rgba(246,239,218,0.5); margin-top: 3px; text-transform: none; }

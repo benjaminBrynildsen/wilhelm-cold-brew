@@ -7,7 +7,8 @@
   var $ = function (id) { return document.getElementById(id); };
   var els = {
     card: $('card'), price: $('hero-price'), scarcity: $('scarcity-text'),
-    qty: $('qty'), qtyMinus: $('qty-minus'), qtyPlus: $('qty-plus'), total: $('total-amt'),
+    qty: $('qty'), qtyMinus: $('qty-minus'), qtyPlus: $('qty-plus'),
+    total: $('total-amt'), breakdown: $('total-breakdown'), sticky: $('sticky-amt'),
     express: $('express-wrap'), divider: $('pay-divider'),
     payErr: $('pay-error'), payBtn: $('pay-card'),
     classic: $('classic-checkout'),
@@ -23,8 +24,15 @@
   var stripe = null, elements = null, addrEl = null, emailEl = null, busy = false;
 
   function totalCents() { return state.qty * state.priceCents + state.shipCents; }
+  function dollars(c) { return '$' + Math.round(c / 100); }
   function renderTotal() {
     if (els.total) els.total.textContent = money(totalCents());
+    // Always show shipping is separate, and that it stays flat as quantity rises.
+    if (els.breakdown) {
+      els.breakdown.textContent = (state.qty > 1 ? dollars(state.priceCents) + ' × ' + state.qty : dollars(state.priceCents))
+        + ' + ' + dollars(state.shipCents) + ' shipping' + (state.qty > 1 ? ' (flat)' : '');
+    }
+    if (els.sticky) els.sticky.textContent = money(totalCents());
     if (els.payBtn) els.payBtn.textContent = 'Pay ' + money(totalCents());
   }
   function setBusy(b) {
@@ -42,7 +50,7 @@
       state.priceCents = d.priceCents; state.shipCents = d.shipCents;
       state.dropId = d.dropId; state.max = Math.max(1, d.maxPerOrder || 1);
       if (els.price && els.price.firstChild) els.price.firstChild.textContent = '$' + Math.round(d.priceCents / 100);
-      els.scarcity.textContent = d.remaining <= 12 ? 'Only ' + d.remaining + ' left this week' : d.remaining + ' bottles left this week';
+      els.scarcity.textContent = 'Only ' + d.remaining + ' left — act quick';
       els.card.hidden = false;
       updateQtyUI(); renderTotal();
       fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant() });

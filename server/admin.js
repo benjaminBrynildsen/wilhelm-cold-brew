@@ -526,4 +526,16 @@ export function mountAdmin(app) {
       res.json({ ok: true });
     } catch (e) { console.error('[drops/status]', e); res.status(500).json({ error: e.message }); }
   });
+
+  // Rename a drop at any time (incl. while live) — the buy page batch number
+  // reads from this name, so it updates the storefront immediately.
+  app.post('/api/admin/drops/:id/rename', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const name = String(req.body?.name || '').slice(0, 200) || null;
+      await q(`UPDATE drops SET name=$1 WHERE id=$2`, [name, id]);
+      res.json({ ok: true });
+    } catch (e) { console.error('[drops/rename]', e); res.status(500).json({ error: e.message }); }
+  });
 }

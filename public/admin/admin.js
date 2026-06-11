@@ -436,9 +436,12 @@ function orderStatusBadge(s) {
   return `<span style="color:${color};font-weight:600">${esc(s)}</span>`;
 }
 function dropActions(d) {
-  if (d.status === 'live') return `<button class="btn ghost dstatus" data-id="${d.id}" data-status="closed">Close</button>`;
-  if (d.status === 'soldout' || d.status === 'closed') return `<button class="btn ghost dstatus" data-id="${d.id}" data-status="live">Re-open</button>`;
-  return `<button class="btn dstatus" data-id="${d.id}" data-status="live">Go live</button>`;
+  const rename = `<button class="btn ghost drename" data-id="${d.id}" data-name="${esc(d.name || '')}">Rename</button>`;
+  let status;
+  if (d.status === 'live') status = `<button class="btn ghost dstatus" data-id="${d.id}" data-status="closed">Close</button>`;
+  else if (d.status === 'soldout' || d.status === 'closed') status = `<button class="btn ghost dstatus" data-id="${d.id}" data-status="live">Re-open</button>`;
+  else status = `<button class="btn dstatus" data-id="${d.id}" data-status="live">Go live</button>`;
+  return status + ' ' + rename;
 }
 
 async function showOrders() {
@@ -502,6 +505,17 @@ async function showOrders() {
         });
         showOrders();
       } catch (e) { document.getElementById('dmsg').textContent = 'Failed: ' + e.message; }
+    }));
+    document.querySelectorAll('.drename').forEach((b) => b.addEventListener('click', async () => {
+      const name = window.prompt('Batch name (this is the title shown on the buy page):', b.dataset.name || '');
+      if (name === null) return; // cancelled
+      try {
+        await api(`/api/admin/drops/${b.dataset.id}/rename`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim() }),
+        });
+        showOrders();
+      } catch (e) { document.getElementById('dmsg').textContent = 'Rename failed: ' + e.message; }
     }));
     document.getElementById('dcreate').addEventListener('click', async () => {
       const name = document.getElementById('dname').value.trim();

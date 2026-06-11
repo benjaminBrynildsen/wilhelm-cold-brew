@@ -468,7 +468,7 @@ export function mountAdmin(app) {
           ORDER BY o.created_at DESC LIMIT 100`)).rows;
       const live = (await q(
         `SELECT id, name, price_cents, bottle_cap, status,
-                (SELECT COUNT(*)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
+                (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
            FROM drops WHERE status='live' ORDER BY opens_at DESC NULLS LAST, id DESC LIMIT 1`)).rows[0] || null;
       if (live) live.remaining = Math.max(0, live.bottle_cap - live.sold);
       res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live });
@@ -481,7 +481,7 @@ export function mountAdmin(app) {
     try {
       const rows = (await q(
         `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at,
-                (SELECT COUNT(*)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
+                (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
            FROM drops d ORDER BY d.created_at DESC LIMIT 50`)).rows;
       res.json({ drops: rows });
     } catch (e) { console.error('[drops]', e); res.status(500).json({ error: e.message }); }

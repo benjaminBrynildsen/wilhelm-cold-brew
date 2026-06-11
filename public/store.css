@@ -132,3 +132,50 @@ h1 em { font-style: italic; color: var(--gold); }
 footer.store-footer { position: relative; z-index: 1; text-align: center; padding: 28px 16px 36px; font-family: var(--mono); }
 footer.store-footer .wm { font-size: 13px; letter-spacing: 3px; color: rgba(246,239,218,0.7); }
 footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(246,239,218,0.4); margin-top: 6px; }
+
+/* ── Buy page: quantity stepper + on-page checkout (added for the drop) ── */
+.qty-row { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: 100%; max-width: 420px; margin: clamp(4px,1vh,10px) auto clamp(14px,2.2vh,20px); }
+.qty-stepper { display: inline-flex; align-items: center; gap: 0; border: 1px solid rgba(232,194,74,0.4); border-radius: 6px; }
+.qty-stepper button { width: 44px; height: 44px; background: transparent; border: none; color: var(--gold);
+  font-family: var(--body); font-size: 22px; line-height: 1; cursor: pointer; }
+.qty-stepper button:disabled { opacity: 0.3; cursor: not-allowed; }
+.qty-stepper span { min-width: 40px; text-align: center; font-family: var(--mono); font-size: 18px; color: var(--parchment); }
+.qty-total { text-align: right; font-family: var(--mono); }
+.qty-total-label { display: block; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.55); }
+.qty-total span#total-amt { font-size: clamp(20px,3vw,26px); color: var(--gold); }
+
+#express-wrap { width: 100%; max-width: 420px; margin: 0 auto clamp(10px,1.6vh,14px); min-height: 4px; }
+.pay-divider { width: 100%; max-width: 420px; margin: clamp(8px,1.6vh,14px) auto; display: flex; align-items: center; gap: 12px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.45); }
+.pay-divider::before, .pay-divider::after { content: ''; flex: 1; height: 1px; background: rgba(232,194,74,0.2); }
+#pay-wrap { width: 100%; max-width: 420px; margin: 0 auto; }
+.stripe-field { margin: 0 auto clamp(10px,1.6vh,14px); text-align: left; }
+#pay-card { margin-top: 4px; }
+
+/* ── Content sections below the fold ── */
+.store-section { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: clamp(40px,7vh,80px) clamp(20px,5vw,40px); text-align: center; border-top: 1px solid rgba(232,194,74,0.14); }
+.store-section h2 { font-family: var(--display); font-weight: 700; font-size: clamp(30px,5vw,46px); margin: 0 0 14px; color: var(--parchment); letter-spacing: -0.5px; }
+.store-section h2 em { font-style: italic; color: var(--gold); }
+.store-section h2 .yr { font-style: italic; color: var(--gold-deep); }
+.section-lede { font-family: var(--body); font-style: italic; font-size: clamp(15px,2vw,19px); color: rgba(246,239,218,0.7); margin: 0 auto 26px; max-width: 480px; }
+.notes { list-style: none; padding: 0; margin: 0 auto 22px; max-width: 460px; text-align: left; }
+.notes li { display: flex; gap: 14px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid rgba(232,194,74,0.12); }
+.notes .n { font-family: var(--mono); font-size: 12px; color: var(--gold); letter-spacing: 1px; }
+.notes .t { font-family: var(--body); font-size: clamp(15px,2vw,17px); color: rgba(246,239,218,0.85); line-height: 1.5; }
+.notes .t strong { color: var(--parchment); font-style: italic; font-family: var(--display); }
+.spec { font-family: var(--mono); font-size: clamp(10px,1.4vw,12px); letter-spacing: 3px; color: var(--gold); margin-top: 8px; }
+.origin-figure { max-width: 460px; margin: 0 auto 24px; }
+.origin-figure img { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.3); border-radius: 5px; box-shadow: 0 18px 48px rgba(0,0,0,0.4); }
+.origin p { font-family: var(--body); font-size: clamp(16px,2vw,19px); line-height: 1.7; color: rgba(246,239,218,0.78); max-width: 540px; margin: 0 auto 18px; }
+.origin .pull { font-family: var(--display); font-style: italic; font-size: clamp(22px,4vw,30px); color: var(--gold); margin: 22px 0; }
+.origin .proof-line { font-size: clamp(14px,1.8vw,16px); color: rgba(246,239,218,0.65); }
+.origin .proof-line strong { color: var(--parchment); }
+
+/* ── Sticky mobile CTA ── */
+.sticky-buy { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 40;
+  border: none; cursor: pointer; white-space: nowrap; background: var(--gold); color: var(--ink);
+  font-family: var(--display); font-weight: 700; font-size: 16px; padding: 14px 28px; border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.sticky-buy:active { transform: translateX(-50%) translateY(1px); }
+@media (min-width: 760px) { .sticky-buy { display: none; } }

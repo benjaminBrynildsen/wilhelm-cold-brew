@@ -195,6 +195,14 @@ function show(tab) {
 // ───────── Journey ─────────
 const dur = (s) => (s == null ? '—' : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`);
 const loc = (r) => [r.city, r.region, r.country].filter(Boolean).join(', ') || 'Unknown';
+// Full local date+time WITH timezone abbreviation, e.g. "Jun 13, 9:00 AM CDT".
+const fmtWhen = (iso) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', '
+    + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+};
+const tzAbbr = () => { try { return new Date().toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop(); } catch (e) { return 'local'; } };
 const ago = (iso) => {
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return s + 's ago';
@@ -453,7 +461,7 @@ async function showOrders() {
           <td class="num">${money(d.price_cents)}</td>
           <td class="num">${num(d.sold)}/${num(d.bottle_cap)}</td>
           <td>${esc(d.status)}</td>
-          <td>${esc(d.opens_at ? (d.opens_at).slice(0, 10) : '—')}</td>
+          <td>${esc(fmtWhen(d.opens_at))}</td>
           <td>${dropActions(d)}</td></tr>`).join('')
       : '<tr><td class="note" colspan="6">No drops yet — create one below.</td></tr>';
 
@@ -480,10 +488,11 @@ async function showOrders() {
       <div class="row-actions" style="align-items:center;flex-wrap:wrap">
         <label class="note">Price $<input id="dprice" type="number" min="1" step="0.01" value="49" style="width:90px;${FLD_DARK}"/></label>
         <label class="note">Bottles <input id="dcap" type="number" min="1" step="1" value="100" style="width:80px;${FLD_DARK}"/></label>
-        <label class="note">Opens <input id="dopens" type="datetime-local" style="${FLD_DARK}"/></label>
+        <label class="note">Opens (${tzAbbr()}) <input id="dopens" type="datetime-local" style="${FLD_DARK}"/></label>
         <button class="btn" id="dcreate">Create drop</button>
         <span class="note" id="dmsg"></span>
-      </div>`;
+      </div>
+      <div class="note" style="margin-top:6px">Times are your local timezone (${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}). "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>`;
 
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
       try {

@@ -471,7 +471,18 @@ export function mountAdmin(app) {
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
            FROM drops WHERE status='live' ORDER BY opens_at DESC NULLS LAST, id DESC LIMIT 1`)).rows[0] || null;
       if (live) live.remaining = Math.max(0, live.bottle_cap - live.sold);
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live });
+      // Missed-drop demand signal from the sold-out page (one vote per session).
+      const demandRows = (await q(
+        `SELECT data->>'choice' AS choice, COUNT(DISTINCT session_id)::int n
+           FROM journey_events
+          WHERE event = 'soldout_demand' AND data->>'choice' IS NOT NULL ${EXCL_JE}
+          GROUP BY 1`)).rows;
+      const demand = { wouldBuy: 0, justLooking: 0 };
+      for (const r of demandRows) {
+        if (r.choice === 'would_buy') demand.wouldBuy = r.n;
+        else if (r.choice === 'just_looking') demand.justLooking = r.n;
+      }
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, demand });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -463,6 +463,7 @@ async function showOrders() {
         <div class="card"><div class="k">Revenue</div><div class="v">${money(o.revenueCents)}</div></div>
         <div class="card"><div class="k">This drop</div><div class="v" style="font-size:22px">${live ? num(live.sold) + '<small>/' + num(live.bottle_cap) + ' sold</small>' : 'none live'}</div></div>
         <div class="card"><div class="k">Remaining</div><div class="v">${live ? num(live.remaining) : '—'}</div></div>
+        <div class="card"><div class="k">Missed-drop demand</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
       </div>
 
       <h3>Recent orders</h3>

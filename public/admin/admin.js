@@ -118,6 +118,70 @@ function wireWinbar(reload) {
 const content = () => document.getElementById('content');
 const loading = () => { content().innerHTML = '<div class="note">Loading…</div>'; };
 
+// ───────── Click-to-sort for every admin table ─────────
+// Delegated on document so it covers every current + future table without
+// per-view wiring. Parses common cell formats so columns sort sensibly:
+// plain numbers, $ amounts, %, "3m ago" relative times, and "1m 0s" durations.
+function cellSortValue(raw) {
+  const t = (raw || '').trim();
+  if (t === '' || t === '—' || t === '-') return { n: NaN, s: '' };
+  let m = t.match(/^(\d+)\s*([smhd])\b[\s\S]*ago/i); // "3m ago", "2h ago"
+  if (m) { const u = { s: 1, m: 60, h: 3600, d: 86400 }[m[2].toLowerCase()]; return { n: +m[1] * u, s: t.toLowerCase() }; }
+  m = t.match(/^(?:(\d+)\s*m\s*)?(\d+)\s*s$/i); // "1m 0s", "30s"
+  if (m) return { n: (+(m[1] || 0)) * 60 + +m[2], s: t.toLowerCase() };
+  const cleaned = t.replace(/[$,%\s]/g, '');
+  if (cleaned !== '' && !isNaN(Number(cleaned))) return { n: Number(cleaned), s: t.toLowerCase() };
+  return { n: NaN, s: t.toLowerCase() };
+}
+
+document.addEventListener('click', (e) => {
+  const th = e.target.closest('th');
+  if (!th) return;
+  const table = th.closest('table');
+  const root = content();
+  if (!table || !root || !root.contains(table) || !table.tHead) return;
+  const ths = [...th.parentElement.children];
+  const col = ths.indexOf(th);
+  const tbody = table.tBodies[0];
+  if (col < 0 || !tbody) return;
+
+  const dir = (+table.dataset.sortCol === col && table.dataset.sortDir === 'asc') ? 'desc' : 'asc';
+  table.dataset.sortCol = col;
+  table.dataset.sortDir = dir;
+  const mul = dir === 'asc' ? 1 : -1;
+
+  const rows = [...tbody.rows];
+  const sortable = rows.filter((r) => r.cells.length === ths.length); // skip colspan placeholders
+  const fixed = rows.filter((r) => r.cells.length !== ths.length);
+  const vals = new Map(sortable.map((r) => [r, cellSortValue(r.cells[col].textContent)]));
+  const numeric = sortable.filter((r) => !isNaN(vals.get(r).n)).length >= Math.ceil(sortable.length / 2);
+  sortable.sort((a, b) => {
+    const va = vals.get(a), vb = vals.get(b);
+    let c;
+    if (numeric) {
+      const na = isNaN(va.n) ? -Infinity : va.n, nb = isNaN(vb.n) ? -Infinity : vb.n;
+      c = na === nb ? (va.s < vb.s ? -1 : va.s > vb.s ? 1 : 0) : na - nb;
+    } else {
+      c = va.s < vb.s ? -1 : va.s > vb.s ? 1 : 0;
+    }
+    return c * mul;
+  });
+  sortable.forEach((r) => tbody.appendChild(r)); // appendChild MOVES rows, keeping their click handlers
+  fixed.forEach((r) => tbody.appendChild(r));
+
+  ths.forEach((h) => { const a = h.querySelector('.sort-arrow'); if (a) a.remove(); });
+  const arrow = document.createElement('span');
+  arrow.className = 'sort-arrow';
+  arrow.textContent = dir === 'asc' ? ' ▲' : ' ▼';
+  th.appendChild(arrow);
+});
+
+(function injectSortStyles() {
+  const s = document.createElement('style');
+  s.textContent = '#content table th{cursor:pointer;user-select:none}#content table th:hover{color:var(--gold,#e8c24a)}.sort-arrow{opacity:.7;font-size:.8em}';
+  document.head.appendChild(s);
+})();
+
 function show(tab) {
   if (tab === 'overview') return showOverview();
   if (tab === 'funnel') return showFunnel();

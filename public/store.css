@@ -204,8 +204,8 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 .buy-page .card { padding-top: 2px; }
 .buy-page .eyebrow { margin-bottom: 10px; }
 .buy-page .scarcity { margin-top: 0; margin-bottom: 12px; }
-.buy-page .product-image { max-width: 300px; margin: 2px auto 12px; }
-.buy-page .product-image img { max-height: 21vh; width: auto; max-width: 100%; }
+.buy-page .product-image { max-width: 320px; margin: 2px auto 12px; text-align: center; }
+.buy-page .product-image img { max-height: 21vh; width: auto; max-width: 100%; margin: 0 auto; }
 .buy-page h1 { font-size: clamp(25px,4.2vh,36px); margin: 0 0 10px; }
 .buy-page .qty-row { margin-top: 2px; margin-bottom: 10px; }
 .buy-page .order-summary { margin-bottom: 12px; }

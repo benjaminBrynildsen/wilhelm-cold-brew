@@ -27,30 +27,28 @@
     </a>
 
     <div class="card">
-      <!-- MISSED IT STATE -->
+      <!-- MISSED IT — ask for demand signal (everyone here is already on the list) -->
       <div class="missed" id="missed">
         <div class="eyebrow">✦&nbsp;&nbsp;THIS WEEK — SOLD OUT</div>
         <h1>Gone in <em>minutes.</em></h1>
-        <p class="lede">A handful of bottles a week, and this week's batch went about as fast as the link did. Barrel-aged, small batch, non-alcoholic — and never around for long.</p>
-        <div class="scarcity"><span class="dot"></span>SMALL BATCH · EVERY FRIDAY · GONE FAST</div>
-        <p class="confirm-p">The list is the only way in. The second the next drop opens, the buy link hits your inbox — so you're first through the door, not staring at this page again. Next drop: <strong id="next-date" style="color:var(--parchment);font-style:normal">next Friday at 9AM</strong>.</p>
-        <form class="cap-form" id="cap" novalidate>
-          <input type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" aria-label="Email address" required/>
-          <button type="submit" class="btn-primary" data-submit>Get the link first →</button>
-          <div class="cap-error" id="err" hidden role="alert"></div>
-        </form>
-        <a class="link-quiet" href="/drink">See what the Friday Drop is about →</a>
+        <p class="lede">You're already on the list, so next Friday's link is yours first. One quick thing before you go —</p>
+        <p class="confirm-p" style="margin-bottom:20px"><strong style="color:var(--parchment)">Were you going to buy this week?</strong> Your answer tells us how many bottles to barrel for the next batch. If the demand's there, we make more.</p>
+        <div class="feedback-btns">
+          <button type="button" class="btn-primary" data-fb="would_buy">Yes — I would've bought</button>
+          <button type="button" class="btn-secondary" data-fb="just_looking">Just checking it out</button>
+        </div>
+        <div class="meta" style="margin-top:16px">Next drop: <span id="next-date" style="color:rgba(232,217,181,0.75)">next Friday at 9AM</span></div>
       </div>
 
-      <!-- ON THE LIST STATE -->
+      <!-- THANKS — after feedback -->
       <div class="joined rise" id="joined" hidden>
         <div class="seal">
           <svg viewBox="0 0 38 38" fill="none" stroke="var(--gold)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M9 20l7 7L29 12"/>
           </svg>
         </div>
-        <h1 class="confirm-h">You're on the list.</h1>
-        <p class="confirm-p">Watch your inbox for the next drop. The early birds get the bottles.</p>
+        <h1 class="confirm-h" id="fb-h">Noted.</h1>
+        <p class="confirm-p" id="fb-p">Thanks for the read. You'll get the next drop's link first.</p>
         <div class="meta" id="joined-meta">SEE YOU FRIDAY · 9:00 AM ET</div>
       </div>
     </div>

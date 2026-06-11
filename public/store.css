@@ -179,3 +179,11 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
   box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 .sticky-buy:active { transform: translateX(-50%) translateY(1px); }
 @media (min-width: 760px) { .sticky-buy { display: none; } }
+
+/* ── Sold-out demand-feedback buttons ── */
+.feedback-btns { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; margin: 0 auto; }
+.btn-secondary { width: 100%; height: clamp(48px,7vh,56px); background: transparent; color: var(--parchment);
+  border: 1px solid rgba(232,194,74,0.4); border-radius: 6px; cursor: pointer;
+  font-family: var(--display); font-weight: 600; font-size: clamp(15px,2.2vh,17px); letter-spacing: 0.3px; transition: background .2s; }
+.btn-secondary:hover { background: rgba(232,194,74,0.08); }
+.btn-secondary:active { transform: translateY(1px); }

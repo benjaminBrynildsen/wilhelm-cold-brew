@@ -94,6 +94,10 @@ export async function ensureSchema() {
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_content TEXT;
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_term    TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS tasting_notes TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS origin    TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS varietal  TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS elevation TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS roast     TEXT;
 
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
@@ -120,6 +124,10 @@ export async function ensureSchema() {
       closes_at   TIMESTAMPTZ,
       status        TEXT NOT NULL DEFAULT 'scheduled',  -- scheduled | live | soldout | closed
       tasting_notes TEXT,
+      origin        TEXT,
+      varietal      TEXT,
+      elevation     TEXT,
+      roast         TEXT,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS drops_status_idx ON drops (status);

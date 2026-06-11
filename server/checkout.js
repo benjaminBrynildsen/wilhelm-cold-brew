@@ -71,6 +71,8 @@ export function mountCheckout(app) {
           priceCents: d.price_cents, remaining: d.remaining,
           maxPerOrder: Math.min(MAX_PER_ORDER, d.remaining),
           tastingNotes: d.tasting_notes || null,
+          origin: d.origin || null, varietal: d.varietal || null,
+          elevation: d.elevation || null, roast: d.roast || null,
           shipCents: SHIP_CENTS, nextDropAt,
         });
       }

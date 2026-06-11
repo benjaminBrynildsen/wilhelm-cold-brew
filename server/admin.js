@@ -491,7 +491,8 @@ export function mountAdmin(app) {
     if (!requireAdmin(req, res)) return;
     try {
       const rows = (await q(
-        `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at, d.tasting_notes,
+        `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at,
+                d.tasting_notes, d.origin, d.varietal, d.elevation, d.roast,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
            FROM drops d ORDER BY d.created_at DESC LIMIT 50`)).rows;
       res.json({ drops: rows });
@@ -540,13 +541,16 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[drops/rename]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // Edit a drop's tasting notes any time — shown in the buy-page tasting-notes modal.
+  // Edit a drop's tasting-card details any time — shown in the buy-page modal.
   app.post('/api/admin/drops/:id/notes', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
       const id = parseInt(req.params.id, 10);
+      const clip = (v) => (v ? String(v).slice(0, 400) : null);
       const notes = req.body?.tastingNotes ? String(req.body.tastingNotes).slice(0, 4000) : null;
-      await q(`UPDATE drops SET tasting_notes=$1 WHERE id=$2`, [notes, id]);
+      await q(
+        `UPDATE drops SET tasting_notes=$1, origin=$2, varietal=$3, elevation=$4, roast=$5 WHERE id=$6`,
+        [notes, clip(req.body?.origin), clip(req.body?.varietal), clip(req.body?.elevation), clip(req.body?.roast), id]);
       res.json({ ok: true });
     } catch (e) { console.error('[drops/notes]', e); res.status(500).json({ error: e.message }); }
   });

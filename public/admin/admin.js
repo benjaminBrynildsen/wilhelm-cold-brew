@@ -486,10 +486,16 @@ async function showOrders() {
         <tbody>${dropRows}</tbody></table>
       <div class="note">Only one drop is "live" at a time — going live closes any other. A drop auto-closes to "soldout" when it hits its cap.</div>
       ${(() => { const nd = dd.drops.find((d) => d.status === 'live') || dd.drops[0]; return nd ? `
-      <h3>Tasting notes — ${esc(nd.name || 'latest batch')}</h3>
-      <textarea id="dnotes" rows="5" placeholder="One note per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5">${esc(nd.tasting_notes || '')}</textarea>
-      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save tasting notes</button><span class="note" id="dnotes-msg"></span></div>
-      <div class="note" style="margin-top:4px">Shown in the "Tasting Notes" popup on the buy page. One per line; text before a "—" is emphasized. Leave blank to use the default notes.</div>` : ''; })()}
+      <h3>Batch details — ${esc(nd.name || 'latest batch')}</h3>
+      <div class="row-actions" style="flex-wrap:wrap;gap:10px;align-items:center">
+        <label class="note">Origin &amp; region <input id="dorigin" value="${esc(nd.origin || '')}" placeholder="Ethiopia · Yirgacheffe" style="width:190px;${FLD_DARK}"/></label>
+        <label class="note">Varietal <input id="dvarietal" value="${esc(nd.varietal || '')}" placeholder="Heirloom" style="width:150px;${FLD_DARK}"/></label>
+        <label class="note">Elevation <input id="delevation" value="${esc(nd.elevation || '')}" placeholder="1,950 m" style="width:120px;${FLD_DARK}"/></label>
+        <label class="note">Roast <input id="droast" value="${esc(nd.roast || '')}" placeholder="Medium" style="width:120px;${FLD_DARK}"/></label>
+      </div>
+      <textarea id="dnotes" rows="5" placeholder="Tasting notes — one per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:8px">${esc(nd.tasting_notes || '')}</textarea>
+      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save batch details</button><span class="note" id="dnotes-msg"></span></div>
+      <div class="note" style="margin-top:4px">All of this shows on the buy-page "Tasting Notes" card. Notes: one per line; text before a "—" is emphasized. Leave any field blank to hide it (notes fall back to the default four).</div>` : ''; })()}
 
       <h3>Schedule a drop</h3>
       <input class="fld" id="dname" placeholder="Name (e.g. Friday Drop — Jun 13)"/>
@@ -517,7 +523,13 @@ async function showOrders() {
       try {
         await api(`/api/admin/drops/${notesSave.dataset.id}/notes`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tastingNotes: document.getElementById('dnotes').value }),
+          body: JSON.stringify({
+            tastingNotes: document.getElementById('dnotes').value,
+            origin: document.getElementById('dorigin').value,
+            varietal: document.getElementById('dvarietal').value,
+            elevation: document.getElementById('delevation').value,
+            roast: document.getElementById('droast').value,
+          }),
         });
         msg.textContent = 'Saved ✓';
       } catch (e) { msg.textContent = 'Failed: ' + e.message; }

@@ -12,7 +12,7 @@
     express: $('express-wrap'), divider: $('pay-divider'),
     payErr: $('pay-error'), payBtn: $('pay-card'),
     classic: $('classic-checkout'),
-    notesBtn: $('notes-btn'), notesModal: $('notes-modal'), notesTitle: $('notes-title'), notesList: $('notes-list'),
+    notesBtn: $('notes-btn'), notesModal: $('notes-modal'), notesTitle: $('notes-title'), notesList: $('notes-list'), notesSpec: $('notes-spec'),
   };
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var DEFAULT_NOTES = [
@@ -60,6 +60,7 @@
       if (els.countBox) els.countBox.hidden = false;
       state.notes = d.tastingNotes || DEFAULT_NOTES;
       state.batchName = d.name || 'Wilhelm Cold Brew';
+      state.origin = d.origin; state.varietal = d.varietal; state.elevation = d.elevation; state.roast = d.roast;
       els.card.hidden = false;
       updateQtyUI(); renderTotal();
       fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant() });
@@ -204,8 +205,18 @@
   if (els.classic) els.classic.addEventListener('click', startClassic);
 
   // ── Tasting notes modal ──
+  function renderSpec() {
+    if (!els.notesSpec) return;
+    var items = [['Origin & Region', state.origin], ['Varietal', state.varietal], ['Elevation', state.elevation], ['Roast', state.roast]]
+      .filter(function (x) { return x[1]; });
+    els.notesSpec.innerHTML = items.map(function (x) {
+      return '<div class="spec-item"><span class="spec-k">' + esc(x[0]) + '</span><span class="spec-v">' + esc(x[1]) + '</span></div>';
+    }).join('');
+    els.notesSpec.hidden = items.length === 0;
+  }
   function renderNotes() {
     if (els.notesTitle) els.notesTitle.textContent = state.batchName || 'Wilhelm Cold Brew';
+    renderSpec();
     var lines = String(state.notes || DEFAULT_NOTES).split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     if (els.notesList) els.notesList.innerHTML = lines.map(function (l) {
       var parts = l.split(/\s*[—–-]\s+/);

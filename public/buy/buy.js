@@ -77,7 +77,6 @@
       stripe = Stripe(c.publishableKey);
       elements = stripe.elements({
         mode: 'payment', amount: totalCents(), currency: 'usd',
-        paymentMethodTypes: ['card', 'amazon_pay', 'link'], // no Cash App / US bank
         appearance: {
           theme: 'night',
           variables: {
@@ -100,13 +99,9 @@
         },
       });
 
-      // Express Checkout Element — Apple Pay / Google Pay / Amazon Pay / Link.
-      // Apple Pay leads automatically on Apple devices; Google Pay on Android.
-      var ece = elements.create('expressCheckout', {
-        buttonHeight: 50,
-        paymentMethods: { paypal: 'never' },
-        layout: { maxColumns: 1, maxRows: 4, overflow: 'never' },
-      });
+      // Express Checkout Element — big Apple Pay / Google Pay / Amazon Pay / Link
+      // buttons. Keep the config minimal; Stripe sizes/orders them per device.
+      var ece = elements.create('expressCheckout', { buttonHeight: 50 });
       ece.on('ready', function (e) {
         var have = e && e.availablePaymentMethods;
         if (!have) { if (els.express) els.express.hidden = true; if (els.divider) els.divider.hidden = true; }
@@ -132,7 +127,9 @@
       emailEl.mount('#email-element');
       addrEl = elements.create('address', { mode: 'shipping', allowedCountries: ['US'], fields: { phone: 'always' } });
       addrEl.mount('#address-element');
-      elements.create('payment', { layout: 'tabs' }).mount('#payment-element');
+      // Card-only fallback: hide the redundant Apple/Google Pay tabs (they're the
+      // big buttons up top), so this section is a clean card form.
+      elements.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }).mount('#payment-element');
 
       els.payBtn.addEventListener('click', function () {
         if (busy) return;

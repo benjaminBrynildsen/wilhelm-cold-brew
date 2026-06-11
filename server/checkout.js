@@ -109,10 +109,9 @@ export function mountCheckout(app) {
       const pi = await stripe.paymentIntents.create({
         amount,
         currency: 'usd',
-        // Explicit allow-list (not automatic) so we keep card + Apple/Google Pay
-        // (these ride on 'card'), Link and Amazon Pay — and drop Cash App Pay and
-        // US bank account, which we don't want on the drop.
-        payment_method_types: ['card', 'amazon_pay', 'link'],
+        // Account already has only card/Apple/Google/Link/Amazon enabled
+        // (Cash App + US bank are off), so automatic shows exactly those.
+        automatic_payment_methods: { enabled: true },
         description: `Wilhelm Cold Brew — ${qty} × 750ml`,
         metadata: {
           order_id: String(orderId), drop_id: String(d.id),

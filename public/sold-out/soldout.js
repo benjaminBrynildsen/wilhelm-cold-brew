@@ -59,7 +59,7 @@
       .catch(function () {
         busy = false;
         button.removeAttribute('aria-busy');
-        button.textContent = 'Notify me for the next drop';
+        button.textContent = 'Get the link first →';
         showErr('Something went wrong — please try again.');
       });
   });

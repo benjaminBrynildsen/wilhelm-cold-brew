@@ -171,28 +171,41 @@ export function mountAdmin(app) {
            FROM page_views WHERE created_at > $1 AND utm_source IS NOT NULL ${EXCL_PV}
           GROUP BY utm_source, utm_medium, utm_campaign, utm_content ORDER BY n DESC LIMIT 15`, [month])).rows;
 
-      // Joiners (subscribers) attributed to the last UTM-tagged page view they
-      // hit at/before signing up, matched by ip_hash. Signups don't store their
-      // own UTM, so this IP-hash join is the only attribution path. All-time
-      // (not a 30d window) because joiners are sparse.
+      // Conversion per ad (UTM): of the unique visitors who LANDED from a given
+      // source/campaign/ad, how many JOINED. This is on-page conversion, the
+      // signal X's CTR doesn't give you. Visitors = distinct ip_hash that hit
+      // the page with that UTM; joined = subscribers attributed to that UTM by
+      // their last UTM touch before signing up (same ip_hash join). All-time.
       const joinersByUtm = (await q(
-        `WITH joined AS (
-           SELECT s.id, s.created_at, s.ip_hash FROM subscribers s
-            WHERE s.ip_hash IS NOT NULL ${EXCL_PV}
+        `WITH visitors AS (
+           SELECT utm_source, utm_campaign, utm_content,
+                  COUNT(DISTINCT ip_hash)::int visitors
+             FROM page_views
+            WHERE utm_source IS NOT NULL ${EXCL_PV}
+            GROUP BY 1,2,3
          ),
          attrib AS (
-           SELECT j.id, pv.utm_source, pv.utm_medium, pv.utm_campaign, pv.utm_content,
-                  ROW_NUMBER() OVER (PARTITION BY j.id ORDER BY pv.created_at DESC) rn
-             FROM joined j
+           SELECT s.id, pv.utm_source, pv.utm_campaign, pv.utm_content,
+                  ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY pv.created_at DESC) rn
+             FROM subscribers s
              JOIN page_views pv
-               ON pv.ip_hash = j.ip_hash AND pv.created_at <= j.created_at AND pv.utm_source IS NOT NULL
+               ON pv.ip_hash = s.ip_hash AND pv.created_at <= s.created_at AND pv.utm_source IS NOT NULL
+            WHERE s.ip_hash IS NOT NULL ${EXCL_PV.replace(/ip_hash/g, 's.ip_hash')}
+         ),
+         joined AS (
+           SELECT utm_source, utm_campaign, utm_content, COUNT(*)::int joined
+             FROM attrib WHERE rn = 1 GROUP BY 1,2,3
          )
-         SELECT utm_source source, utm_medium medium, utm_campaign campaign, utm_content content, COUNT(*)::int n
-           FROM attrib WHERE rn = 1
-          GROUP BY 1,2,3,4 ORDER BY n DESC LIMIT 20`)).rows;
+         SELECT v.utm_source source, v.utm_campaign campaign, v.utm_content content,
+                v.visitors, COALESCE(j.joined, 0) joined,
+                ROUND(100.0 * COALESCE(j.joined, 0) / NULLIF(v.visitors, 0), 1)::float conv
+           FROM visitors v
+           LEFT JOIN joined j USING (utm_source, utm_campaign, utm_content)
+          ORDER BY COALESCE(j.joined,0) DESC, v.visitors DESC
+          LIMIT 25`)).rows;
       const joinersTotalRow = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
-      const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.n, 0);
+      const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.joined, 0);
       const daily = (await q(
         `SELECT date_trunc('day', created_at) AS bucket, COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
            FROM page_views WHERE created_at > NOW() - INTERVAL '14 days' ${EXCL_PV}
@@ -212,7 +225,7 @@ export function mountAdmin(app) {
         topCountries: countries.map((r) => ({ country: r.k || '??', count: r.n })),
         topPaths: paths.map((r) => ({ path: r.k, count: r.n })),
         topCampaigns: campaigns.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, content: r.content, count: r.n })),
-        joinersByUtm: joinersByUtm.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, content: r.content, count: r.n })),
+        joinersByUtm: joinersByUtm.map((r) => ({ source: r.source, campaign: r.campaign, content: r.content, visitors: r.visitors, joined: r.joined, conv: r.conv })),
         joiners: { total: joinersTotalRow.n, attributed: joinersAttributed, direct: joinersTotalRow.n - joinersAttributed },
         topCities: cities.map((r) => ({ city: r.city, region: r.region, country: r.country, count: r.n })),
         daily: daily.map((r) => ({ day: r.bucket, views: r.views, visitors: r.visitors })),

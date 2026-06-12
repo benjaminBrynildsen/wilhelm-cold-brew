@@ -58,9 +58,12 @@
         <div class="os-row os-total"><span>Total</span><span id="total-amt">$56.00</span></div>
       </div>
 
-      <!-- Express wallets (Apple Pay / Google Pay / Link) -->
+      <!-- Express wallets (Apple Pay / Google Pay / Link) — the hero path -->
       <div id="express-wrap"><div id="express-checkout"></div></div>
-      <div class="pay-divider" id="pay-divider"><span>or pay with card</span></div>
+      <!-- Card form is collapsed behind this toggle when a wallet is available,
+           so the one-tap wallet is the obvious default. JS auto-expands the card
+           form when no wallet is offered, so nobody is ever left without a path. -->
+      <button class="pay-toggle" id="pay-toggle" type="button" aria-controls="pay-wrap" aria-expanded="false" hidden>or pay with card</button>
 
       <!-- Card + shipping fallback -->
       <div id="pay-wrap">

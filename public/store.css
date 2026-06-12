@@ -146,9 +146,13 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 .qty-total span#total-amt { font-size: clamp(20px,3vw,26px); color: var(--gold); }
 
 #express-wrap { width: 100%; max-width: 420px; margin: 0 auto clamp(10px,1.6vh,14px); min-height: 4px; }
-.pay-divider { width: 100%; max-width: 420px; margin: clamp(8px,1.6vh,14px) auto; display: flex; align-items: center; gap: 12px;
-  font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.45); }
-.pay-divider::before, .pay-divider::after { content: ''; flex: 1; height: 1px; background: rgba(232,194,74,0.2); }
+/* Tappable "or pay with card" toggle that collapses the card form under the
+   wallet buttons. Keeps the flanking-line divider look but reads as a control. */
+.pay-toggle { width: 100%; max-width: 420px; margin: clamp(8px,1.6vh,14px) auto; display: flex; align-items: center; gap: 12px;
+  background: none; border: 0; cursor: pointer; padding: 6px 0;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(246,239,218,0.55); }
+.pay-toggle::before, .pay-toggle::after { content: ''; flex: 1; height: 1px; background: rgba(232,194,74,0.2); }
+.pay-toggle:hover { color: rgba(246,239,218,0.85); }
 #pay-wrap { width: 100%; max-width: 420px; margin: 0 auto; }
 .stripe-field { margin: 0 auto clamp(10px,1.6vh,14px); text-align: left; }
 #pay-card { margin-top: 4px; }

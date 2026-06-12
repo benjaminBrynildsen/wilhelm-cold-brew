@@ -9,7 +9,7 @@
     card: $('card'), batchNum: $('batch-num'), countNum: $('count-num'), countBox: $('count-box'),
     qty: $('qty'), qtyMinus: $('qty-minus'), qtyPlus: $('qty-plus'),
     total: $('total-amt'), subLabel: $('os-sub-label'), sub: $('os-sub'), ship: $('os-ship'), sticky: $('sticky-amt'),
-    express: $('express-wrap'), divider: $('pay-divider'),
+    express: $('express-wrap'), payWrap: $('pay-wrap'), payToggle: $('pay-toggle'),
     payErr: $('pay-error'), payBtn: $('pay-card'),
     classic: $('classic-checkout'),
     notesBtn: $('notes-btn'), notesModal: $('notes-modal'), notesTitle: $('notes-title'), notesList: $('notes-list'), notesSpec: $('notes-spec'),
@@ -74,6 +74,23 @@
       setTimeout(function () { node.classList.remove('field-flash'); }, 1800);
     }
     fund('pay_blocked', { field: sel.replace('#', ''), variant: variant() });
+  }
+
+  // Wallet-first layout: the card form (already mounted) starts collapsed so the
+  // one-tap Apple/Google Pay buttons are the obvious path. Visibility only — the
+  // Stripe elements are never unmounted, so the working wallet path is untouched.
+  var cardOpen = true;
+  function collapseCard() {
+    cardOpen = false;
+    if (els.payWrap) els.payWrap.hidden = true;
+    if (els.payToggle) { els.payToggle.hidden = false; els.payToggle.setAttribute('aria-expanded', 'false'); }
+  }
+  function expandCard(userInitiated) {
+    if (cardOpen) return;
+    cardOpen = true;
+    if (els.payWrap) els.payWrap.hidden = false;
+    if (els.payToggle) { els.payToggle.hidden = true; els.payToggle.setAttribute('aria-expanded', 'true'); }
+    if (userInitiated) fund('card_form_open', { variant: variant() });
   }
 
   // ── 1) Availability ──
@@ -142,10 +159,17 @@
       // Express Checkout Element — big Apple Pay / Google Pay / Amazon Pay / Link
       // buttons. Keep the config minimal; Stripe sizes/orders them per device.
       var ece = elements.create('expressCheckout', { buttonHeight: 50 });
+      var expressReady = false;
       ece.on('ready', function (e) {
+        expressReady = true;
         var have = e && e.availablePaymentMethods;
-        if (!have) { if (els.express) els.express.hidden = true; if (els.divider) els.divider.hidden = true; }
+        // No wallet on this device/browser → the card form is the only path, so
+        // reveal it and drop the toggle. Wallet present → leave it collapsed.
+        if (!have) { if (els.express) els.express.hidden = true; expandCard(false); }
       });
+      // Safety net: if the Express element never reports ready (load hiccup), don't
+      // leave the buyer staring at only a toggle — open the card form after 4s.
+      setTimeout(function () { if (!expressReady) { if (els.express) els.express.hidden = true; expandCard(false); } }, 4000);
       ece.on('click', function (event) {
         event.resolve({
           emailRequired: true, phoneNumberRequired: true,
@@ -174,6 +198,11 @@
       payEl.on('change', function (e) { ready.pay = !!e.complete; if (e.complete) clearErr(); refreshReady(); });
       payEl.mount('#payment-element');
       refreshReady();
+
+      // Everything is mounted; now collapse the card form so the wallet leads.
+      // The 'ready'/timeout handlers above re-open it if no wallet is available.
+      collapseCard();
+      if (els.payToggle) els.payToggle.addEventListener('click', function () { expandCard(true); });
 
       els.payBtn.addEventListener('click', function () {
         if (busy) return;
@@ -276,8 +305,8 @@
   // If Stripe.js / publishable key is unavailable, make the classic link the CTA.
   function degradeToClassic() {
     if (els.express) els.express.hidden = true;
-    if (els.divider) els.divider.hidden = true;
-    var payWrap = $('pay-wrap'); if (payWrap) payWrap.hidden = true;
+    if (els.payToggle) els.payToggle.hidden = true;
+    if (els.payWrap) els.payWrap.hidden = true;
     var fb = $('fallback-buy'); if (fb) { fb.hidden = false; fb.addEventListener('click', startClassic); }
   }
 })();

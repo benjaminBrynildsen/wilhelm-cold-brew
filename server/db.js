@@ -98,6 +98,13 @@ export async function ensureSchema() {
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS varietal  TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS elevation TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS roast     TEXT;
+    -- First-party ad attribution on signups (which ad/campaign drove each subscriber).
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS twclid       TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_source   TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_medium   TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_content  TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_term     TEXT;
 
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (

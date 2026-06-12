@@ -202,7 +202,7 @@ async function orderLookup(res, column, value) {
   try {
     const v = String(value || '').slice(0, 200);
     const r = await q(
-      `SELECT o.email, o.amount_total_cents, o.status, o.shipping_name, o.quantity, d.name AS drop_name
+      `SELECT o.id, o.email, o.amount_total_cents, o.status, o.shipping_name, o.quantity, d.name AS drop_name
          FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
         WHERE o.${column} = $1 LIMIT 1`, [v]);
     if (!r.rows.length) return res.status(404).json({ error: 'not_found' });

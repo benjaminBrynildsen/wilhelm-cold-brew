@@ -590,6 +590,8 @@ async function showEmail() {
       api('/api/admin/email/history' + historyQuery()),
     ]);
     const bvRows = subs.byVariant.map((r) => `<tr><td>${esc(r.variant)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
+    const byAdRows = (subs.byAd || []).map((r) =>
+      `<tr><td>${esc(r.source)}</td><td>${esc(r.campaign)}</td><td>${esc(r.content)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
     const recent = subs.recent.map((r) =>
       `<tr><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td></tr>`).join('');
     const blastHistory = blasts.blasts.length
@@ -627,6 +629,7 @@ async function showEmail() {
       </div>
       <div class="row-actions">
         <a class="btn" href="/api/admin/subscribers?format=csv">Export CSV</a>
+        <a class="btn" href="/api/admin/subscribers?format=emails">Export emails (X / Meta)</a>
         <span class="note">Friday Drop list</span>
       </div>
       <div class="grid2">
@@ -639,6 +642,9 @@ async function showEmail() {
           <table><thead><tr><th>Email</th><th>Variant</th><th>Country</th><th>Date</th></tr></thead><tbody>${recent || '<tr><td class="note" colspan="4">None yet.</td></tr>'}</tbody></table>
         </div>
       </div>
+
+      <h3>Signups by ad <span class="note">(first-party — source / campaign / ad)</span></h3>
+      <table><thead><tr><th>Source</th><th>Campaign</th><th>Ad (utm_content)</th><th class="num">Signups</th></tr></thead><tbody>${byAdRows || '<tr><td class="note" colspan="4">No tagged signups yet — tag your X ad URLs with ?utm_source=x&utm_campaign=…&utm_content=ad-name.</td></tr>'}</tbody></table>
 
       <h3>Compose the Friday blast</h3>
       <input class="fld" id="bsubj" placeholder="Subject"/>

@@ -28,6 +28,27 @@ const CONFIG = {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+// First-touch ad attribution. Reads utm_* + twclid (X click id) off the landing
+// URL and persists the FIRST one we see, so the ad that originally brought them
+// wins even if they reload or come back later. Sent with the subscribe so we can
+// report "signups by ad" first-party — immune to the iOS Safari pixel loss that
+// makes X's own per-ad numbers unreliable.
+const ATTRIB_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'twclid'];
+function attribution() {
+  const p = new URLSearchParams(location.search);
+  const fromUrl = {}; let any = false;
+  ATTRIB_KEYS.forEach((k) => { const v = p.get(k); if (v) { fromUrl[k] = v.slice(0, 200); any = true; } });
+  try {
+    if (any) {
+      if (!localStorage.getItem('wilhelm_attrib')) localStorage.setItem('wilhelm_attrib', JSON.stringify(fromUrl));
+      return fromUrl;
+    }
+    const saved = localStorage.getItem('wilhelm_attrib');
+    if (saved) return JSON.parse(saved);
+  } catch (e) {}
+  return fromUrl;
+}
+
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
 async function subscribeEmail(email, variant) {
   switch (PROVIDER) {
@@ -40,7 +61,7 @@ async function subscribeEmail(email, variant) {
       const res = await fetch(CONFIG.endpoint.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, variant }),
+        body: JSON.stringify(Object.assign({ email, variant }, attribution())),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;

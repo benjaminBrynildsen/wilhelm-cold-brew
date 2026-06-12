@@ -253,6 +253,17 @@ export function mountAdmin(app) {
         res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-friday-drop.csv"');
         return res.send(csv);
       }
+      // Emails-only export for ad platforms (X / Meta tailored audiences): a single
+      // 'email' column, one address per line, lowercased — the format they expect.
+      if (req.query?.format === 'emails') {
+        const rows = (await q(
+          `SELECT LOWER(email) email FROM subscribers
+            WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at DESC`)).rows;
+        const csv = ['email'].concat(rows.map((r) => r.email)).join('\n');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-emails-for-ads.csv"');
+        return res.send(csv);
+      }
       const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit) || 100));
       const rows = (await q(
         `SELECT email, variant, source, country, created_at FROM subscribers
@@ -262,7 +273,16 @@ export function mountAdmin(app) {
       const byVariant = (await q(
         `SELECT COALESCE(variant,'(none)') variant, COUNT(*)::int n FROM subscribers
           WHERE unsubscribed_at IS NULL ${EXCL_PV} GROUP BY variant ORDER BY n DESC`)).rows;
-      res.json({ total, last7, byVariant, recent: rows });
+      // First-party "signups by ad": which source/campaign/ad drove each subscriber.
+      const byAd = (await q(
+        `SELECT COALESCE(utm_source,'(direct)')   AS source,
+                COALESCE(utm_campaign,'(none)')    AS campaign,
+                COALESCE(utm_content,'(none)')     AS content,
+                COUNT(*)::int n
+           FROM subscribers
+          WHERE unsubscribed_at IS NULL ${EXCL_PV}
+          GROUP BY 1,2,3 ORDER BY n DESC`)).rows;
+      res.json({ total, last7, byVariant, byAd, recent: rows });
     } catch (e) { console.error('[subscribers]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -152,6 +152,18 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 #pay-wrap { width: 100%; max-width: 420px; margin: 0 auto; }
 .stripe-field { margin: 0 auto clamp(10px,1.6vh,14px); text-align: left; }
 #pay-card { margin-top: 4px; }
+/* Pay button before the form is actually complete: dimmed so it reads "finish
+   this first," but still tappable so the tap can guide them to the gap. */
+#pay-card.not-ready { opacity: 0.6; }
+/* Flash ring pulled around whichever field blocked the tap (address or card). */
+.field-flash { border-radius: 8px; animation: fieldFlash 1.8s ease both; }
+@keyframes fieldFlash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232,194,74,0); }
+  15%, 55% { box-shadow: 0 0 0 3px rgba(232,194,74,0.75); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-flash { animation: none; box-shadow: 0 0 0 2px rgba(232,194,74,0.6); }
+}
 
 /* ── Content sections below the fold ── */
 .store-section { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: clamp(40px,7vh,80px) clamp(20px,5vw,40px); text-align: center; border-top: 1px solid rgba(232,194,74,0.14); }

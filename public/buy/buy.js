@@ -29,7 +29,11 @@
   function money(c) { return '$' + (c / 100).toFixed(2); }
 
   var state = { priceCents: 4900, shipCents: 800, max: 1, qty: 1, dropId: null };
-  var stripe = null, elements = null, addrEl = null, emailEl = null, busy = false;
+  var stripe = null, elements = null, addrEl = null, emailEl = null, payEl = null, busy = false;
+  // Live completeness of the two gating fields, kept in sync via each element's
+  // 'change' event. iOS Safari autofill can populate the address visually without
+  // flipping `complete`, so we never trust appearances — only these flags.
+  var ready = { addr: false, pay: false };
 
   function totalCents() { return state.qty * state.priceCents + state.shipCents; }
   function dollars(c) { return '$' + Math.round(c / 100); }
@@ -43,10 +47,34 @@
   }
   function setBusy(b) {
     busy = b;
-    if (els.payBtn) { els.payBtn.disabled = b; els.payBtn.setAttribute('aria-busy', b ? 'true' : 'false'); if (b) els.payBtn.textContent = 'Processing…'; else renderTotal(); }
+    if (els.payBtn) {
+      els.payBtn.disabled = b; els.payBtn.setAttribute('aria-busy', b ? 'true' : 'false');
+      if (b) { els.payBtn.textContent = 'Processing…'; els.payBtn.classList.remove('not-ready'); }
+      else { renderTotal(); refreshReady(); }
+    }
   }
   function showErr(m) { if (els.payErr) { els.payErr.textContent = m; els.payErr.hidden = false; } }
   function clearErr() { if (els.payErr) els.payErr.hidden = true; }
+
+  // Reflect form readiness on the Pay button so it visibly reads "finish this
+  // first" instead of looking armed while a silent validation gate blocks it.
+  function refreshReady() {
+    if (els.payBtn && !busy) els.payBtn.classList.toggle('not-ready', !(ready.addr && ready.pay));
+  }
+  // When a tap is blocked, don't whisper an error line the buyer scrolls past —
+  // pull the offending field to center and flash a ring around it. This is the
+  // fix for the autofill trap: it sends them straight to the field that looks
+  // done but isn't, and tapping into it fires the change that flips `complete`.
+  function guide(sel, msg) {
+    showErr(msg);
+    var node = document.querySelector(sel);
+    if (node) {
+      try { node.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { node.scrollIntoView(); }
+      node.classList.add('field-flash');
+      setTimeout(function () { node.classList.remove('field-flash'); }, 1800);
+    }
+    fund('pay_blocked', { field: sel.replace('#', ''), variant: variant() });
+  }
 
   // ── 1) Availability ──
   fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
@@ -139,15 +167,23 @@
       emailEl.mount('#email-element');
       addrEl = elements.create('address', { mode: 'shipping', allowedCountries: ['US'], fields: { phone: 'always' } });
       addrEl.mount('#address-element');
+      addrEl.on('change', function (e) { ready.addr = !!e.complete; if (e.complete) clearErr(); refreshReady(); });
       // Card-only fallback: hide the redundant Apple/Google Pay tabs (they're the
       // big buttons up top), so this section is a clean card form.
-      elements.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }).mount('#payment-element');
+      payEl = elements.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } });
+      payEl.on('change', function (e) { ready.pay = !!e.complete; if (e.complete) clearErr(); refreshReady(); });
+      payEl.mount('#payment-element');
+      refreshReady();
 
       els.payBtn.addEventListener('click', function () {
         if (busy) return;
         Promise.all([addrEl.getValue(), emailEl.getValue()]).then(function (res) {
           var addr = res[0], em = res[1];
-          if (!addr.complete) { showErr('Please complete your shipping address.'); return; }
+          // Address is gated here on the authoritative getValue() (re-read live so
+          // a fresh autofill counts even if its change event never fired). The card
+          // is NOT hard-gated — elements.submit() inside pay() is the source of
+          // truth, so a lagging change event can never block a valid card.
+          if (!addr.complete) { guide('#address-element', 'Add your full shipping address to continue.'); return; }
           pay({
             shipping: { name: addr.value.name, address: addr.value.address, phone: addr.value.phone },
             email: (em.value && em.value.email) || null,
@@ -163,12 +199,19 @@
     setBusy(true); clearErr();
     fund('checkout_start', { variant: variant() });
     elements.submit().then(function (sub) {
-      if (sub.error) throw sub.error;
+      if (sub.error) {
+        // Validation gap (usually card details). Send them to the field, not a
+        // line of text they'll scroll past, and don't treat it as a hard failure.
+        setBusy(false);
+        guide('#payment-element', sub.error.message || 'Check your card details to continue.');
+        return null;
+      }
       return fetch('/api/pay/intent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity: state.qty, variant: variant(), twclid: twclid() }),
       });
     }).then(function (r) {
+      if (!r) return null; // submit() validation already handled + surfaced above
       if (r.status === 409) { location.replace('/sold-out'); return null; }
       if (!r.ok) throw new Error('Could not start payment.');
       return r.json();

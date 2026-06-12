@@ -581,6 +581,156 @@ function historyQuery() {
   return p.length ? '?' + p.join('&') : '';
 }
 
+// ───────── Email composer: visual blocks → email HTML + live preview ─────────
+const CBLOCKS = [
+  { type: 'headline', label: 'Headline' },
+  { type: 'paragraph', label: 'Paragraph' },
+  { type: 'button', label: 'Button' },
+  { type: 'image', label: 'Image' },
+  { type: 'divider', label: 'Divider' },
+];
+function cNewBlock(type) {
+  if (type === 'headline') return { type, text: 'Headline' };
+  if (type === 'paragraph') return { type, text: 'Write something…' };
+  if (type === 'button') return { type, label: 'Shop the drop', url: 'https://wilhelmcoldbrew.com/buy' };
+  if (type === 'image') return { type, url: '', link: '' };
+  return { type: 'divider' };
+}
+// One block → the cream/serif email HTML we send. Mirrors the hand-built drops.
+function cBlockHtml(b) {
+  if (b.type === 'headline') return `<p style="margin:0 0 24px;font:italic 26px/1.3 Georgia,serif;color:#241a08;">${esc(b.text || '')}</p>`;
+  if (b.type === 'paragraph') return `<p style="margin:0 0 24px;font:18px/1.55 Georgia,serif;color:#241a08;">${esc(b.text || '').replace(/\n/g, '<br/>')}</p>`;
+  if (b.type === 'button') return `<p style="margin:0 0 26px;"><a href="${esc(b.url || '#')}" style="display:inline-block;background:#241a08;color:#f6efda;padding:13px 26px;border-radius:6px;text-decoration:none;font:600 16px Georgia,serif;">${esc(b.label || 'Shop the drop')}</a></p>`;
+  if (b.type === 'image') { const im = `<img src="${esc(b.url || '')}" alt="" style="display:block;width:100%;max-width:472px;border-radius:6px;margin:0 auto 24px;"/>`; return b.link ? `<a href="${esc(b.link)}">${im}</a>` : im; }
+  if (b.type === 'divider') return `<div style="margin:0 0 24px;border-top:1px solid rgba(36,26,8,0.18);"></div>`;
+  return '';
+}
+// withFooter=true shows a faux unsubscribe line in the PREVIEW only; the real
+// send leaves it off because sendBulk appends the live footer + tracking pixel.
+function cBlocksToHtml(blocks, withFooter) {
+  const inner = (blocks || []).map(cBlockHtml).join('\n');
+  const footer = withFooter
+    ? `<p style="margin:30px 0 0;font:12px Georgia,serif;color:rgba(36,26,8,0.5);">You’re on the Wilhelm list. <a href="#" style="color:rgba(36,26,8,0.6);">Unsubscribe</a></p>` : '';
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>`
+    + `<body style="margin:0;padding:0;background:#f6efda;">`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6efda;"><tr>`
+    + `<td align="center" style="padding:40px 24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">`
+    + `<tr><td style="text-align:left;">${inner}${footer}</td></tr></table></td></tr></table></body></html>`;
+}
+function cBlockEditor(b, i) {
+  const label = (CBLOCKS.find((x) => x.type === b.type) || {}).label || b.type;
+  const head = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">`
+    + `<span class="note">${esc(label)}</span>`
+    + `<span><button class="btn ghost" data-act="up" title="Move up">↑</button> <button class="btn ghost" data-act="down" title="Move down">↓</button> <button class="btn ghost" data-act="del" title="Remove">✕</button></span></div>`;
+  let fields = '';
+  if (b.type === 'headline') fields = `<input class="fld" data-f="text" value="${esc(b.text || '')}"/>`;
+  else if (b.type === 'paragraph') fields = `<textarea class="fld" rows="3" data-f="text">${esc(b.text || '')}</textarea>`;
+  else if (b.type === 'button') fields = `<input class="fld" data-f="label" placeholder="Button text" value="${esc(b.label || '')}"/><input class="fld" data-f="url" placeholder="Link URL" value="${esc(b.url || '')}"/>`;
+  else if (b.type === 'image') fields = `<input class="fld" data-f="url" placeholder="Image URL" value="${esc(b.url || '')}"/><input class="fld" data-f="link" placeholder="Link URL (optional)" value="${esc(b.link || '')}"/>`;
+  else fields = `<div class="note">Horizontal rule.</div>`;
+  return `<div data-i="${i}" style="border:1px solid rgba(232,194,74,0.18);border-radius:8px;padding:10px;margin-bottom:8px">${head}${fields}</div>`;
+}
+// Builds the composer UI inside #composer, wires the live preview + variant send.
+function mountComposer(subs) {
+  const host = document.getElementById('composer');
+  if (!host) return;
+  state.compose = state.compose || {
+    subject: '', segment: 'all', device: 'mobile',
+    blocks: [{ type: 'headline', text: 'It’s live.' }, { type: 'paragraph', text: 'This week’s batch is open.' }],
+  };
+  const C = state.compose;
+  const vCount = {}; (subs.byVariant || []).forEach((v) => { vCount[v.variant] = v.n; });
+  const segCount = () => (C.segment === 'all' ? subs.total : (vCount[C.segment] || 0));
+
+  host.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div>
+        <input class="fld" id="bsubj" placeholder="Subject line" value="${esc(C.subject)}"/>
+        <div id="ceditor"></div>
+        <div class="row-actions" style="margin-top:10px;flex-wrap:wrap">
+          ${CBLOCKS.map((b) => `<button class="btn ghost" data-add="${b.type}">+ ${b.label}</button>`).join('')}
+        </div>
+        <hr style="border:0;border-top:1px solid rgba(232,194,74,0.15);margin:16px 0"/>
+        <label class="note">Send to
+          <select id="segment" style="${FLD_DARK}">
+            <option value="all">Everyone (${num(subs.total)})</option>
+            ${(subs.byVariant || []).map((v) => `<option value="${esc(v.variant)}" ${C.segment === v.variant ? 'selected' : ''}>${esc(v.variant)} (${num(v.n)})</option>`).join('')}
+          </select>
+        </label>
+        <div class="row-actions" style="margin-top:10px;flex-wrap:wrap">
+          <button class="btn" id="savedraft">Save draft</button>
+          <button class="btn ghost" id="sendtest">Send test to me</button>
+          <button class="btn" id="sendblast">Send to <span id="segn">${num(segCount())}</span></button>
+          <span class="note" id="emsg"></span>
+        </div>
+        <div class="note">Test goes to the from-address. Real sends are throttled and auto-append the unsubscribe footer + open tracking.</div>
+      </div>
+      <div>
+        <div class="row-actions" style="justify-content:flex-end;margin-bottom:8px">
+          <button class="btn ghost" data-dev="mobile">Mobile</button>
+          <button class="btn ghost" data-dev="desktop">Desktop</button>
+        </div>
+        <iframe id="cframe" title="Email preview" style="width:100%;max-width:390px;height:560px;border:1px solid rgba(232,194,74,0.25);border-radius:8px;background:#f6efda;display:block;margin-left:auto"></iframe>
+      </div>
+    </div>`;
+
+  function updatePreview() {
+    const f = document.getElementById('cframe');
+    if (f) { f.srcdoc = cBlocksToHtml(C.blocks, true); f.style.maxWidth = C.device === 'mobile' ? '390px' : '600px'; }
+    const sn = document.getElementById('segn'); if (sn) sn.textContent = num(segCount());
+  }
+  function bindEditor() {
+    document.querySelectorAll('#ceditor [data-f]').forEach((el) => {
+      el.addEventListener('input', (e) => {
+        const card = e.target.closest('[data-i]'); C.blocks[+card.dataset.i][e.target.dataset.f] = e.target.value; updatePreview();
+      });
+    });
+    document.querySelectorAll('#ceditor [data-act]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        const i = +e.target.closest('[data-i]').dataset.i; const act = e.target.dataset.act;
+        if (act === 'del') C.blocks.splice(i, 1);
+        else if (act === 'up' && i > 0) { C.blocks.splice(i - 1, 0, C.blocks.splice(i, 1)[0]); }
+        else if (act === 'down' && i < C.blocks.length - 1) { C.blocks.splice(i + 1, 0, C.blocks.splice(i, 1)[0]); }
+        renderEditor(); updatePreview();
+      });
+    });
+  }
+  function renderEditor() {
+    const ed = document.getElementById('ceditor');
+    ed.innerHTML = C.blocks.length ? C.blocks.map((b, i) => cBlockEditor(b, i)).join('') : '<div class="note">Add a block to begin.</div>';
+    bindEditor();
+  }
+
+  document.getElementById('bsubj').addEventListener('input', (e) => { C.subject = e.target.value; });
+  document.getElementById('segment').addEventListener('change', (e) => { C.segment = e.target.value; updatePreview(); });
+  host.querySelectorAll('[data-add]').forEach((el) => el.addEventListener('click', () => { C.blocks.push(cNewBlock(el.dataset.add)); renderEditor(); updatePreview(); }));
+  host.querySelectorAll('[data-dev]').forEach((el) => el.addEventListener('click', () => { C.device = el.dataset.dev; updatePreview(); }));
+
+  document.getElementById('savedraft').addEventListener('click', async () => {
+    const r = await api('/api/admin/email/draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject: C.subject, bodyHtml: cBlocksToHtml(C.blocks, false) }) }).catch(() => null);
+    document.getElementById('emsg').textContent = r ? 'Draft saved.' : 'Save failed.';
+  });
+  const doSend = async (test) => {
+    const msg = document.getElementById('emsg');
+    const subject = (C.subject || '').trim();
+    if (!subject || !C.blocks.length) { msg.textContent = 'Add a subject and at least one block.'; return; }
+    const seg = C.segment;
+    if (!test && !confirm(`Send "${subject}" to ${seg === 'all' ? 'everyone' : 'variant "' + seg + '"'} (${segCount()} people)?`)) return;
+    msg.textContent = test ? 'Sending test…' : 'Sending…';
+    try {
+      const body = { subject, bodyHtml: cBlocksToHtml(C.blocks, false), test };
+      if (!test && seg !== 'all') body.variant = seg;
+      const r = await api('/api/admin/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      msg.textContent = test ? 'Test sent to the from-address.' : `Sent: ${r.sent}, failed: ${r.failed} of ${r.total}.`;
+      if (!test) showEmail();
+    } catch (e) { msg.textContent = 'Send failed: ' + e.message; }
+  };
+  document.getElementById('sendtest').addEventListener('click', () => doSend(true));
+  document.getElementById('sendblast').addEventListener('click', () => doSend(false));
+
+  renderEditor(); updatePreview();
+}
+
 async function showEmail() {
   loading();
   try {
@@ -646,16 +796,8 @@ async function showEmail() {
       <h3>Signups by ad <span class="note">(first-party — source / campaign / ad)</span></h3>
       <table><thead><tr><th>Source</th><th>Campaign</th><th>Ad (utm_content)</th><th class="num">Signups</th></tr></thead><tbody>${byAdRows || '<tr><td class="note" colspan="4">No tagged signups yet — tag your X ad URLs with ?utm_source=x&utm_campaign=…&utm_content=ad-name.</td></tr>'}</tbody></table>
 
-      <h3>Compose the Friday blast</h3>
-      <input class="fld" id="bsubj" placeholder="Subject"/>
-      <textarea id="bbody" rows="6" placeholder="HTML body…"></textarea>
-      <div class="row-actions">
-        <button class="btn" id="savedraft">Save draft</button>
-        <button class="btn ghost" id="sendtest">Send test to me</button>
-        <button class="btn" id="sendblast">Send to list (${num(subs.total)})</button>
-        <span class="note" id="emsg"></span>
-      </div>
-      <div class="note">“Send test” emails only the from-address. “Send to list” blasts all ${num(subs.total)} active subscribers (throttled).</div>
+      <h3>Compose email</h3>
+      <div id="composer"></div>
 
       <h3>Blast history</h3>
       <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th></tr></thead><tbody>${blastHistory}</tbody></table>
@@ -671,35 +813,7 @@ async function showEmail() {
       <table><thead><tr><th>When</th><th>Type</th><th>To</th><th>Subject</th><th>Opened</th><th class="num">Opens</th></tr></thead><tbody>${sendRows}</tbody></table>
       <div class="note">Open rates are directional — Apple Mail &amp; Gmail prefetch images, which inflates opens. "Opened" shows time from send to first open.</div>`;
 
-    document.getElementById('savedraft').addEventListener('click', async () => {
-      const subject = document.getElementById('bsubj').value;
-      const bodyHtml = document.getElementById('bbody').value;
-      try {
-        const r = await api('/api/admin/email/draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subject, bodyHtml }) });
-        document.getElementById('emsg').textContent = `Saved (${num(r.recipientCount)} recipients).`;
-        showEmail();
-      } catch (e) { document.getElementById('emsg').textContent = 'Save failed.'; }
-    });
-    const doSend = async (test) => {
-      const subject = document.getElementById('bsubj').value.trim();
-      const bodyHtml = document.getElementById('bbody').value.trim();
-      const msg = document.getElementById('emsg');
-      if (!subject || !bodyHtml) { msg.textContent = 'Add a subject and body first.'; return; }
-      if (!test && !confirm(`Send "${subject}" to all ${num(subs.total)} subscribers?`)) return;
-      msg.textContent = test ? 'Sending test…' : 'Sending to list…';
-      try {
-        const r = await api('/api/admin/email/send', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject, bodyHtml, test }),
-        });
-        msg.textContent = test
-          ? 'Test sent to the from-address.'
-          : `Sent: ${r.sent}, failed: ${r.failed} of ${r.total}.`;
-        if (!test) showEmail();
-      } catch (e) { msg.textContent = 'Send failed: ' + e.message; }
-    };
-    document.getElementById('sendtest').addEventListener('click', () => doSend(true));
-    document.getElementById('sendblast').addEventListener('click', () => doSend(false));
+    mountComposer(subs);
     document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });
     document.getElementById('hblast').addEventListener('change', (e) => { state.emailBlast = e.target.value; showEmail(); });
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }

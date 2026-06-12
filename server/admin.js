@@ -366,8 +366,15 @@ export function mountAdmin(app) {
       } else if (test) {
         recipients = [(process.env.MAIL_FROM || 'ben@wilhelmcoldbrew.com').replace(/^.*<|>.*$/g, '')];
       } else {
+        // Optional variant targeting: send only to one split-test arm. The
+        // '(none)' bucket maps to NULL variants (it's a COALESCE display label).
+        const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
+        const params = [];
+        let vfilter = '';
+        if (variant === '(none)') { vfilter = ' AND variant IS NULL'; }
+        else if (variant) { params.push(variant); vfilter = ` AND variant = $${params.length}`; }
         recipients = (await q(
-          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at ASC`
+          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}${vfilter} ORDER BY created_at ASC`, params
         )).rows.map((r) => r.email);
       }
       if (!recipients.length) return res.status(400).json({ error: 'no recipients' });

@@ -333,11 +333,17 @@ export function mountAdmin(app) {
     const subject = String(req.body?.subject || '').trim().slice(0, 300);
     const bodyHtml = String(req.body?.bodyHtml || '').trim().slice(0, 100000);
     const test = req.query?.test === '1' || req.body?.test === true;
+    // Optional single-recipient override: send this exact email to one address
+    // (e.g. a late signup who missed the blast) without re-blasting the list.
+    const one = String(req.body?.to || '').trim().toLowerCase();
     if (!subject || !bodyHtml) return res.status(400).json({ error: 'subject and body required' });
     try {
-      // Test send goes only to the from-address; real send goes to the active list.
+      // One-off send to a single address; test → from-address; real → active list.
       let recipients;
-      if (test) {
+      if (one) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(one)) return res.status(400).json({ error: 'invalid to address' });
+        recipients = [one];
+      } else if (test) {
         recipients = [(process.env.MAIL_FROM || 'ben@wilhelmcoldbrew.com').replace(/^.*<|>.*$/g, '')];
       } else {
         recipients = (await q(
@@ -346,10 +352,16 @@ export function mountAdmin(app) {
       }
       if (!recipients.length) return res.status(400).json({ error: 'no recipients' });
 
+      // One-off (single `to`) and test sends don't get recorded as list blasts.
+      if (one || test) {
+        const result = await sendBulk(recipients, subject, bodyHtml, { blastId: null });
+        return res.json({ ok: true, test, one: !!one, ...result });
+      }
+
       const blast = await q(
         `INSERT INTO email_blasts (subject, body_html, recipient_count, status)
          VALUES ($1,$2,$3,'sending') RETURNING id`, [subject, bodyHtml, recipients.length]);
-      const result = await sendBulk(recipients, subject, bodyHtml, { blastId: test ? null : blast.rows[0].id });
+      const result = await sendBulk(recipients, subject, bodyHtml, { blastId: blast.rows[0].id });
       await q(
         `UPDATE email_blasts SET sent_count=$1, failed_count=$2, status='sent', sent_at=now() WHERE id=$3`,
         [result.sent, result.failed, blast.rows[0].id]);

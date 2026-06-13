@@ -580,6 +580,21 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[drops/rename]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Adjust a drop's bottle cap (inventory). remaining = cap - bottlesSold, so to
+  // leave N available right now, set cap = (bottles already sold) + N.
+  app.post('/api/admin/drops/:id/cap', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const cap = parseInt(req.body?.bottleCap, 10);
+      if (!(cap >= 0)) return res.status(400).json({ error: 'bottleCap must be a non-negative integer' });
+      await q(`UPDATE drops SET bottle_cap=$1 WHERE id=$2`, [cap, id]);
+      const sold = (await q(
+        `SELECT COALESCE(SUM(quantity),0)::int n FROM orders WHERE drop_id=$1 AND status='paid'`, [id])).rows[0].n;
+      res.json({ ok: true, bottleCap: cap, sold, remaining: Math.max(0, cap - sold) });
+    } catch (e) { console.error('[drops/cap]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Edit a drop's tasting-card details any time — shown in the buy-page modal.
   app.post('/api/admin/drops/:id/notes', async (req, res) => {
     if (!requireAdmin(req, res)) return;

@@ -34,6 +34,11 @@
   // 'change' event. iOS Safari autofill can populate the address visually without
   // flipping `complete`, so we never trust appearances — only these flags.
   var ready = { addr: false, pay: false };
+  // The shipping Address Element only answers getValue() reliably once it has
+  // mounted and fired 'ready'. We keep the Pay button in a "Loading…" disabled
+  // state until then, so a tap can never reach an unready element (the iOS-Safari
+  // dead-tap cause). After ready, getValue() is sub-second.
+  var addrMounted = false;
 
   function totalCents() { return state.qty * state.priceCents + state.shipCents; }
   function dollars(c) { return '$' + Math.round(c / 100); }
@@ -43,12 +48,14 @@
     if (els.ship) els.ship.textContent = dollars(state.shipCents);
     if (els.total) els.total.textContent = money(totalCents());
     if (els.sticky) els.sticky.textContent = money(totalCents());
-    if (els.payBtn) els.payBtn.textContent = 'Pay ' + money(totalCents());
+    // Until the address element is mounted the button reads "Loading…" and stays
+    // disabled; after that it shows the real total and is tappable.
+    if (els.payBtn) els.payBtn.textContent = addrMounted ? ('Pay ' + money(totalCents())) : 'Loading…';
   }
   function setBusy(b) {
     busy = b;
     if (els.payBtn) {
-      els.payBtn.disabled = b; els.payBtn.setAttribute('aria-busy', b ? 'true' : 'false');
+      els.payBtn.disabled = b || !addrMounted; els.payBtn.setAttribute('aria-busy', b ? 'true' : 'false');
       if (b) { els.payBtn.textContent = 'Processing…'; els.payBtn.classList.remove('not-ready'); }
       else { renderTotal(); refreshReady(); }
     }
@@ -190,6 +197,10 @@
       emailEl = elements.create('linkAuthentication');
       emailEl.mount('#email-element');
       addrEl = elements.create('address', { mode: 'shipping', allowedCountries: ['US'], fields: { phone: 'always' } });
+      // Hold the Pay button in a disabled "Loading…" state until the address
+      // element reports ready, so getValue() is never called on an unready form.
+      if (els.payBtn) { els.payBtn.disabled = true; els.payBtn.textContent = 'Loading…'; }
+      addrEl.on('ready', function () { addrMounted = true; if (els.payBtn && !busy) els.payBtn.disabled = false; renderTotal(); refreshReady(); });
       addrEl.mount('#address-element');
       addrEl.on('change', function (e) { ready.addr = !!e.complete; if (e.complete) clearErr(); refreshReady(); });
       // Card-only fallback: hide the redundant Apple/Google Pay tabs (they're the
@@ -209,9 +220,10 @@
         // Acknowledge the tap immediately so a slow/unready Stripe element can never
         // read as a dead button (the iOS-Safari 76-dead-taps failure mode).
         clearErr(); els.payBtn.textContent = 'Checking…';
-        // Race getValue() against a timeout: on iOS Safari the Address Element's
-        // iframe sometimes never resolves getValue(), which silently killed the tap.
-        var timeout = new Promise(function (_, rej) { setTimeout(function () { rej(new Error('elements-timeout')); }, 4000); });
+        // Backstop only: the button is disabled until the element is mounted, so
+        // getValue() resolves fast here. This generous timeout just catches a truly
+        // wedged element and routes to hosted checkout rather than hanging forever.
+        var timeout = new Promise(function (_, rej) { setTimeout(function () { rej(new Error('elements-timeout')); }, 8000); });
         Promise.race([Promise.all([addrEl.getValue(), emailEl.getValue()]), timeout]).then(function (res) {
           renderTotal(); // restore the button label
           var addr = res[0], em = res[1];

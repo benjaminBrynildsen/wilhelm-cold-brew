@@ -206,7 +206,14 @@
 
       els.payBtn.addEventListener('click', function () {
         if (busy) return;
-        Promise.all([addrEl.getValue(), emailEl.getValue()]).then(function (res) {
+        // Acknowledge the tap immediately so a slow/unready Stripe element can never
+        // read as a dead button (the iOS-Safari 76-dead-taps failure mode).
+        clearErr(); els.payBtn.textContent = 'Checking…';
+        // Race getValue() against a timeout: on iOS Safari the Address Element's
+        // iframe sometimes never resolves getValue(), which silently killed the tap.
+        var timeout = new Promise(function (_, rej) { setTimeout(function () { rej(new Error('elements-timeout')); }, 4000); });
+        Promise.race([Promise.all([addrEl.getValue(), emailEl.getValue()]), timeout]).then(function (res) {
+          renderTotal(); // restore the button label
           var addr = res[0], em = res[1];
           // Address is gated here on the authoritative getValue() (re-read live so
           // a fresh autofill counts even if its change event never fired). The card
@@ -217,6 +224,14 @@
             shipping: { name: addr.value.name, address: addr.value.address, phone: addr.value.phone },
             email: (em.value && em.value.email) || null,
           });
+        }).catch(function () {
+          // The on-page form wasn't usable (element not ready / getValue hung).
+          // NEVER leave the tap silent: surface it and hand off to hosted checkout,
+          // which is Stripe-hosted and always works.
+          renderTotal();
+          fund('pay_blocked', { field: 'elements-unready', variant: variant() });
+          showErr('Having trouble with the form — taking you to secure checkout…');
+          startClassic();
         });
       });
     }).catch(degradeToClassic);

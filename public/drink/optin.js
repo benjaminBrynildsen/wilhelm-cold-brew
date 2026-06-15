@@ -214,6 +214,16 @@ function funnel(event, props) {
   document.querySelectorAll('.contact-btn').forEach((b) =>
     b.addEventListener('click', () => funnel('contact_add', { variant: VARIANT })));
 
+  // Preview hatch: /drink?preview=success jumps straight to the success screen so
+  // the after-signup page can be reviewed without going through a real signup.
+  if (new URLSearchParams(location.search).get('preview') === 'success') {
+    document.querySelectorAll('[data-capture]').forEach((wrap) => {
+      const s = wrap.querySelector('[data-state]'), ok = wrap.querySelector('[data-success]');
+      if (s) s.hidden = true;
+      if (ok) ok.hidden = false;
+    });
+  }
+
   // Sticky "Join the Friday Drop" — appears once the hero CTA scrolls away, hides
   // at the bottom form and after converting. Taps jump to the bottom form.
   (function stickyBar() {

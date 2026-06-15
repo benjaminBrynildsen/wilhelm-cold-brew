@@ -91,15 +91,30 @@ function renderTabs() {
     t.addEventListener('click', () => { state.tab = t.dataset.tab; renderTabs(); show(state.tab); }));
 }
 
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+// True when the active window is a single calendar day (from === to).
+function isSingleDay(key = 'win') { return state[key] === 'custom' && state.customFrom && state.customFrom === state.customTo; }
 function winbar(key = 'win') {
   const sel = state[key];
   const btns = WINS.map(([k, l]) =>
     `<div class="win ${sel === k ? 'active' : ''}" data-win="${k}">${l}</div>`).join('');
+  // The day navigator shows the active single day, or today as a starting point.
+  const day = isSingleDay(key) ? state.customFrom : (state.customFrom || todayStr());
+  const dayActive = isSingleDay(key) ? ' active' : '';
+  const rangeActive = (sel === 'custom' && !isSingleDay(key)) ? ' active' : '';
   return `<div class="winbar">${btns}</div>
-    <div class="winbar" style="margin-top:-8px;align-items:center">
-      <input type="date" id="cfrom" value="${esc(state.customFrom)}" style="background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:6px 8px;color-scheme:dark"/>
-      <input type="date" id="cto" value="${esc(state.customTo)}" style="background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:6px 8px;color-scheme:dark"/>
-      <button class="win ${sel === 'custom' ? 'active' : ''}" id="capply">Custom range</button>
+    <div class="winbar">
+      <span class="winlabel">DAY</span>
+      <button class="daystep" id="dprev" aria-label="Previous day">‹</button>
+      <input type="date" id="cday" class="dateinput${dayActive}" value="${esc(day)}" max="${todayStr()}"/>
+      <button class="daystep" id="dnext" aria-label="Next day">›</button>
+    </div>
+    <div class="winbar">
+      <span class="winlabel">RANGE</span>
+      <input type="date" id="cfrom" class="dateinput" value="${esc(state.customFrom)}"/>
+      <span class="winlabel" style="min-width:0">to</span>
+      <input type="date" id="cto" class="dateinput" value="${esc(state.customTo)}"/>
+      <button class="win${rangeActive}" id="capply">Apply</button>
     </div>`;
 }
 function winQuery(key = 'win') {
@@ -109,6 +124,21 @@ function winQuery(key = 'win') {
 function wireWinbar(reload, key = 'win') {
   document.querySelectorAll('.win[data-win]').forEach((w) =>
     w.addEventListener('click', () => { state[key] = w.dataset.win; reload(); }));
+  // Day navigator: jump to / step a single day. from === to → server covers the
+  // whole UTC day (00:00:00–23:59:59), so one tap shows exactly that day.
+  const setDay = (d) => { if (!d) return; state.customFrom = d; state.customTo = d; state[key] = 'custom'; reload(); };
+  const cday = document.getElementById('cday');
+  const stepDay = (delta) => {
+    const base = (cday && cday.value) || todayStr();
+    const d = new Date(base + 'T12:00:00Z'); // noon avoids any DST/boundary slip
+    d.setUTCDate(d.getUTCDate() + delta);
+    const next = d.toISOString().slice(0, 10);
+    if (next > todayStr()) return; // don't step into the future
+    setDay(next);
+  };
+  const dprev = document.getElementById('dprev'); if (dprev) dprev.addEventListener('click', () => stepDay(-1));
+  const dnext = document.getElementById('dnext'); if (dnext) dnext.addEventListener('click', () => stepDay(1));
+  if (cday) cday.addEventListener('change', () => setDay(cday.value));
   const apply = document.getElementById('capply');
   if (apply) apply.addEventListener('click', () => {
     const f = document.getElementById('cfrom').value, t = document.getElementById('cto').value;

@@ -26,12 +26,15 @@
       var p = new URLSearchParams(location.search);
       var bg = (p.get('v') === 'light') ? 'light' : 'dark';   // dark default; light only via ?v=light
 
+      // Headline split test concluded — "on-the-list" won (tied-or-better on
+      // conversion and aligned with the winning ad hooks), so it's now the
+      // permanent default. No more 50/50 rotation. ?h=sells-out still previews
+      // the old arm for reference. localStorage is overwritten so any returning
+      // visitor (and the buy page's variant read) snaps to on-the-list too.
       var HL = ['on-the-list', 'sells-out'];
       var HKEY = 'wilhelm_drink_hl';
       var forcedH = p.get('h');
-      var hl = HL.indexOf(forcedH) >= 0 ? forcedH : null;
-      if (!hl) { try { hl = localStorage.getItem(HKEY); } catch (e) {} }
-      if (HL.indexOf(hl) < 0) { hl = HL[Math.floor(Math.random() * HL.length)]; }
+      var hl = HL.indexOf(forcedH) >= 0 ? forcedH : 'on-the-list';
       try { localStorage.setItem(HKEY, hl); } catch (e) {}
 
       window.__DRINK_HL = hl;

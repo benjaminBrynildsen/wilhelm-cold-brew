@@ -209,6 +209,11 @@ function funnel(event, props) {
   track('drink_exposure', { variant: VARIANT });
   document.querySelectorAll('.optin-form').forEach(wireForm);
 
+  // Measure adoption of the after-signup "Add us to your contacts" one-tap, so we
+  // can tie contact-saves to email open rate over time.
+  document.querySelectorAll('.contact-btn').forEach((b) =>
+    b.addEventListener('click', () => funnel('contact_add', { variant: VARIANT })));
+
   // Sticky "Join the Friday Drop" — appears once the hero CTA scrolls away, hides
   // at the bottom form and after converting. Taps jump to the bottom form.
   (function stickyBar() {

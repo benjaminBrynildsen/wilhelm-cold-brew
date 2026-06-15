@@ -122,6 +122,29 @@ app.get('/api/health', async (_req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// vCard for the after-signup "Add us to your contacts" one-tap. Served with the
+// text/vcard type so iOS/Android open the native add-contact sheet. Saving the
+// sender as a contact is the strongest deliverability signal a new subscriber
+// can give without ever opening the email — it lands the drop link in the inbox.
+app.get('/contact.vcf', (_req, res) => {
+  const vcard = [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    'N:Cold Brew;Wilhelm;;;',
+    'FN:Wilhelm Cold Brew',
+    'ORG:Wilhelm Cold Brew',
+    'EMAIL;TYPE=INTERNET;TYPE=PREF:ben@wilhelmcoldbrew.com',
+    'URL:https://wilhelmcoldbrew.com',
+    'NOTE:Friday Drop — the buy link arrives by email. Keep us in your inbox.',
+    'END:VCARD',
+    '',
+  ].join('\r\n');
+  res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
+  res.setHeader('Content-Disposition', 'inline; filename="wilhelm-cold-brew.vcf"');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(vcard);
+});
+
 // ───────── static site ─────────
 app.use(express.static(PUBLIC_DIR, {
   dotfiles: 'ignore',

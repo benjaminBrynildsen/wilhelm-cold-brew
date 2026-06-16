@@ -60,7 +60,7 @@ if (USER && PASS) {
 export function mailReady() { return !!transporter; }
 
 // ───────── Welcome email (sent on each new signup) ─────────
-const WELCOME_SUBJECT = "You're in...";
+const WELCOME_SUBJECT = "One last step so you don't miss the drop";
 
 function welcomeHtml() {
   return `<!doctype html>
@@ -75,17 +75,23 @@ function welcomeHtml() {
             <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
           </div>
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
-            <p style="margin:0 0 18px;">Welcome in.</p>
-            <p style="margin:0 0 18px;">Here's how the Friday Drop works: every <strong style="color:#8a6914;">Friday at 9AM</strong> the purchase link lands in your inbox.</p>
-            <p style="margin:0 0 18px;">We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast.</p>
+            <p style="margin:0 0 18px;">You're on the list.</p>
+            <p style="margin:0 0 18px;">One quick favor, sometimes the launch emails land in spam.</p>
+            <p style="margin:0 0 18px;">We've had people tell us they missed a drop because of it.</p>
+            <p style="margin:0 0 18px;">The email was sitting in their spam folder, and by the time they found it, the bottles were already gone.</p>
+            <p style="margin:0 0 18px;">Don't let that be you.</p>
+            <p style="margin:0 0 18px;"><strong style="color:#8a6914;">Hit reply and send a sentence or two.</strong></p>
+            <p style="margin:0 0 18px;">That reply keeps the Friday launch email out of your spam folder.</p>
+            <p style="margin:0 0 18px;">Google, Yahoo, and Microsoft treat a reply as proof you actually want us, so we land in your inbox instead of spam.</p>
+            <p style="margin:0 0 18px;">And I read every one personally.</p>
+            <p style="margin:0 0 18px;">Every <strong style="color:#8a6914;">Friday at 9AM</strong> the buy link lands in your inbox.</p>
+            <p style="margin:0 0 18px;">Fewer than 100 bottles a batch, barrel-aged and single-origin.</p>
             <p style="margin:0 0 18px;">When you see the email, move quick.</p>
             <p style="margin:0 0 18px;">Blink and they're gone.</p>
-            <p style="margin:0 0 18px;">One quick favor, and it matters more than you'd think.</p>
-            <p style="margin:0 0 18px;"><strong style="color:#8a6914;">Hitting reply to this email is what keeps the Friday drop out of your spam folder</strong> and at the top of your inbox where you'll actually see it.</p>
-            <p style="margin:0 0 18px;">So while you're here, tell me: what's your go-to coffee drink?</p>
-            <p style="margin:0 0 18px;">Whether you make it at home or grab it at your local spot.</p>
-            <p style="margin:0 0 18px;">I read every reply myself.</p>
-            <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
+            <p style="margin:0 0 22px;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
+            <p style="margin:0 0 18px;">P.S. Reply with anything you like, but I'm always curious: what's your earliest memory of drinking coffee?</p>
+            <p style="margin:0 0 18px;">For some it's a grandparent's kitchen, for others a late study session with friends at a local spot.</p>
+            <p style="margin:0;">I'd love to hear yours.</p>
           </div>
           <div style="margin-top:30px;padding-top:18px;border-top:1px solid #e2d4ad;font-family:Arial,sans-serif;font-size:11px;color:#9a8d6e;line-height:1.6;">
             You're receiving this because you joined the Wilhelm Cold Brew Friday Drop list.<br/>
@@ -100,29 +106,41 @@ function welcomeHtml() {
 
 function welcomeText() {
   return [
-    'Welcome in.',
+    "You're on the list.",
     '',
-    "Here's how the Friday Drop works: every Friday at 9AM the purchase link lands in your inbox.",
+    'One quick favor, sometimes the launch emails land in spam.',
     '',
-    'We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast.',
+    "We've had people tell us they missed a drop because of it.",
+    '',
+    'The email was sitting in their spam folder, and by the time they found it, the bottles were already gone.',
+    '',
+    "Don't let that be you.",
+    '',
+    'Hit reply and send a sentence or two.',
+    '',
+    'That reply keeps the Friday launch email out of your spam folder.',
+    '',
+    'Google, Yahoo, and Microsoft treat a reply as proof you actually want us, so we land in your inbox instead of spam.',
+    '',
+    'And I read every one personally.',
+    '',
+    'Every Friday at 9AM the buy link lands in your inbox.',
+    '',
+    'Fewer than 100 bottles a batch, barrel-aged and single-origin.',
     '',
     'When you see the email, move quick.',
     '',
     "Blink and they're gone.",
     '',
-    "One quick favor, and it matters more than you'd think.",
-    '',
-    "Hitting reply to this email is what keeps the Friday drop out of your spam folder and at the top of your inbox where you'll actually see it.",
-    '',
-    "So while you're here, tell me: what's your go-to coffee drink?",
-    '',
-    'Whether you make it at home or grab it at your local spot.',
-    '',
-    'I read every reply myself.',
-    '',
     'Talk soon,',
     'Ben',
     'Wilhelm Cold Brew',
+    '',
+    "P.S. Reply with anything you like, but I'm always curious: what's your earliest memory of drinking coffee?",
+    '',
+    "For some it's a grandparent's kitchen, for others a late study session with friends at a local spot.",
+    '',
+    "I'd love to hear yours.",
   ].join('\n');
 }
 

@@ -1,7 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
-import { mailReady, sendBulk } from './mailer.js';
+import { mailReady, sendBulk, sendWelcome } from './mailer.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
@@ -345,6 +345,16 @@ export function mountAdmin(app) {
          VALUES ($1,$2,$3,'draft') RETURNING id`, [subject, body, rc]);
       res.json({ ok: true, id: r.rows[0].id, recipientCount: rc });
     } catch (e) { console.error('[draft]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Send the real welcome email to one address to proof its formatting.
+  app.post('/api/admin/email/welcome-test', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
+    const to = String(req.body?.to || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: 'valid to address required' });
+    try { await sendWelcome(to); res.json({ ok: true, sent: to }); }
+    catch (e) { console.error('[welcome-test]', e); res.status(500).json({ error: e.message }); }
   });
 
   app.post('/api/admin/email/send', async (req, res) => {

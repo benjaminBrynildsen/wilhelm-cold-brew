@@ -75,11 +75,16 @@ function welcomeHtml() {
             <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
           </div>
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
-            <p style="margin:0 0 16px;">Welcome in. Here's how the Friday Drop works: every <strong style="color:#8a6914;">Friday at 9AM</strong> the purchase link lands in your inbox. We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast. When you see the email, move quick. Blink and they're gone.</p>
-            <p style="margin:0 0 16px;">A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.</p>
-            <p style="margin:0 0 22px;">That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.</p>
-            <p style="margin:0 0 22px;color:#6b6047;">No spam between drops. Just the Friday email when the next batch is ready.</p>
-            <p style="margin:0 0 22px;">One quick favor, and it matters more than you'd think. <strong style="color:#8a6914;">Hitting reply to this email is what keeps the Friday drop out of your spam folder</strong> and at the top of your inbox where you'll actually see it. So while you're here, tell me: what's your go-to coffee drink? Whether you make it at home or grab it at your local spot. I read every reply myself.</p>
+            <p style="margin:0 0 18px;">Welcome in.</p>
+            <p style="margin:0 0 18px;">Here's how the Friday Drop works: every <strong style="color:#8a6914;">Friday at 9AM</strong> the purchase link lands in your inbox.</p>
+            <p style="margin:0 0 18px;">We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast.</p>
+            <p style="margin:0 0 18px;">When you see the email, move quick.</p>
+            <p style="margin:0 0 18px;">Blink and they're gone.</p>
+            <p style="margin:0 0 18px;">One quick favor, and it matters more than you'd think.</p>
+            <p style="margin:0 0 18px;"><strong style="color:#8a6914;">Hitting reply to this email is what keeps the Friday drop out of your spam folder</strong> and at the top of your inbox where you'll actually see it.</p>
+            <p style="margin:0 0 18px;">So while you're here, tell me: what's your go-to coffee drink?</p>
+            <p style="margin:0 0 18px;">Whether you make it at home or grab it at your local spot.</p>
+            <p style="margin:0 0 18px;">I read every reply myself.</p>
             <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
           </div>
           <div style="margin-top:30px;padding-top:18px;border-top:1px solid #e2d4ad;font-family:Arial,sans-serif;font-size:11px;color:#9a8d6e;line-height:1.6;">
@@ -95,15 +100,25 @@ function welcomeHtml() {
 
 function welcomeText() {
   return [
-    "Welcome in. Here's how the Friday Drop works: every Friday at 9AM the purchase link lands in your inbox. We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast. When you see the email, move quick. Blink and they're gone.",
+    'Welcome in.',
     '',
-    'A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.',
+    "Here's how the Friday Drop works: every Friday at 9AM the purchase link lands in your inbox.",
     '',
-    "That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.",
+    'We make fewer than 100 bottles a batch, single-origin and bourbon-barrel-aged, and they go fast.',
     '',
-    'No spam between drops. Just the Friday email when the next batch is ready.',
+    'When you see the email, move quick.',
     '',
-    "One quick favor, and it matters more than you'd think. Hitting reply to this email is what keeps the Friday drop out of your spam folder and at the top of your inbox where you'll actually see it. So while you're here, tell me: what's your go-to coffee drink? Whether you make it at home or grab it at your local spot. I read every reply myself.",
+    "Blink and they're gone.",
+    '',
+    "One quick favor, and it matters more than you'd think.",
+    '',
+    "Hitting reply to this email is what keeps the Friday drop out of your spam folder and at the top of your inbox where you'll actually see it.",
+    '',
+    "So while you're here, tell me: what's your go-to coffee drink?",
+    '',
+    'Whether you make it at home or grab it at your local spot.',
+    '',
+    'I read every reply myself.',
     '',
     'Talk soon,',
     'Ben',

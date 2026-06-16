@@ -79,6 +79,7 @@ function welcomeHtml() {
             <p style="margin:0 0 16px;">A little on the name. Wilhelm was my great-great-grandfather. He crossed from Norway with his wife and a few kids and almost nothing else, set up shop on Court Street in Brooklyn, and made his living first by hand-stitching gloves, then by turning that same shop into a music studio where all eight of his sons learned an instrument. A whole house built on patience and craft.</p>
             <p style="margin:0 0 22px;">That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.</p>
             <p style="margin:0 0 22px;color:#6b6047;">No spam between drops. Just the Friday email when the next batch is ready.</p>
+            <p style="margin:0 0 22px;">One quick favor, and it matters more than you'd think. <strong style="color:#8a6914;">Hitting reply to this email is what keeps the Friday drop out of your spam folder</strong> and at the top of your inbox where you'll actually see it. So while you're here, tell me: what's your go-to coffee drink? Whether you make it at home or grab it at your local spot. I read every reply myself.</p>
             <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
           </div>
           <div style="margin-top:30px;padding-top:18px;border-top:1px solid #e2d4ad;font-family:Arial,sans-serif;font-size:11px;color:#9a8d6e;line-height:1.6;">
@@ -101,6 +102,8 @@ function welcomeText() {
     "That's the same idea in every bottle: small batches, no shortcuts, and a roast that changes week to week so there's always a reason to come back. No alcohol, just the deep barrel-aged character.",
     '',
     'No spam between drops. Just the Friday email when the next batch is ready.',
+    '',
+    "One quick favor, and it matters more than you'd think. Hitting reply to this email is what keeps the Friday drop out of your spam folder and at the top of your inbox where you'll actually see it. So while you're here, tell me: what's your go-to coffee drink? Whether you make it at home or grab it at your local spot. I read every reply myself.",
     '',
     'Talk soon,',
     'Ben',

@@ -262,6 +262,16 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 .success .contact-btn:active { transform: translateY(1px); }
 .success .contact-sub { font-family: var(--body); font-size: clamp(12px, 1.7vh, 13px); line-height: 1.45; color: rgba(232,217,181,0.6); margin: 0; max-width: 320px; }
 
+/* Numbered "3 quick steps" confirmation flow (move from spam, add contact, reply). */
+.success .steps-intro { font-family: var(--body); font-size: clamp(14px, 2vh, 16px); color: rgba(232,217,181,0.85); margin: 2px auto 6px; max-width: 380px; }
+.success .steps { width: 100%; max-width: 380px; margin: 4px auto 0; display: flex; flex-direction: column; gap: clamp(14px, 2.4vh, 20px); text-align: left; }
+.success .step { display: flex; gap: 14px; align-items: flex-start; }
+.success .step-n { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 700; font-size: 15px; }
+.success .step-b { flex: 1 1 auto; min-width: 0; }
+.success .step-t { font-family: var(--display); font-weight: 700; font-size: clamp(15px, 2.1vh, 17px); color: var(--parchment); margin: 0 0 4px; }
+.success .step-d { font-family: var(--body); font-size: clamp(13px, 1.8vh, 14px); line-height: 1.45; color: rgba(232,217,181,0.7); margin: 0; }
+.success .step .contact-btn { height: clamp(42px, 6vh, 48px); line-height: clamp(42px, 6vh, 48px); font-size: clamp(14px, 2vh, 16px); margin-top: 2px; box-shadow: 0 4px 16px rgba(232,194,74,0.22); }
+
 @media (prefers-reduced-motion: reduce) {
   .droptag .dot { animation: none; }
   .success { animation: none; }

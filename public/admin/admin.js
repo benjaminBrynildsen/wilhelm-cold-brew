@@ -772,8 +772,14 @@ async function showEmail() {
     const bvRows = subs.byVariant.map((r) => `<tr><td>${esc(r.variant)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
     const byAdRows = (subs.byAd || []).map((r) =>
       `<tr><td>${esc(r.source)}</td><td>${esc(r.campaign)}</td><td>${esc(r.content)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
-    const recent = subs.recent.map((r) =>
-      `<tr><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td></tr>`).join('');
+    // Recent signups can run to 100 rows — collapse to a preview with a toggle so
+    // the rest of the email tab isn't buried below a long list.
+    const RECENT_PREVIEW = 10;
+    const recent = subs.recent.map((r, i) =>
+      `<tr${i >= RECENT_PREVIEW ? ' class="recent-extra" hidden' : ''}><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td></tr>`).join('');
+    const recentToggle = subs.recent.length > RECENT_PREVIEW
+      ? `<button class="btn ghost" id="recent-toggle" data-expanded="0">Show all ${num(subs.recent.length)} ↓</button>`
+      : '';
     const blastHistory = blasts.blasts.length
       ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.recipient_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td></tr>`).join('')
       : '<tr><td class="note" colspan="5">No blasts yet.</td></tr>';
@@ -820,6 +826,7 @@ async function showEmail() {
         <div>
           <h3>Recent signups</h3>
           <table><thead><tr><th>Email</th><th>Variant</th><th>Country</th><th>Date</th></tr></thead><tbody>${recent || '<tr><td class="note" colspan="4">None yet.</td></tr>'}</tbody></table>
+          ${recentToggle}
         </div>
       </div>
 
@@ -846,5 +853,12 @@ async function showEmail() {
     mountComposer(subs);
     document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });
     document.getElementById('hblast').addEventListener('change', (e) => { state.emailBlast = e.target.value; showEmail(); });
+    const recentToggleBtn = document.getElementById('recent-toggle');
+    if (recentToggleBtn) recentToggleBtn.addEventListener('click', () => {
+      const expanded = recentToggleBtn.dataset.expanded === '1';
+      document.querySelectorAll('.recent-extra').forEach((tr) => { tr.hidden = expanded; });
+      recentToggleBtn.dataset.expanded = expanded ? '0' : '1';
+      recentToggleBtn.textContent = expanded ? `Show all ${num(subs.recent.length)} ↓` : 'Show less ↑';
+    });
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

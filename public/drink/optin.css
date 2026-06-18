@@ -93,7 +93,10 @@ body::before {
 @media (min-width: 760px) {
   .optin-hero { align-items: center; padding-top: calc(clamp(40px, 6vh, 72px) + env(safe-area-inset-top, 0px)); padding-bottom: clamp(20px, 3vh, 40px); }
   .optin-image { margin: clamp(14px, 2vh, 22px) auto; }
-  .optin-image img { max-height: 40vh; width: auto; max-width: 100%; }
+  /* Cap the height on desktop, but keep BOTH dimensions auto so the photo scales
+     proportionally. The extra specificity beats the later base rule (.optin-image
+     img { width:100% }); without it, width:100% + max-height squishes the image. */
+  .optin-hero .optin-image img { width: auto; height: auto; max-height: 40vh; max-width: 100%; }
   .sub-bullets { margin-bottom: clamp(12px, 2vh, 20px); }
 }
 

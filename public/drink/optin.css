@@ -96,7 +96,7 @@ body::before {
   /* Cap the height on desktop, but keep BOTH dimensions auto so the photo scales
      proportionally. The extra specificity beats the later base rule (.optin-image
      img { width:100% }); without it, width:100% + max-height squishes the image. */
-  .optin-hero .optin-image img { width: auto; height: auto; max-height: 40vh; max-width: 100%; }
+  .optin-hero .optin-image img { width: auto; height: auto; max-height: 40vh; max-width: 100%; margin-inline: auto; }
   .sub-bullets { margin-bottom: clamp(12px, 2vh, 20px); }
 }
 

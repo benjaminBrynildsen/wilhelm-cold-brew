@@ -5,14 +5,18 @@ import { q } from './db.js';
 
 const SITE = process.env.SITE_URL || 'https://wilhelmcoldbrew.com';
 
-// Register a send and return its open-tracking token.
-async function registerSend(email, kind, blastId) {
-  const token = crypto.randomBytes(16).toString('hex');
+// A send is tracked by an open-tracking token. We mint the token up front (it's
+// embedded in the email as the pixel + unsubscribe link), but only write the
+// email_sends row AFTER the message actually goes out — so "Send history"
+// reflects real deliveries, not attempts. (Previously the row was written before
+// sending, so a failed sendMail left a phantom "sent" row that was never
+// delivered — the Batch 58 failure mode.)
+const mkToken = () => crypto.randomBytes(16).toString('hex');
+async function recordSend(token, email, kind, blastId) {
   try {
     await q(`INSERT INTO email_sends (token, email, kind, blast_id) VALUES ($1,$2,$3,$4)`,
       [token, email, kind, blastId || null]);
-  } catch (e) { console.warn('[mail] registerSend failed:', e?.message || e); }
-  return token;
+  } catch (e) { console.warn('[mail] recordSend failed:', e?.message || e); }
 }
 const unsubUrl = (token) => `${SITE}/api/unsubscribe?t=${token}`;
 const unsubHeaders = (token) => ({
@@ -146,7 +150,7 @@ function welcomeText() {
 
 export async function sendWelcome(to) {
   if (!transporter) { console.warn('[mail] skip welcome (SMTP not configured):', to); return; }
-  const token = await registerSend(to, 'welcome', null);
+  const token = mkToken();
   await transporter.sendMail({
     from: FROM,
     to,
@@ -155,6 +159,7 @@ export async function sendWelcome(to) {
     text: welcomeText() + '\n\nUnsubscribe: ' + unsubUrl(token),
     headers: unsubHeaders(token),
   });
+  await recordSend(token, to, 'welcome', null);
   console.log('[mail] welcome sent to', to);
 }
 
@@ -235,12 +240,13 @@ function orderText({ amountCents, shippingName, dropName }) {
 
 export async function sendOrderConfirmation(to, meta = {}) {
   if (!transporter) { console.warn('[mail] skip order confirmation (SMTP not configured):', to); return; }
-  const token = await registerSend(to, 'order', null);
+  const token = mkToken();
   await transporter.sendMail({
     from: FROM, to, subject: ORDER_SUBJECT,
     html: finalize(orderHtml(meta), token),
     text: orderText(meta),
   });
+  await recordSend(token, to, 'order', null);
   console.log('[mail] order confirmation sent to', to);
 }
 
@@ -277,26 +283,40 @@ const htmlToText = (html) => String(html).replace(/<style[\s\S]*?<\/style>/gi, '
 export async function sendBulk(recipients, subject, html, opts) {
   if (!transporter) throw new Error('SMTP not configured');
   const delayMs = (opts && opts.delayMs) || 600;
-  const cap = (opts && opts.cap) || 400; // safety ceiling per run
+  // Safety ceiling per run — high enough to cover the whole list in one go.
+  // (Was 400, which silently dropped everyone past the oldest 400 subscribers.)
+  const cap = (opts && opts.cap) || 5000;
   const blastId = opts && opts.blastId;
+  const onProgress = opts && opts.onProgress;
   const text = htmlToText(html);
   const results = [];
   let sent = 0, failed = 0;
   const n = Math.min(recipients.length, cap);
   for (let i = 0; i < n; i++) {
     const to = recipients[i];
+    const token = mkToken();
+    const send = () => transporter.sendMail({
+      from: FROM, to, subject,
+      html: finalize(html + blastFooter(token), token),
+      text: text + '\n\nUnsubscribe: ' + unsubUrl(token),
+      headers: unsubHeaders(token),
+    });
     try {
-      const token = await registerSend(to, 'blast', blastId);
-      await transporter.sendMail({
-        from: FROM, to, subject,
-        html: finalize(html + blastFooter(token), token),
-        text: text + '\n\nUnsubscribe: ' + unsubUrl(token),
-        headers: unsubHeaders(token),
-      });
+      try {
+        await send();
+      } catch (e1) {
+        // One retry after a longer pause — most bulk failures are transient
+        // SMTP rate-limits / dropped connections, which a brief backoff clears.
+        await wait(3000);
+        await send();
+      }
+      // Only now — after the message is genuinely out — record it as sent.
+      await recordSend(token, to, 'blast', blastId);
       sent++; results.push({ to, ok: true });
     } catch (e) {
       failed++; results.push({ to, ok: false, error: e.message });
     }
+    if (onProgress) { try { onProgress({ sent, failed, i: i + 1, n }); } catch (_) {} }
     if (i < n - 1) await wait(delayMs);
   }
   return { sent, failed, attempted: n, total: recipients.length, results };

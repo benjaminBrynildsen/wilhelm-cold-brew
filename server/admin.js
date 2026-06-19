@@ -42,6 +42,32 @@ function windows(req) {
   return wins;
 }
 
+// Fire a blast in the background and finalize its email_blasts row when done.
+// Detaching the throttled send from the HTTP request means a slow run can't be
+// cut short by a request timeout — the failure mode that left Batch 58 only
+// partly delivered. Progress lands in the blast's sent/failed counts (visible in
+// Blast history). Recipients are recorded to email_sends only on actual success.
+async function runBlast(blastId, recipients, subject, bodyHtml) {
+  try {
+    const result = await sendBulk(recipients, subject, bodyHtml, {
+      blastId,
+      onProgress: ({ sent, failed, i, n }) => {
+        // Live counter, throttled so we don't write on every single email.
+        if (i % 20 === 0 || i === n) {
+          q(`UPDATE email_blasts SET sent_count=$1, failed_count=$2 WHERE id=$3`,
+            [sent, failed, blastId]).catch(() => {});
+        }
+      },
+    });
+    await q(`UPDATE email_blasts SET sent_count=$1, failed_count=$2, status='sent', sent_at=now() WHERE id=$3`,
+      [result.sent, result.failed, blastId]);
+    console.log(`[blast ${blastId}] done: sent ${result.sent}, failed ${result.failed} of ${result.total}`);
+  } catch (e) {
+    console.error(`[blast ${blastId}] failed:`, e?.message || e);
+    await q(`UPDATE email_blasts SET status='failed' WHERE id=$1`, [blastId]).catch(() => {});
+  }
+}
+
 export function mountAdmin(app) {
   app.post('/api/admin/login', (req, res) => {
     const pw = String(req.body?.password || '');
@@ -398,13 +424,62 @@ export function mountAdmin(app) {
       const blast = await q(
         `INSERT INTO email_blasts (subject, body_html, recipient_count, status)
          VALUES ($1,$2,$3,'sending') RETURNING id`, [subject, bodyHtml, recipients.length]);
-      const result = await sendBulk(recipients, subject, bodyHtml, { blastId: blast.rows[0].id });
-      await q(
-        `UPDATE email_blasts SET sent_count=$1, failed_count=$2, status='sent', sent_at=now() WHERE id=$3`,
-        [result.sent, result.failed, blast.rows[0].id]);
-      res.json({ ok: true, test, ...result });
+      // Send in the background and return right away — the list is throttled
+      // (~600ms/email), so a few hundred recipients would otherwise outlast the
+      // request. Watch progress in Blast history.
+      runBlast(blast.rows[0].id, recipients, subject, bodyHtml);
+      res.json({ ok: true, started: true, recipientCount: recipients.length });
     } catch (e) {
       console.error('[email/send]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Re-send an existing blast (reuses its exact stored subject + body), so a
+  // partly-delivered blast can be completed without rebuilding it.
+  //   mode 'missed' (default): skip anyone who PROVABLY got it (they opened it);
+  //                            everyone else on the active list gets it — this
+  //                            guarantees the people who missed it are covered.
+  //   mode 'all':              re-send to the entire active list.
+  app.post('/api/admin/email/blasts/:id/resend', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!mailReady()) return res.status(501).json({ error: 'email not configured — set SMTP creds first' });
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'bad blast id' });
+    const mode = req.body?.mode === 'all' ? 'all' : 'missed';
+    try {
+      const b = (await q(`SELECT id, subject, body_html FROM email_blasts WHERE id=$1`, [id])).rows[0];
+      if (!b) return res.status(404).json({ error: 'blast not found' });
+      if (!b.body_html) return res.status(400).json({ error: 'this blast has no stored body to resend' });
+
+      let recipients;
+      if (mode === 'missed') {
+        // Exclude only addresses we can prove were delivered (an open = proof).
+        // Phantom/failed history rows have no open, so those people are included.
+        recipients = (await q(
+          `SELECT email FROM subscribers
+            WHERE unsubscribed_at IS NULL ${EXCL_PV}
+              AND LOWER(email) NOT IN (
+                SELECT LOWER(email) FROM email_sends
+                 WHERE blast_id = $1 AND first_open_at IS NOT NULL)
+            ORDER BY created_at ASC`, [id])).rows.map((r) => r.email);
+      } else {
+        recipients = (await q(
+          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at ASC`
+        )).rows.map((r) => r.email);
+      }
+      if (!recipients.length) return res.status(400).json({ error: 'no recipients match — everyone has already opened this blast' });
+
+      // Record the resend as its own blast row so its opens track separately and
+      // the original blast's numbers stay intact.
+      const subject = b.subject || '(no subject)';
+      const blast = await q(
+        `INSERT INTO email_blasts (subject, body_html, recipient_count, status)
+         VALUES ($1,$2,$3,'sending') RETURNING id`, [subject, b.body_html, recipients.length]);
+      runBlast(blast.rows[0].id, recipients, subject, b.body_html);
+      res.json({ ok: true, started: true, mode, recipientCount: recipients.length, fromBlast: id, newBlast: blast.rows[0].id });
+    } catch (e) {
+      console.error('[email/resend]', e);
       res.status(500).json({ error: e.message });
     }
   });

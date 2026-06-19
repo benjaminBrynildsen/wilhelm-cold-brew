@@ -751,8 +751,8 @@ function mountComposer(subs) {
       const body = { subject, bodyHtml: cBlocksToHtml(C.blocks, false), test };
       if (!test && seg !== 'all') body.variant = seg;
       const r = await api('/api/admin/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      msg.textContent = test ? 'Test sent to the from-address.' : `Sent: ${r.sent}, failed: ${r.failed} of ${r.total}.`;
-      if (!test) showEmail();
+      msg.textContent = test ? 'Test sent to the from-address.' : `Sending to ${num(r.recipientCount || 0)} — watch Blast history for progress.`;
+      if (!test) setTimeout(showEmail, 800);
     } catch (e) { msg.textContent = 'Send failed: ' + e.message; }
   };
   document.getElementById('sendtest').addEventListener('click', () => doSend(true));
@@ -781,8 +781,8 @@ async function showEmail() {
       ? `<button class="btn ghost" id="recent-toggle" data-expanded="0">Show all ${num(subs.recent.length)} ↓</button>`
       : '';
     const blastHistory = blasts.blasts.length
-      ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.recipient_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td></tr>`).join('')
-      : '<tr><td class="note" colspan="5">No blasts yet.</td></tr>';
+      ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.recipient_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td><td><button class="btn ghost bresend" data-id="${b.id}" data-subject="${esc(b.subject || '(no subject)')}">Resend…</button></td></tr>`).join('')
+      : '<tr><td class="note" colspan="6">No blasts yet.</td></tr>';
     const wel = blasts.welcome || { sent: 0, opened: 0 };
 
     // Open-rate-by-type summary + per-send history.
@@ -837,7 +837,8 @@ async function showEmail() {
       <div id="composer"></div>
 
       <h3>Blast history</h3>
-      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th></tr></thead><tbody>${blastHistory}</tbody></table>
+      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th><th></th></tr></thead><tbody>${blastHistory}</tbody></table>
+      <div class="note" id="resend-msg"></div>
 
       <h3>Open rate by type</h3>
       <table><thead><tr><th>Type</th><th class="num">Sent</th><th class="num">Opened</th><th class="num">Open rate</th></tr></thead><tbody>${kindRows}</tbody></table>
@@ -860,5 +861,21 @@ async function showEmail() {
       recentToggleBtn.dataset.expanded = expanded ? '0' : '1';
       recentToggleBtn.textContent = expanded ? `Show all ${num(subs.recent.length)} ↓` : 'Show less ↑';
     });
+    const rmsg = document.getElementById('resend-msg');
+    document.querySelectorAll('.bresend').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.id, subj = btn.dataset.subject;
+      // First prompt picks the audience, second confirms it.
+      const missed = confirm(`Resend "${subj}"?\n\nOK  = only people who haven't opened it (recommended — reaches the ones who missed it)\nCancel = send to EVERYONE on the list again`);
+      const mode = missed ? 'missed' : 'all';
+      if (!confirm(`Confirm: resend "${subj}" to ${missed ? "everyone who hasn't opened it yet" : 'the ENTIRE active list (all get it again)'}?`)) return;
+      rmsg.textContent = 'Starting resend…';
+      try {
+        const r = await api(`/api/admin/email/blasts/${id}/resend`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }),
+        });
+        rmsg.textContent = `Resending to ${num(r.recipientCount || 0)} (${mode === 'all' ? 'everyone' : 'non-openers'}) — watch Blast history for progress.`;
+        setTimeout(showEmail, 1000);
+      } catch (e) { rmsg.textContent = 'Resend failed: ' + e.message; }
+    }));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

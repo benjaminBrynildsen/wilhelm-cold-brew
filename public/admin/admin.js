@@ -671,6 +671,14 @@ function mountComposer(subs) {
   const C = state.compose;
   const vCount = {}; (subs.byVariant || []).forEach((v) => { vCount[v.variant] = v.n; });
   const segCount = () => (C.segment === 'all' ? subs.total : (vCount[C.segment] || 0));
+  // Parse the optional "specific addresses" box into a deduped list.
+  const parseList = () => {
+    const seen = new Set();
+    (C.list || '').split(/[\s,;]+/).forEach((s) => { const e = s.trim().toLowerCase(); if (e) seen.add(e); });
+    return Array.from(seen);
+  };
+  const usingList = () => parseList().length > 0;
+  const targetCount = () => (usingList() ? parseList().length : segCount());
 
   host.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
@@ -687,10 +695,13 @@ function mountComposer(subs) {
             ${(subs.byVariant || []).map((v) => `<option value="${esc(v.variant)}" ${C.segment === v.variant ? 'selected' : ''}>${esc(v.variant)} (${num(v.n)})</option>`).join('')}
           </select>
         </label>
+        <label class="note" style="display:block;margin-top:10px">Or send to specific addresses — overrides the menu above
+          <textarea id="blist" rows="3" placeholder="alice@example.com, bob@example.com&#10;(comma, space, or newline separated)" style="${FLD_DARK};width:100%;resize:vertical;margin-top:6px">${esc(C.list || '')}</textarea>
+        </label>
         <div class="row-actions" style="margin-top:10px;flex-wrap:wrap">
           <button class="btn" id="savedraft">Save draft</button>
           <button class="btn ghost" id="sendtest">Send test to me</button>
-          <button class="btn" id="sendblast">Send to <span id="segn">${num(segCount())}</span></button>
+          <button class="btn" id="sendblast">Send to <span id="segn">${num(targetCount())}</span></button>
           <span class="note" id="emsg"></span>
         </div>
         <div class="note">Test goes to the from-address. Real sends are throttled and auto-append the unsubscribe footer + open tracking.</div>
@@ -707,7 +718,8 @@ function mountComposer(subs) {
   function updatePreview() {
     const f = document.getElementById('cframe');
     if (f) { f.srcdoc = cBlocksToHtml(C.blocks, true); f.style.maxWidth = C.device === 'mobile' ? '390px' : '600px'; }
-    const sn = document.getElementById('segn'); if (sn) sn.textContent = num(segCount());
+    const sn = document.getElementById('segn'); if (sn) sn.textContent = num(targetCount());
+    const seg = document.getElementById('segment'); if (seg) seg.disabled = usingList();
   }
   function bindEditor() {
     document.querySelectorAll('#ceditor [data-f]').forEach((el) => {
@@ -733,6 +745,7 @@ function mountComposer(subs) {
 
   document.getElementById('bsubj').addEventListener('input', (e) => { C.subject = e.target.value; });
   document.getElementById('segment').addEventListener('change', (e) => { C.segment = e.target.value; updatePreview(); });
+  document.getElementById('blist').addEventListener('input', (e) => { C.list = e.target.value; updatePreview(); });
   host.querySelectorAll('[data-add]').forEach((el) => el.addEventListener('click', () => { C.blocks.push(cNewBlock(el.dataset.add)); renderEditor(); updatePreview(); }));
   host.querySelectorAll('[data-dev]').forEach((el) => el.addEventListener('click', () => { C.device = el.dataset.dev; updatePreview(); }));
 
@@ -745,11 +758,16 @@ function mountComposer(subs) {
     const subject = (C.subject || '').trim();
     if (!subject || !C.blocks.length) { msg.textContent = 'Add a subject and at least one block.'; return; }
     const seg = C.segment;
-    if (!test && !confirm(`Send "${subject}" to ${seg === 'all' ? 'everyone' : 'variant "' + seg + '"'} (${segCount()} people)?`)) return;
+    const list = parseList();
+    const target = list.length
+      ? `${list.length} specific address${list.length === 1 ? '' : 'es'}`
+      : `${seg === 'all' ? 'everyone' : 'variant "' + seg + '"'} (${segCount()} people)`;
+    if (!test && !confirm(`Send "${subject}" to ${target}?`)) return;
     msg.textContent = test ? 'Sending test…' : 'Sending…';
     try {
       const body = { subject, bodyHtml: cBlocksToHtml(C.blocks, false), test };
-      if (!test && seg !== 'all') body.variant = seg;
+      if (!test && list.length) body.recipients = list;
+      else if (!test && seg !== 'all') body.variant = seg;
       const r = await api('/api/admin/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       msg.textContent = test ? 'Test sent to the from-address.' : `Sending to ${num(r.recipientCount || 0)} — watch Blast history for progress.`;
       if (!test) setTimeout(showEmail, 800);

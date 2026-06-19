@@ -393,6 +393,25 @@ export function mountAdmin(app) {
     // (e.g. a late signup who missed the blast) without re-blasting the list.
     const one = String(req.body?.to || '').trim().toLowerCase();
     if (!subject || !bodyHtml) return res.status(400).json({ error: 'subject and body required' });
+
+    // Optional explicit recipient list — send to exactly these addresses
+    // (e.g. a glitch/apology notice to a specific group). Accepts an array or a
+    // string separated by commas / semicolons / whitespace / newlines.
+    let customList = null;
+    if (req.body?.recipients != null && req.body.recipients !== '' && !test && !one) {
+      const raw = Array.isArray(req.body.recipients) ? req.body.recipients.join(',') : String(req.body.recipients);
+      const seen = new Set();
+      const bad = [];
+      customList = [];
+      raw.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean).forEach((e) => {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { bad.push(e); return; }
+        if (!seen.has(e)) { seen.add(e); customList.push(e); }
+      });
+      if (bad.length) return res.status(400).json({ error: `invalid address(es): ${bad.slice(0, 5).join(', ')}${bad.length > 5 ? '…' : ''}` });
+      if (!customList.length) return res.status(400).json({ error: 'no valid addresses in the list' });
+      if (customList.length > 2000) return res.status(400).json({ error: 'list too large (max 2000)' });
+    }
+
     try {
       // One-off send to a single address; test → from-address; real → active list.
       let recipients;
@@ -401,6 +420,8 @@ export function mountAdmin(app) {
         recipients = [one];
       } else if (test) {
         recipients = [(process.env.MAIL_FROM || 'ben@wilhelmcoldbrew.com').replace(/^.*<|>.*$/g, '')];
+      } else if (customList) {
+        recipients = customList;
       } else {
         // Optional variant targeting: send only to one split-test arm. The
         // '(none)' bucket maps to NULL variants (it's a COALESCE display label).

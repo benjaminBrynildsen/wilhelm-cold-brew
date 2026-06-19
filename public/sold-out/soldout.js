@@ -14,10 +14,14 @@
 
   fund('soldout_view', { variant: variant() });
 
+  // The drop this visitor just missed — tags the demand vote to the right batch.
+  var soldOutDropId = null;
+
   // Show the real next-drop date if one is scheduled.
   fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      if (d && d.dropId != null) soldOutDropId = d.dropId;
       if (d && d.nextDropAt && nextDate) {
         var dt = new Date(d.nextDropAt);
         var s = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -44,7 +48,7 @@
       if (done) return;
       done = true;
       var choice = btn.getAttribute('data-fb');
-      fund('soldout_demand', { choice: choice, variant: variant() });
+      fund('soldout_demand', { choice: choice, variant: variant(), dropId: soldOutDropId });
       // High-intent "would have bought" is a strong lead — fire the X pixel too.
       if (choice === 'would_buy') { try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {} }
       var m = MSG[choice] || MSG.just_looking;

@@ -630,11 +630,14 @@ export function mountAdmin(app) {
         if (selected) selected.remaining = Math.max(0, selected.bottle_cap - selected.sold);
       }
       // Missed-drop demand signal from the sold-out page (one vote per session).
+      // Scoped to the selected drop when one is chosen; votes recorded before we
+      // started tagging the drop (no dropId) only show under "All drops".
       const demandRows = (await q(
         `SELECT data->>'choice' AS choice, COUNT(DISTINCT session_id)::int n
            FROM journey_events
           WHERE event = 'soldout_demand' AND data->>'choice' IS NOT NULL ${EXCL_JE}
-          GROUP BY 1`)).rows;
+            AND ($1::int IS NULL OR data->>'dropId' = $1::text)
+          GROUP BY 1`, [dropId])).rows;
       const demand = { wouldBuy: 0, justLooking: 0 };
       for (const r of demandRows) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;

@@ -17,7 +17,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: '' };
 
 const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
@@ -477,8 +477,13 @@ function dropActions(d) {
 async function showOrders() {
   loading();
   try {
-    const [o, dd] = await Promise.all([api('/api/admin/orders'), api('/api/admin/drops')]);
-    const live = o.liveDrop;
+    const dropQ = state.ordersDrop ? ('?dropId=' + encodeURIComponent(state.ordersDrop)) : '';
+    const [o, dd] = await Promise.all([api('/api/admin/orders' + dropQ), api('/api/admin/drops')]);
+    // Card stats follow the selected drop (or the live one when viewing all).
+    const shown = o.selected || o.liveDrop;
+    const scoped = !!state.ordersDrop;
+    const dropOpts = `<option value="">All drops</option>` + dd.drops.map((d) =>
+      `<option value="${d.id}" ${String(state.ordersDrop) === String(d.id) ? 'selected' : ''}>${esc(d.name || '(unnamed)')}</option>`).join('');
     const orderRows = o.orders.length
       ? o.orders.map((r) => `<tr>
           <td>${esc((r.created_at || '').slice(0, 10))}</td>
@@ -499,11 +504,15 @@ async function showOrders() {
       : '<tr><td class="note" colspan="6">No drops yet — create one below.</td></tr>';
 
     content().innerHTML = `
+      <div class="row-actions" style="margin-bottom:14px;align-items:center">
+        <label class="note">Viewing <select id="ordersDrop" style="${FLD_DARK}">${dropOpts}</select></label>
+        ${scoped ? '<span class="note">Paid orders &amp; revenue below are for this drop only.</span>' : '<span class="note">Paid orders &amp; revenue below are all-time across every drop.</span>'}
+      </div>
       <div class="cards">
-        <div class="card"><div class="k">Paid orders</div><div class="v">${num(o.paid)}</div></div>
-        <div class="card"><div class="k">Revenue</div><div class="v">${money(o.revenueCents)}</div></div>
-        <div class="card"><div class="k">This drop</div><div class="v" style="font-size:22px">${live ? num(live.sold) + '<small>/' + num(live.bottle_cap) + ' sold</small>' : 'none live'}</div></div>
-        <div class="card"><div class="k">Remaining</div><div class="v">${live ? num(live.remaining) : '—'}</div></div>
+        <div class="card"><div class="k">Paid orders${scoped ? ' (this drop)' : ''}</div><div class="v">${num(o.paid)}</div></div>
+        <div class="card"><div class="k">Revenue${scoped ? ' (this drop)' : ''}</div><div class="v">${money(o.revenueCents)}</div></div>
+        <div class="card"><div class="k">${scoped && shown ? esc(shown.name || 'Selected drop') : 'This drop'}</div><div class="v" style="font-size:22px">${shown ? num(shown.sold) + '<small>/' + num(shown.bottle_cap) + ' sold</small>' : (scoped ? '—' : 'none live')}</div></div>
+        <div class="card"><div class="k">Remaining</div><div class="v">${shown ? num(shown.remaining) : '—'}</div></div>
         <div class="card"><div class="k">Missed-drop demand</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
       </div>
 
@@ -538,6 +547,8 @@ async function showOrders() {
       </div>
       <div class="note" style="margin-top:6px">Times are your local timezone (${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}). "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>`;
 
+    const odSel = document.getElementById('ordersDrop');
+    if (odSel) odSel.addEventListener('change', (e) => { state.ordersDrop = e.target.value; showOrders(); });
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
       try {
         await api(`/api/admin/drops/${b.dataset.id}/status`, {

@@ -602,20 +602,33 @@ export function mountAdmin(app) {
   app.get('/api/admin/orders', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
+      // Optional drop filter: scope the totals + order list to one drop.
+      const dropId = parseInt(req.query?.dropId, 10) || null;
       const agg = (await q(
         `SELECT COUNT(*) FILTER (WHERE status='paid')::int paid,
                 COALESCE(SUM(amount_total_cents) FILTER (WHERE status='paid'),0)::bigint revenue_cents,
-                COUNT(*)::int total FROM orders`)).rows[0];
+                COUNT(*)::int total FROM orders
+          WHERE ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0];
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
                 o.variant, o.created_at, o.paid_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
-          ORDER BY o.created_at DESC LIMIT 100`)).rows;
+          WHERE ($1::int IS NULL OR o.drop_id = $1)
+          ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;
       const live = (await q(
         `SELECT id, name, price_cents, bottle_cap, status,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
            FROM drops WHERE status='live' ORDER BY opens_at DESC NULLS LAST, id DESC LIMIT 1`)).rows[0] || null;
       if (live) live.remaining = Math.max(0, live.bottle_cap - live.sold);
+      // When a specific drop is selected, also return its sold/cap for the cards.
+      let selected = null;
+      if (dropId) {
+        selected = (await q(
+          `SELECT id, name, price_cents, bottle_cap, status,
+                  (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
+             FROM drops WHERE id = $1`, [dropId])).rows[0] || null;
+        if (selected) selected.remaining = Math.max(0, selected.bottle_cap - selected.sold);
+      }
       // Missed-drop demand signal from the sold-out page (one vote per session).
       const demandRows = (await q(
         `SELECT data->>'choice' AS choice, COUNT(DISTINCT session_id)::int n
@@ -627,7 +640,7 @@ export function mountAdmin(app) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;
         else if (r.choice === 'just_looking') demand.justLooking = r.n;
       }
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, demand });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

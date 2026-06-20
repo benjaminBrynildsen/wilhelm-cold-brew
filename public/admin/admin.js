@@ -91,7 +91,9 @@ function renderTabs() {
     t.addEventListener('click', () => { state.tab = t.dataset.tab; renderTabs(); show(state.tab); }));
 }
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+// "Today" per Central time (the report timezone), so the day picker + its max
+// match the server's Central day boundaries rather than the viewer's/UTC date.
+function todayStr() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 // True when the active window is a single calendar day (from === to).
 function isSingleDay(key = 'win') { return state[key] === 'custom' && state.customFrom && state.customFrom === state.customTo; }
 function winbar(key = 'win') {

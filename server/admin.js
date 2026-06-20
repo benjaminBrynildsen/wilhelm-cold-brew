@@ -24,9 +24,30 @@ function requireAdmin(req, res) {
 }
 
 // ───────── time windows ─────────
+// Reports use Central time (the business's timezone) for day boundaries — a
+// report "day" runs Central midnight→midnight, not UTC (which would start the
+// day at 7pm the evening before).
+const REPORT_TZ = 'America/Chicago';
+
+// The UTC instant for a wall-clock time in REPORT_TZ. (The local-string parsing
+// cancels out in the subtraction, so this is correct regardless of the server's
+// own timezone.)
+function zonedToUtc(y, mo, d, h = 0, mi = 0, s = 0) {
+  const guess = Date.UTC(y, mo - 1, d, h, mi, s);
+  const tzView = new Date(new Date(guess).toLocaleString('en-US', { timeZone: REPORT_TZ }));
+  const utcView = new Date(new Date(guess).toLocaleString('en-US', { timeZone: 'UTC' }));
+  return new Date(guess - (tzView.getTime() - utcView.getTime()));
+}
+// Today's calendar date in REPORT_TZ, as [year, month, day].
+function centralYMD(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(now).split('-').map(Number);
+}
+
 function windows(req) {
   const now = new Date();
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const [ty, tm, td] = centralYMD(now);
+  const todayStart = zonedToUtc(ty, tm, td, 0, 0, 0);
   const wins = [
     { key: 'h1', from: new Date(Date.now() - 3600000), to: now },
     { key: 'today', from: todayStart, to: now },
@@ -36,7 +57,10 @@ function windows(req) {
   ];
   const from = req.query?.from, to = req.query?.to;
   if (from && to) {
-    const f = new Date(`${from}T00:00:00Z`), t = new Date(`${to}T23:59:59Z`);
+    const [fy, fm, fd] = String(from).split('-').map(Number);
+    const [oy, om, od] = String(to).split('-').map(Number);
+    const f = (fy && fm && fd) ? zonedToUtc(fy, fm, fd, 0, 0, 0) : new Date(NaN);
+    const t = (oy && om && od) ? zonedToUtc(oy, om, od, 23, 59, 59) : new Date(NaN);
     if (!isNaN(f) && !isNaN(t)) wins.push({ key: 'custom', from: f, to: t });
   }
   return wins;
@@ -237,7 +261,8 @@ export function mountAdmin(app) {
       const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.joined, 0);
       const directJoined = (joinersByUtm.find((r) => r.channel === 'direct') || {}).joined || 0;
       const daily = (await q(
-        `SELECT date_trunc('day', created_at) AS bucket, COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
+        `SELECT to_char(date_trunc('day', created_at AT TIME ZONE '${REPORT_TZ}'), 'YYYY-MM-DD') AS day,
+                COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
            FROM page_views WHERE created_at > NOW() - INTERVAL '14 days' ${EXCL_PV}
           GROUP BY 1 ORDER BY 1 ASC`)).rows;
 

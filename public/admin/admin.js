@@ -440,6 +440,13 @@ async function showTraffic() {
     const spark = d.daily.map((x) =>
       `<div class="b" title="${esc(x.day)}: ${x.views} views / ${x.visitors} visitors" style="height:${Math.round((x.views / maxDaily) * 100)}%"></div>`).join('');
     const tbl = (title, rows, cols) => `<h3>${title}</h3><table><thead><tr>${cols.map((c) => `<th class="${c.num ? 'num' : ''}">${c.h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+    // Totals row for the channel-conversion table (sum of the columns shown).
+    const ju = d.joinersByUtm || [];
+    const juLanded = ju.reduce((s, r) => s + (r.landed || 0), 0);
+    const juJoined = ju.reduce((s, r) => s + (r.joined || 0), 0);
+    const juTotalRow = ju.length
+      ? `<tr style="font-weight:700;border-bottom:2px solid var(--gold)"><td>All channels</td><td class="num">${num(juLanded)}</td><td class="num">${num(juJoined)}</td><td class="num"><b>${juLanded ? pct(juJoined, juLanded) : '—'}</b></td></tr>`
+      : '';
     content().innerHTML = `
       <div class="cards">
         <div class="card"><div class="k">Views (24h)</div><div class="v">${num(v.last24h)}</div></div>
@@ -450,13 +457,13 @@ async function showTraffic() {
       </div>
       <h3>Last 14 days</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>
       <div class="grid2">
-        <div>${tbl('Top paths', d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl('Top referrers', d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl('Top countries', d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl('UTM campaigns (views)', d.topCampaigns.map((r) => `<tr><td>${esc(r.source)} / ${esc(r.campaign)}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
-        <div style="grid-column:1/-1">${tbl('Conversion by channel — landed → joined', (d.joinersByUtm || []).map((r) => `<tr><td>${esc(r.channel)}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>', [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
+        <div>${tbl('Top paths (30d)', d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl('Top referrers (30d)', d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl('Top countries (30d)', d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl('UTM campaigns (30d views)', d.topCampaigns.map((r) => `<tr><td>${esc(r.source)} / ${esc(r.campaign)}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
+        <div style="grid-column:1/-1">${tbl('Conversion by channel — landed → joined (all-time)', juTotalRow + ((d.joinersByUtm || []).map((r) => `<tr><td>${esc(r.channel)}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>'), [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
           ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view.</div>` : ''}</div>
-        <div>${tbl('Top cities', (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
+        <div>${tbl('Top cities (30d)', (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
       </div>`;
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

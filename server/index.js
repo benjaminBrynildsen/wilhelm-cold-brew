@@ -75,6 +75,16 @@ app.post('/api/subscribe', subscribe);
 mountAdmin(app);
 mountCheckout(app);
 
+// Case-insensitive redirect for the marketing routes. The static handler is
+// case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos
+// and bounce them to the real lowercase path so an ad link can't dead-end.
+const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you'];
+app.get(/^\/([A-Za-z-]+)\/?$/, (req, res, next) => {
+  const slug = req.params[0].toLowerCase();
+  if (CASE_ROUTES.includes(slug) && req.params[0] !== slug) return res.redirect(301, '/' + slug);
+  next();
+});
+
 // Lightweight liveness check (no DB) — used by Render's health check.
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 

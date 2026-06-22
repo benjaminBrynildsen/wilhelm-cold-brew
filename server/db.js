@@ -105,6 +105,9 @@ export async function ensureSchema() {
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_content  TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_term     TEXT;
+    -- Fulfillment: set when an order's label has been pulled into Pirate Ship, so
+    -- the export only ever shows what still needs to ship.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;
 
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (

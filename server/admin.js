@@ -2,6 +2,7 @@
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
 import { mailReady, sendBulk, sendWelcome } from './mailer.js';
+import { getShippingFromStripe } from './checkout.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
@@ -636,10 +637,14 @@ export function mountAdmin(app) {
           WHERE ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0];
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
-                o.variant, o.created_at, o.paid_at, d.name AS drop_name
+                o.variant, o.created_at, o.paid_at, o.shipped_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ($1::int IS NULL OR o.drop_id = $1)
           ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;
+      // Paid orders still awaiting a shipping label (drives the Pirate Ship export).
+      // Not scoped by the drop filter — it's the global ship queue.
+      const unshipped = (await q(
+        `SELECT COUNT(*)::int n FROM orders WHERE status='paid' AND shipped_at IS NULL`)).rows[0].n;
       const live = (await q(
         `SELECT id, name, price_cents, bottle_cap, status,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
@@ -668,8 +673,84 @@ export function mountAdmin(app) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;
         else if (r.choice === 'just_looking') demand.justLooking = r.n;
       }
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── Pirate Ship export: paid orders → bulk-import CSV ─────────
+  // Builds a CSV in Pirate Ship's bulk-import shape from the shipping address we
+  // saved at checkout, backfilling any missing address live from Stripe. By
+  // default exports only unshipped paid orders; ?scope=all re-exports everything
+  // paid; ?dropId=N limits to one drop. ?lbs= overrides the per-bottle weight.
+  app.get('/api/admin/orders/pirateship.csv', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const scope = String(req.query?.scope || 'unshipped');
+      const dropId = parseInt(req.query?.dropId, 10);
+      const lbsPerBottle = Math.max(0.1, parseFloat(req.query?.lbs) || 3);
+      const where = ["o.status = 'paid'"];
+      const params = [];
+      if (scope !== 'all') where.push('o.shipped_at IS NULL');
+      if (dropId > 0) { params.push(dropId); where.push(`o.drop_id = $${params.length}`); }
+      const rows = (await q(
+        `SELECT o.id, o.email, o.quantity, o.shipping_name, o.shipping_address, o.stripe_payment_intent,
+                d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE ${where.join(' AND ')} ORDER BY o.id ASC`, params)).rows;
+
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const header = ['Name', 'Address 1', 'Address 2', 'City', 'State', 'Zip', 'Country',
+                      'Phone', 'Email', 'Weight (lbs)', 'Order ID', 'Quantity', 'Drop'];
+      const lines = [header.join(',')];
+
+      for (const r of rows) {
+        let addr = r.shipping_address || null;
+        let name = r.shipping_name || null;
+        let phone = null;
+        // Backfill any missing address straight from Stripe so no row is blank.
+        if ((!addr || !addr.line1) && r.stripe_payment_intent) {
+          const s = await getShippingFromStripe(r.stripe_payment_intent);
+          if (s) { addr = s.address || addr; name = name || s.name; phone = s.phone || phone; }
+        }
+        addr = addr || {};
+        const qty = r.quantity || 1;
+        const weight = (qty * lbsPerBottle).toFixed(2);
+        lines.push([
+          name, addr.line1, addr.line2, addr.city, addr.state, addr.postal_code, addr.country || 'US',
+          phone, r.email, weight, r.id, qty, r.drop_name,
+        ].map(esc).join(','));
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-pirateship.csv"');
+      res.send(lines.join('\n'));
+    } catch (e) { console.error('[pirateship]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Mark orders shipped so they drop off the export queue. Body: { ids: [..] } to
+  // mark specific orders, or { all: true } to clear every currently-unshipped paid order.
+  app.post('/api/admin/orders/mark-shipped', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((n) => parseInt(n, 10)).filter((n) => n > 0) : [];
+      const all = req.body?.all === true;
+      if (!all && !ids.length) return res.status(400).json({ error: 'ids[] or all:true required' });
+      const r = all
+        ? await q(`UPDATE orders SET shipped_at = now() WHERE status='paid' AND shipped_at IS NULL`)
+        : await q(`UPDATE orders SET shipped_at = now() WHERE status='paid' AND id = ANY($1)`, [ids]);
+      res.json({ ok: true, marked: r.rowCount });
+    } catch (e) { console.error('[mark-shipped]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Undo: clear shipped flag (in case of a mistaken mark). Body: { ids:[..] }.
+  app.post('/api/admin/orders/unmark-shipped', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((n) => parseInt(n, 10)).filter((n) => n > 0) : [];
+      if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+      const r = await q(`UPDATE orders SET shipped_at = NULL WHERE id = ANY($1)`, [ids]);
+      res.json({ ok: true, cleared: r.rowCount });
+    } catch (e) { console.error('[unmark-shipped]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── drops (inventory management) ─────────

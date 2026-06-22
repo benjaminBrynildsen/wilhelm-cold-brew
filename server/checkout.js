@@ -20,6 +20,22 @@ else console.warn('[checkout] STRIPE_SECRET_KEY missing — checkout disabled.')
 
 export function stripeReady() { return !!stripe; }
 
+// Pull the shipping block (name/phone/address) for a payment intent straight from
+// Stripe. Used to backfill any paid order whose shipping wasn't captured by the
+// webhook, so the Pirate Ship export is never missing an address.
+export async function getShippingFromStripe(paymentIntentId) {
+  if (!stripe || !paymentIntentId) return null;
+  try {
+    const full = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+    let ship = full.shipping || null;
+    const charge = full.latest_charge && typeof full.latest_charge === 'object' ? full.latest_charge : null;
+    if (!ship && charge?.shipping) ship = charge.shipping;
+    const email = full.receipt_email || charge?.billing_details?.email || full.customer_details?.email || null;
+    if (!ship) return { email };
+    return { name: ship.name || null, phone: ship.phone || null, address: ship.address || null, email };
+  } catch (e) { console.warn('[pirateship] stripe shipping fetch failed:', e?.message || e); return null; }
+}
+
 // The currently-buyable drop (status='live') with its sold count + remaining.
 // "sold" counts BOTTLES (sum of quantity), not orders.
 async function currentDrop() {

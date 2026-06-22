@@ -500,7 +500,7 @@ async function showOrders() {
           <td>${esc(r.drop_name || '—')}</td>
           <td>${esc(r.shipping_name || '—')}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
-          <td>${orderStatusBadge(r.status)}</td></tr>`).join('')
+          <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td></tr>`).join('')
       : '<tr><td class="note" colspan="6">No orders yet.</td></tr>';
     const dropRows = dd.drops.length
       ? dd.drops.map((d) => `<tr>
@@ -524,6 +524,15 @@ async function showOrders() {
         <div class="card"><div class="k">Remaining</div><div class="v">${shown ? num(shown.remaining) : '—'}</div></div>
         <div class="card"><div class="k">Missed-drop demand${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
       </div>
+
+      <h3>Ship the orders</h3>
+      <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
+        <a class="btn" href="/api/admin/orders/pirateship.csv">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
+        <button class="btn ghost" id="markshipped">Mark all as shipped</button>
+        <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship.' : 'All paid orders shipped.'}</span>
+        <span class="note" id="shipmsg"></span>
+      </div>
+      <div class="note">Downloads a Pirate Ship bulk-import CSV (unshipped paid orders only). Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off. After you buy the labels, hit "Mark all as shipped" so they drop off this list.</div>
 
       <h3>Recent orders</h3>
       <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th>Ship to</th><th class="num">Total</th><th>Status</th></tr></thead>
@@ -558,6 +567,20 @@ async function showOrders() {
 
     const odSel = document.getElementById('ordersDrop');
     if (odSel) odSel.addEventListener('change', (e) => { state.ordersDrop = e.target.value; showOrders(); });
+
+    const markShipped = document.getElementById('markshipped');
+    if (markShipped) markShipped.addEventListener('click', async () => {
+      if (!o.unshipped) { document.getElementById('shipmsg').textContent = 'Nothing to mark.'; return; }
+      if (!confirm(`Mark all ${o.unshipped} unshipped order(s) as shipped? They'll drop off the export list.`)) return;
+      try {
+        const r = await api('/api/admin/orders/mark-shipped', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }),
+        });
+        document.getElementById('shipmsg').textContent = `Marked ${r.marked} shipped.`;
+        showOrders();
+      } catch (e) { document.getElementById('shipmsg').textContent = 'Failed: ' + e.message; }
+    });
+
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
       try {
         await api(`/api/admin/drops/${b.dataset.id}/status`, {

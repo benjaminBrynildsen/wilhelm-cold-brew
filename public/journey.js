@@ -35,6 +35,10 @@
   }
   // public hook
   window.wilhelmTrack = track;
+  // Expose the session id so the signup POST can tie the server-recorded
+  // 'subscribed' event to this journey (a reliable backstop for the batched
+  // client beacon, which can be lost if the tab closes right after joining).
+  window.wilhelmSessionId = SESSION_ID;
 
   function scheduleFlush() {
     if (flushTimer) return;

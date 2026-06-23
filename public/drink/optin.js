@@ -61,7 +61,7 @@ async function subscribeEmail(email, variant) {
       const res = await fetch(CONFIG.endpoint.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ email, variant }, attribution())),
+        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, attribution())),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;

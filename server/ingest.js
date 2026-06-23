@@ -79,6 +79,18 @@ export async function subscribe(req, res) {
        twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term]
     );
     res.json({ ok: true });
+    // Authoritatively mark this session as "joined" in the journey log. The
+    // client also fires a 'subscribed' beacon, but that's batched (3s flush) and
+    // can be lost if the tab closes right after joining — which is why a real
+    // subscriber can show as not-joined on the Journey tab. The session view
+    // de-dupes via BOOL_OR, so a belt-and-suspenders second event is harmless.
+    const sessionId = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
+    if (sessionId) {
+      q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)
+         VALUES ($1,'subscribed',$2,$3,$4,$5,$6)`,
+        [sessionId, JSON.stringify({ server: true }), hashIp(getClientIp(req)), countryFrom(req), '/drink/', variant])
+        .catch((e) => console.warn('[subscribe] journey mark failed:', e?.message || e));
+    }
     // New subscriber only (RETURNING is empty on duplicate). Fire-and-forget
     // welcome to the subscriber + internal alert to Ben.
     if (r.rows.length) {

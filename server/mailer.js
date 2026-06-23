@@ -148,7 +148,9 @@ function welcomeText() {
   ].join('\n');
 }
 
-export async function sendWelcome(to) {
+// `record: false` proofs the email without writing an email_sends row — used by
+// the admin welcome-test endpoint so test sends never inflate the open-rate stats.
+export async function sendWelcome(to, { record = true } = {}) {
   if (!transporter) { console.warn('[mail] skip welcome (SMTP not configured):', to); return; }
   const token = mkToken();
   await transporter.sendMail({
@@ -159,8 +161,8 @@ export async function sendWelcome(to) {
     text: welcomeText() + '\n\nUnsubscribe: ' + unsubUrl(token),
     headers: unsubHeaders(token),
   });
-  await recordSend(token, to, 'welcome', null);
-  console.log('[mail] welcome sent to', to);
+  if (record) await recordSend(token, to, 'welcome', null);
+  console.log('[mail] welcome sent to', to, record ? '' : '(proof, not recorded)');
 }
 
 // ───────── Internal new-signup alert (to Ben, not the subscriber) ─────────

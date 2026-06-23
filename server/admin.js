@@ -12,6 +12,9 @@ const DRINK_PAGES = ['/drink/', '/drink'];
 // Exclude internal/test traffic (Ben's flagged devices) from all analytics.
 const EXCL_JE = `AND ip_hash NOT IN (SELECT ip_hash FROM internal_ips) AND (data->>'is_internal') IS DISTINCT FROM 'true'`;
 const EXCL_PV = `AND ip_hash NOT IN (SELECT ip_hash FROM internal_ips)`;
+// Exclude internal/test addresses from email_sends metrics: flagged addresses
+// (internal_emails) plus any address containing 'test' (Claude's proofing sends).
+const EXCL_EM = `AND LOWER(email) NOT IN (SELECT email FROM internal_emails) AND LOWER(email) NOT LIKE '%test%'`;
 
 // ───────── auth ─────────
 function isAdmin(req) {
@@ -347,14 +350,14 @@ export function mountAdmin(app) {
                 COALESCE(s.opened, 0)::int opened
            FROM email_blasts b
            LEFT JOIN (SELECT blast_id, COUNT(first_open_at)::int opened FROM email_sends
-                       WHERE blast_id IS NOT NULL GROUP BY blast_id) s ON s.blast_id = b.id
+                       WHERE blast_id IS NOT NULL ${EXCL_EM} GROUP BY blast_id) s ON s.blast_id = b.id
           ORDER BY b.created_at DESC LIMIT 50`)).rows;
       const wel = (await q(
-        `SELECT COUNT(*)::int sent, COUNT(first_open_at)::int opened FROM email_sends WHERE kind='welcome'`)).rows[0];
+        `SELECT COUNT(*)::int sent, COUNT(first_open_at)::int opened FROM email_sends WHERE kind='welcome' ${EXCL_EM}`)).rows[0];
       // Open-rate summary per email type (welcome / blast / order / …).
       const byKind = (await q(
         `SELECT kind, COUNT(*)::int sent, COUNT(first_open_at)::int opened
-           FROM email_sends GROUP BY kind ORDER BY sent DESC`)).rows;
+           FROM email_sends WHERE TRUE ${EXCL_EM} GROUP BY kind ORDER BY sent DESC`)).rows;
       res.json({ blasts: rows, welcome: wel, byKind });
     } catch (e) { console.error('[blasts]', e); res.status(500).json({ error: e.message }); }
   });
@@ -405,7 +408,7 @@ export function mountAdmin(app) {
     if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
     const to = String(req.body?.to || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: 'valid to address required' });
-    try { await sendWelcome(to); res.json({ ok: true, sent: to }); }
+    try { await sendWelcome(to, { record: false }); res.json({ ok: true, sent: to }); }
     catch (e) { console.error('[welcome-test]', e); res.status(500).json({ error: e.message }); }
   });
 

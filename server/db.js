@@ -87,6 +87,19 @@ export async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Email addresses flagged internal/test — excluded from email-tab metrics
+    -- (welcome open rate, per-kind open rates, blast opens). Stored lowercased.
+    -- Any address containing 'test' is also auto-excluded by the queries, so the
+    -- proofing addresses Claude used don't need to be listed here individually.
+    CREATE TABLE IF NOT EXISTS internal_emails (
+      email      TEXT PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    INSERT INTO internal_emails (email) VALUES
+      ('benbrynildsen5757@gmail.com'),
+      ('ben@wilhelmcoldbrew.com')
+    ON CONFLICT (email) DO NOTHING;
+
     -- Columns added after launch (no-op if already present).
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS city   TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS region TEXT;

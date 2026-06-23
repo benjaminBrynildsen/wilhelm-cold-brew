@@ -560,9 +560,16 @@ export function mountAdmin(app) {
             LIMIT $3
          )
          SELECT s.session_id, s.started_at, s.duration_seconds, s.event_count,
-                s.city, s.region, s.country, s.variant, s.subscribed, s.page, s.max_scroll,
+                s.city, s.region, s.country, s.variant,
+                -- Joined if the session has a 'subscribed' event OR its ip_hash
+                -- matches a subscriber — a backstop for sessions whose client
+                -- 'subscribed' beacon was lost before the server fix landed.
+                (s.subscribed OR ji.ip_hash IS NOT NULL) AS subscribed,
+                s.page, s.max_scroll,
                 a.utm_source, a.utm_campaign, a.utm_content, a.referrer_host
            FROM s
+           LEFT JOIN (SELECT DISTINCT ip_hash FROM subscribers WHERE ip_hash IS NOT NULL) ji
+                  ON ji.ip_hash = s.ip_hash
            LEFT JOIN LATERAL (
              SELECT utm_source, utm_campaign, utm_content, referrer_host
                FROM page_views pv

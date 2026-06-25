@@ -17,7 +17,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: '', editDrop: '' };
 
 const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
@@ -544,17 +544,30 @@ async function showOrders() {
       <table><thead><tr><th>Name</th><th class="num">Price</th><th class="num">Sold</th><th>Status</th><th>Opens</th><th></th></tr></thead>
         <tbody>${dropRows}</tbody></table>
       <div class="note">Only one drop is "live" at a time — going live closes any other. A drop auto-closes to "soldout" when it hits its cap.</div>
-      ${(() => { const nd = dd.drops.find((d) => d.status === 'live') || dd.drops[0]; return nd ? `
-      <h3>Batch details — ${esc(nd.name || 'latest batch')}</h3>
+      ${(() => {
+        const nd = dd.drops.find((d) => String(d.id) === String(state.editDrop))
+                || dd.drops.find((d) => d.status === 'live') || dd.drops[0];
+        if (!nd) return '';
+        const editOpts = dd.drops.map((d) =>
+          `<option value="${d.id}" ${String(nd.id) === String(d.id) ? 'selected' : ''}>${esc(d.name || '(unnamed)')} — ${esc(d.status)}</option>`).join('');
+        return `
+      <h3>Edit drop</h3>
+      <div class="row-actions" style="margin-bottom:8px;align-items:center">
+        <label class="note">Editing <select id="editDropSel" style="${FLD_DARK}">${editOpts}</select></label>
+        <span class="note">Pick any drop (including a duplicated one) to edit its price, bottles, and tasting card.</span>
+      </div>
       <div class="row-actions" style="flex-wrap:wrap;gap:10px;align-items:center">
+        <label class="note">Price $<input id="dedit-price" type="number" min="1" step="0.01" value="${(nd.price_cents / 100).toFixed(2)}" style="width:90px;${FLD_DARK}"/></label>
+        <label class="note">Bottles <input id="dedit-cap" type="number" min="1" step="1" value="${esc(nd.bottle_cap)}" style="width:80px;${FLD_DARK}"/></label>
         <label class="note">Origin &amp; region <input id="dorigin" value="${esc(nd.origin || '')}" placeholder="Ethiopia · Yirgacheffe" style="width:190px;${FLD_DARK}"/></label>
         <label class="note">Varietal <input id="dvarietal" value="${esc(nd.varietal || '')}" placeholder="Heirloom" style="width:150px;${FLD_DARK}"/></label>
         <label class="note">Elevation <input id="delevation" value="${esc(nd.elevation || '')}" placeholder="1,950 m" style="width:120px;${FLD_DARK}"/></label>
         <label class="note">Roast <input id="droast" value="${esc(nd.roast || '')}" placeholder="Medium" style="width:120px;${FLD_DARK}"/></label>
       </div>
       <textarea id="dnotes" rows="5" placeholder="Tasting notes — one per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:8px">${esc(nd.tasting_notes || '')}</textarea>
-      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save batch details</button><span class="note" id="dnotes-msg"></span></div>
-      <div class="note" style="margin-top:4px">All of this shows on the buy-page "Tasting Notes" card. Notes: one per line; text before a "—" is emphasized. Leave any field blank to hide it (notes fall back to the default four).</div>` : ''; })()}
+      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save drop</button><span class="note" id="dnotes-msg"></span></div>
+      <div class="note" style="margin-top:4px">Price/bottles/tasting card for the selected drop. Name and date are edited with the Rename / Reschedule buttons in the table above. Notes: one per line; text before a "—" is emphasized; blank fields fall back to the defaults.</div>`;
+      })()}
 
       <h3>Schedule a drop</h3>
       <input class="fld" id="dname" placeholder="Name (e.g. Friday Drop — Jun 13)"/>
@@ -592,21 +605,28 @@ async function showOrders() {
         showOrders();
       } catch (e) { document.getElementById('dmsg').textContent = 'Failed: ' + e.message; }
     }));
+    const editSel = document.getElementById('editDropSel');
+    if (editSel) editSel.addEventListener('change', (e) => { state.editDrop = e.target.value; showOrders(); });
     const notesSave = document.getElementById('dnotes-save');
     if (notesSave) notesSave.addEventListener('click', async () => {
       const msg = document.getElementById('dnotes-msg');
+      const id = notesSave.dataset.id;
+      const J = (body) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       try {
-        await api(`/api/admin/drops/${notesSave.dataset.id}/notes`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tastingNotes: document.getElementById('dnotes').value,
-            origin: document.getElementById('dorigin').value,
-            varietal: document.getElementById('dvarietal').value,
-            elevation: document.getElementById('delevation').value,
-            roast: document.getElementById('droast').value,
-          }),
-        });
+        const priceCents = Math.round(parseFloat(document.getElementById('dedit-price').value) * 100);
+        const bottleCap = parseInt(document.getElementById('dedit-cap').value, 10);
+        if (priceCents > 0) await api(`/api/admin/drops/${id}/price`, J({ priceCents }));
+        if (bottleCap >= 0) await api(`/api/admin/drops/${id}/cap`, J({ bottleCap }));
+        await api(`/api/admin/drops/${id}/notes`, J({
+          tastingNotes: document.getElementById('dnotes').value,
+          origin: document.getElementById('dorigin').value,
+          varietal: document.getElementById('dvarietal').value,
+          elevation: document.getElementById('delevation').value,
+          roast: document.getElementById('droast').value,
+        }));
+        state.editDrop = id; // stay on this drop after refresh
         msg.textContent = 'Saved ✓';
+        showOrders();
       } catch (e) { msg.textContent = 'Failed: ' + e.message; }
     });
     document.querySelectorAll('.drename').forEach((b) => b.addEventListener('click', async () => {

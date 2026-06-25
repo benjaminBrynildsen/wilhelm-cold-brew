@@ -877,6 +877,18 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[drops/cap]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Edit a drop's price (no edit path existed — only set at create).
+  app.post('/api/admin/drops/:id/price', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const priceCents = parseInt(req.body?.priceCents, 10);
+      if (!(priceCents > 0)) return res.status(400).json({ error: 'priceCents must be positive' });
+      await q(`UPDATE drops SET price_cents=$1 WHERE id=$2`, [priceCents, id]);
+      res.json({ ok: true, priceCents });
+    } catch (e) { console.error('[drops/price]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Edit a drop's tasting-card details any time — shown in the buy-page modal.
   app.post('/api/admin/drops/:id/notes', async (req, res) => {
     if (!requireAdmin(req, res)) return;

@@ -100,6 +100,22 @@ export async function ensureSchema() {
       ('ben@wilhelmcoldbrew.com')
     ON CONFLICT (email) DO NOTHING;
 
+    -- Which split-test arms are currently LIVE. The /drink page reads the enabled
+    -- 'image' arms to decide what to randomize among, so versions can be toggled
+    -- or isolated from the admin without a deploy. Seeded with all three on.
+    CREATE TABLE IF NOT EXISTS split_arms (
+      test_id  TEXT NOT NULL,
+      arm_key  TEXT NOT NULL,
+      enabled  BOOLEAN NOT NULL DEFAULT true,
+      sort     INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (test_id, arm_key)
+    );
+    INSERT INTO split_arms (test_id, arm_key, enabled, sort) VALUES
+      ('image','cigars',true,0),
+      ('image','barrel',true,1),
+      ('image','bottles',true,2)
+    ON CONFLICT (test_id, arm_key) DO NOTHING;
+
     -- Columns added after launch (no-op if already present).
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS city   TEXT;
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS region TEXT;

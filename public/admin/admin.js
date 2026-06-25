@@ -449,13 +449,20 @@ async function showFunnel() {
 async function showSplit() {
   loading();
   try {
-    const d = await api('/api/admin/funnel' + winQuery('splitWin'));
+    const [d, cfg] = await Promise.all([
+      api('/api/admin/funnel' + winQuery('splitWin')),
+      api('/api/admin/split-config'),
+    ]);
     const w = d.windows[state.splitWin] || { byVariant: {} };
     const bv = w.byVariant || {};
     const origin = location.origin;
     const known = new Set();
+    // enabled state per arm, by test ("image" arms are toggleable). Default on.
+    const en = {};
+    (cfg.arms || []).forEach((a) => { en[a.test_id + ':' + a.arm_key] = a.enabled; });
 
     const sections = SPLIT_TESTS.map((t) => {
+      const toggleable = t.id === 'image';   // only the live image test is toggleable
       // Winner = highest signup rate (Joined ÷ Landed) among arms with ≥1 session.
       let best = { key: null, rate: -1 };
       let totalLanded = 0;
@@ -464,24 +471,35 @@ async function showSplit() {
         const r = ld ? (e.subscribed || 0) / ld : -1;
         if (ld > 0 && r > best.rate) best = { key: a.key, rate: r };
       });
+      const liveCount = toggleable ? t.arms.filter((a) => en[t.id + ':' + a.key] !== false).length : 0;
       const rows = t.arms.map((a) => {
         known.add(a.key);
         const e = bv[a.key] || {};
         const ld = e.page_load || 0, su = e.subscribed || 0;
         const winner = a.key === best.key;
+        const isLive = en[t.id + ':' + a.key] !== false;
         const link = `${origin}${t.base}?${t.param}=${a.key}`;
+        // Don't let the last live arm be unchecked (would leave nothing to show).
+        const lockOff = toggleable && isLive && liveCount <= 1;
+        const ctrl = toggleable ? `<td style="white-space:nowrap">
+            <label class="note"><input type="checkbox" class="arm-active" data-arm="${a.key}" ${isLive ? 'checked' : ''} ${lockOff ? 'disabled' : ''}/> live</label>
+            <button class="btn ghost arm-iso" data-arm="${a.key}" style="padding:2px 8px;margin-left:4px">Isolate</button></td>` : '';
         return `<tr${winner ? ' style="color:var(--good);font-weight:700"' : ''}>
-          <td>${esc(a.label)}${winner ? ' ★' : ''}</td>
+          <td>${esc(a.label)}${winner ? ' ★' : ''}${toggleable && !isLive ? ' <span class="note">(paused)</span>' : ''}</td>
           <td class="num">${num(ld)}</td><td class="num">${num(e.focus_email || 0)}</td>
           <td class="num">${num(e.submit_attempt || 0)}</td><td class="num">${num(su)}</td>
           <td class="num">${pct(su, ld)}</td>
-          <td><a href="${esc(link)}" target="_blank" rel="noopener">View ↗</a></td></tr>`;
+          <td><a href="${esc(link)}" target="_blank" rel="noopener">View ↗</a></td>${ctrl}</tr>`;
       }).join('');
       return `<h3>${esc(t.name)} <span class="note">${esc(t.sub)}</span></h3>
         <table><thead><tr><th>Version</th><th class="num">Landed</th><th class="num">Focused</th>
-          <th class="num">Clicked</th><th class="num">Joined</th><th class="num">Conv.</th><th>Preview</th></tr></thead>
+          <th class="num">Clicked</th><th class="num">Joined</th><th class="num">Conv.</th><th>Preview</th>${toggleable ? '<th>Live</th>' : ''}</tr></thead>
           <tbody>${rows}</tbody></table>
-        <div class="note">${totalLanded ? '★ = highest signup rate (Joined ÷ Landed), min 1 session.' : 'No traffic on these versions in this date range yet.'}</div>`;
+        <div class="note">${totalLanded ? '★ = highest signup rate (Joined ÷ Landed), min 1 session.' : 'No traffic on these versions in this date range yet.'}</div>
+        ${toggleable ? `<div class="row-actions" style="margin-top:8px">
+          <button class="btn" id="arms-save">Save live versions</button>
+          <span class="note">Uncheck a version to pause it, or "Isolate" to run one at 100%. New visitors split across the live ones only.</span>
+          <span class="note" id="arms-msg"></span></div>` : ''}`;
     }).join('');
 
     // Any variants seen in the data that aren't part of a known test.
@@ -506,6 +524,30 @@ async function showSplit() {
         Open a <b>Preview</b> link to view that version (it pins your browser to that arm).</div>
       ${sections}${other}`;
     wireWinbar(showSplit, 'splitWin');
+
+    const saveArms = async (enabled) => {
+      const msg = document.getElementById('arms-msg');
+      try {
+        await api('/api/admin/split-config', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ testId: 'image', enabled }),
+        });
+        if (msg) msg.textContent = 'Saved ✓';
+        showSplit();
+      } catch (e) { if (msg) msg.textContent = 'Failed: ' + e.message; }
+    };
+    const armsSave = document.getElementById('arms-save');
+    if (armsSave) armsSave.addEventListener('click', () => {
+      const enabled = {};
+      document.querySelectorAll('.arm-active').forEach((c) => { enabled[c.dataset.arm] = c.checked; });
+      if (!Object.values(enabled).some(Boolean)) { const m = document.getElementById('arms-msg'); if (m) m.textContent = 'Keep at least one version live.'; return; }
+      saveArms(enabled);
+    });
+    document.querySelectorAll('.arm-iso').forEach((b) => b.addEventListener('click', () => {
+      const enabled = {};
+      document.querySelectorAll('.arm-active').forEach((c) => { enabled[c.dataset.arm] = (c.dataset.arm === b.dataset.arm); });
+      saveArms(enabled);
+    }));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 

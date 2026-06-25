@@ -14,6 +14,7 @@
        by the variant script below, so only the chosen image-test arm is fetched. -->
   <link rel="preload" as="image" href="assets/wilhelm-circle.png"/>
   <link rel="stylesheet" href="optin.css"/>
+  <!--SPLIT_CONFIG--><!-- server swaps this for window.__SPLIT_IMG_ARMS (the live hero arms); if served statically it's a no-op comment and all arms run -->
 
   <!-- /drink config, resolved BEFORE paint (no flash):
         • Background: DARK default for everyone; light preview only via ?v=light.
@@ -45,11 +46,21 @@
         barrel:  { src: 'assets/hero-barrel.jpg',   w: 1024, h: 1024, alt: 'A bottle of Wilhelm Cold Brew on a whiskey barrel at dusk' },
         bottles: { src: 'assets/hero-bottles.jpg',  w: 1280, h: 1222, alt: 'A fresh batch of Wilhelm Cold Brew bottles, just off the line' }
       };
-      var ORDER = ['cigars', 'barrel', 'bottles'];
+      // Live arms come from the server (window.__SPLIT_IMG_ARMS, toggled in admin);
+      // fall back to all three if not injected. ?img= can still force ANY arm for preview.
+      var DEFAULT_ORDER = ['cigars', 'barrel', 'bottles'];
+      var ORDER = (window.__SPLIT_IMG_ARMS && window.__SPLIT_IMG_ARMS.filter(function (k) { return IMG[k]; })) || DEFAULT_ORDER;
+      if (!ORDER.length) ORDER = DEFAULT_ORDER;
       var forcedI = p.get('img');
-      var arm = IMG[forcedI] ? forcedI : null;
-      if (!arm) { try { arm = localStorage.getItem('wilhelm_drink_img'); } catch (e) {} }
-      if (!IMG[arm]) { arm = ORDER[Math.floor(Math.random() * ORDER.length)]; }
+      var arm;
+      if (IMG[forcedI]) {
+        arm = forcedI;                                   // explicit preview — honor any arm, even a paused one
+      } else {
+        try { arm = localStorage.getItem('wilhelm_drink_img'); } catch (e) {}
+        if (!arm || !IMG[arm] || ORDER.indexOf(arm) < 0) {  // new, unknown, or paused arm → (re)bucket into a live one
+          arm = ORDER[Math.floor(Math.random() * ORDER.length)];
+        }
+      }
       try { localStorage.setItem('wilhelm_drink_img', arm); } catch (e) {}
       var cfg = IMG[arm];
 

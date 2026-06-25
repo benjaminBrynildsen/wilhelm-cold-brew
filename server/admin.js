@@ -357,6 +357,30 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[subscribers]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ───────── split-test arm config (which versions are live) ─────────
+  app.get('/api/admin/split-config', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(`SELECT test_id, arm_key, enabled FROM split_arms ORDER BY test_id, sort, arm_key`)).rows;
+      res.json({ arms: rows });
+    } catch (e) { console.error('[split-config]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/split-config', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const testId = String(req.body?.testId || 'image').slice(0, 40);
+      const enabled = (req.body && req.body.enabled) || {};   // { armKey: bool }
+      const keys = Object.keys(enabled);
+      if (!keys.length) return res.status(400).json({ error: 'no arms provided' });
+      if (!keys.some((k) => enabled[k])) return res.status(400).json({ error: 'keep at least one version live' });
+      for (const k of keys) {
+        await q(`UPDATE split_arms SET enabled=$1 WHERE test_id=$2 AND arm_key=$3`,
+          [!!enabled[k], testId, String(k).slice(0, 40)]);
+      }
+      res.json({ ok: true });
+    } catch (e) { console.error('[split-config/save]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // ───────── email tab (compose + history; sending deferred) ─────────
   app.get('/api/admin/email/blasts', async (req, res) => {
     if (!requireAdmin(req, res)) return;

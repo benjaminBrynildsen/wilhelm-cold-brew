@@ -2,6 +2,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSchema, q } from './db.js';
@@ -153,6 +154,27 @@ app.get('/contact.vcf', (_req, res) => {
   res.setHeader('Content-Disposition', 'inline; filename="wilhelm-cold-brew.vcf"');
   res.setHeader('Cache-Control', 'public, max-age=86400');
   res.send(vcard);
+});
+
+// ───────── /drink — inject the LIVE hero-image arms before paint ─────────
+// The page has a <!--SPLIT_CONFIG--> placeholder; we swap it for a script that
+// sets window.__SPLIT_IMG_ARMS to the currently-enabled arms so the inline
+// variant picker only randomizes among live versions. BULLETPROOF FALLBACK:
+// on any failure (no file, DB down, no arms) we next() and express.static serves
+// the file untouched — the page's own default is all three arms, so it never breaks.
+let DRINK_HTML = null;
+try { DRINK_HTML = readFileSync(path.join(PUBLIC_DIR, 'drink', 'index.html'), 'utf8'); }
+catch (e) { console.warn('[drink] preload failed (will serve static):', e?.message || e); }
+app.get(['/drink', '/drink/'], async (req, res, next) => {
+  if (!DRINK_HTML || !DRINK_HTML.includes('<!--SPLIT_CONFIG-->')) return next();
+  try {
+    const rows = (await q(`SELECT arm_key FROM split_arms WHERE test_id='image' AND enabled = true ORDER BY sort, arm_key`)).rows;
+    const arms = rows.map((r) => r.arm_key);
+    if (!arms.length) return next();
+    const html = DRINK_HTML.replace('<!--SPLIT_CONFIG-->', `<script>window.__SPLIT_IMG_ARMS=${JSON.stringify(arms)}</script>`);
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(html);
+  } catch (e) { console.warn('[drink] config inject failed (static fallback):', e?.message || e); next(); }
 });
 
 // ───────── static site ─────────

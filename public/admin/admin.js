@@ -17,7 +17,21 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: '', editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: '', editDrop: '' };
+
+// Known split tests → arms + preview links. The chosen arm is tracked as the
+// journey/subscriber `variant`, so the funnel byVariant data keys off these.
+const SPLIT_TESTS = [
+  { id: 'image', name: 'Hero image', sub: '/drink hero photo (live)', param: 'img', base: '/drink/', arms: [
+    { key: 'cigars', label: 'Cigars (control)' },
+    { key: 'barrel', label: 'Barrel / flag render' },
+    { key: 'bottles', label: 'Real bottles photo' },
+  ] },
+  { id: 'headline', name: 'Headline', sub: 'concluded — pinned to "on the list"', param: 'h', base: '/drink/', arms: [
+    { key: 'on-the-list', label: '"…on the list."' },
+    { key: 'sells-out', label: '"…sell out in minutes?"' },
+  ] },
+];
 
 const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
@@ -84,7 +98,7 @@ function renderApp() {
 }
 
 function renderTabs() {
-  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
+  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
   document.getElementById('tabs').innerHTML = tabs.map(
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('');
   document.querySelectorAll('.tab').forEach((t) =>
@@ -218,6 +232,7 @@ document.addEventListener('click', (e) => {
 function show(tab) {
   if (tab === 'overview') return showOverview();
   if (tab === 'funnel') return showFunnel();
+  if (tab === 'split') return showSplit();
   if (tab === 'traffic') return showTraffic();
   if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
   if (tab === 'orders') return showOrders();
@@ -427,6 +442,70 @@ async function showFunnel() {
         <tbody>${rows}</tbody></table>
       <div class="note">★ = highest signup rate (min 1 session). Conv. = Joined ÷ Landed.</div>`;
     wireWinbar(showFunnel);
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+// ───────── Split test ─────────
+async function showSplit() {
+  loading();
+  try {
+    const d = await api('/api/admin/funnel' + winQuery('splitWin'));
+    const w = d.windows[state.splitWin] || { byVariant: {} };
+    const bv = w.byVariant || {};
+    const origin = location.origin;
+    const known = new Set();
+
+    const sections = SPLIT_TESTS.map((t) => {
+      // Winner = highest signup rate (Joined ÷ Landed) among arms with ≥1 session.
+      let best = { key: null, rate: -1 };
+      let totalLanded = 0;
+      t.arms.forEach((a) => {
+        const e = bv[a.key] || {}; const ld = e.page_load || 0; totalLanded += ld;
+        const r = ld ? (e.subscribed || 0) / ld : -1;
+        if (ld > 0 && r > best.rate) best = { key: a.key, rate: r };
+      });
+      const rows = t.arms.map((a) => {
+        known.add(a.key);
+        const e = bv[a.key] || {};
+        const ld = e.page_load || 0, su = e.subscribed || 0;
+        const winner = a.key === best.key;
+        const link = `${origin}${t.base}?${t.param}=${a.key}`;
+        return `<tr${winner ? ' style="color:var(--good);font-weight:700"' : ''}>
+          <td>${esc(a.label)}${winner ? ' ★' : ''}</td>
+          <td class="num">${num(ld)}</td><td class="num">${num(e.focus_email || 0)}</td>
+          <td class="num">${num(e.submit_attempt || 0)}</td><td class="num">${num(su)}</td>
+          <td class="num">${pct(su, ld)}</td>
+          <td><a href="${esc(link)}" target="_blank" rel="noopener">View ↗</a></td></tr>`;
+      }).join('');
+      return `<h3>${esc(t.name)} <span class="note">${esc(t.sub)}</span></h3>
+        <table><thead><tr><th>Version</th><th class="num">Landed</th><th class="num">Focused</th>
+          <th class="num">Clicked</th><th class="num">Joined</th><th class="num">Conv.</th><th>Preview</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+        <div class="note">${totalLanded ? '★ = highest signup rate (Joined ÷ Landed), min 1 session.' : 'No traffic on these versions in this date range yet.'}</div>`;
+    }).join('');
+
+    // Any variants seen in the data that aren't part of a known test.
+    const otherKeys = Object.keys(bv).filter((v) => !known.has(v)).sort();
+    let other = '';
+    if (otherKeys.length) {
+      const rows = otherKeys.map((v) => {
+        const e = bv[v] || {}; const ld = e.page_load || 0;
+        return `<tr><td>${esc(v)}</td><td class="num">${num(ld)}</td><td class="num">${num(e.focus_email || 0)}</td>
+          <td class="num">${num(e.submit_attempt || 0)}</td><td class="num">${num(e.subscribed || 0)}</td>
+          <td class="num">${pct(e.subscribed || 0, ld)}</td><td class="note">—</td></tr>`;
+      }).join('');
+      other = `<h3>Other variants <span class="note">(not part of a defined test)</span></h3>
+        <table><thead><tr><th>Variant</th><th class="num">Landed</th><th class="num">Focused</th>
+          <th class="num">Clicked</th><th class="num">Joined</th><th class="num">Conv.</th><th></th></tr></thead>
+          <tbody>${rows}</tbody></table>`;
+    }
+
+    content().innerHTML = winbar('splitWin') + `
+      <div class="note" style="margin:6px 0 14px">Signup conversion by split-test version for the selected date range.
+        <b>Landed</b> = sessions that saw it · <b>Joined</b> = signed up · <b>Conv.</b> = Joined ÷ Landed.
+        Open a <b>Preview</b> link to view that version (it pins your browser to that arm).</div>
+      ${sections}${other}`;
+    wireWinbar(showSplit, 'splitWin');
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 

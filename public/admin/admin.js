@@ -482,7 +482,8 @@ function dropActions(d) {
   else status = `<button class="btn dstatus" data-id="${d.id}" data-status="live">Go live</button>`;
   const dup = `<button class="btn ghost ddup" data-id="${d.id}">Duplicate</button>`;
   const resched = `<button class="btn ghost dopens" data-id="${d.id}" data-opens="${esc(d.opens_at || '')}">Reschedule</button>`;
-  return status + ' ' + rename + ' ' + dup + ' ' + resched;
+  const del = `<button class="btn ghost ddelete" data-id="${d.id}" data-name="${esc(d.name || '')}" style="color:var(--bad)">Delete</button>`;
+  return status + ' ' + rename + ' ' + dup + ' ' + resched + ' ' + del;
 }
 
 async function showOrders() {
@@ -665,6 +666,15 @@ async function showOrders() {
         });
         showOrders();
       } catch (e) { document.getElementById('dmsg').textContent = 'Reschedule failed: ' + e.message; }
+    }));
+    document.querySelectorAll('.ddelete').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm(`Delete the drop "${b.dataset.name || '(unnamed)'}"?\n\nThis can't be undone. (A drop with paid orders can't be deleted — close it instead.)`)) return;
+      try {
+        await api(`/api/admin/drops/${b.dataset.id}/delete`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        });
+        showOrders();
+      } catch (e) { document.getElementById('dmsg').textContent = 'Delete failed: ' + e.message; }
     }));
     document.getElementById('dcreate').addEventListener('click', async () => {
       const name = document.getElementById('dname').value.trim();

@@ -889,6 +889,20 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[drops/price]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Delete a drop. Refuse if it has paid orders (preserve revenue/history — close
+  // it instead); otherwise remove it plus any abandoned/pending orders for it.
+  app.post('/api/admin/drops/:id/delete', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const paid = (await q(`SELECT COUNT(*)::int n FROM orders WHERE drop_id=$1 AND status='paid'`, [id])).rows[0].n;
+      if (paid > 0) return res.status(400).json({ error: `can't delete — this drop has ${paid} paid order(s). Close it instead to keep the records.` });
+      await q(`DELETE FROM orders WHERE drop_id=$1 AND status <> 'paid'`, [id]);
+      await q(`DELETE FROM drops WHERE id=$1`, [id]);
+      res.json({ ok: true });
+    } catch (e) { console.error('[drops/delete]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Edit a drop's tasting-card details any time — shown in the buy-page modal.
   app.post('/api/admin/drops/:id/notes', async (req, res) => {
     if (!requireAdmin(req, res)) return;

@@ -842,8 +842,20 @@ async function showEmail() {
       ? `<button class="btn ghost" id="recent-toggle" data-expanded="0">Show all ${num(subs.recent.length)} ↓</button>`
       : '';
     const blastHistory = blasts.blasts.length
-      ? blasts.blasts.map((b) => `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${esc(b.status)}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.recipient_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td><td><button class="btn ghost bresend" data-id="${b.id}" data-subject="${esc(b.subject || '(no subject)')}">Resend…</button></td></tr>`).join('')
-      : '<tr><td class="note" colspan="6">No blasts yet.</td></tr>';
+      ? blasts.blasts.map((b) => {
+          // "Not sent" = failures + never-attempted (a blocked blast folds both in).
+          // Highlight it when non-zero so partial/blocked blasts stand out, and
+          // base the open rate on who actually RECEIVED it, not the full list.
+          const notSent = (b.failed_count || 0);
+          const notSentCell = notSent > 0
+            ? `<span style="color:var(--bad)">${num(notSent)}</span>`
+            : '<span class="note">0</span>';
+          const statusCell = b.status === 'blocked'
+            ? `<span style="color:var(--bad)">${esc(b.status)}</span>`
+            : esc(b.status);
+          return `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${statusCell}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.sent_count)}</td><td class="num">${notSentCell}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.sent_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td><td><button class="btn ghost bresend" data-id="${b.id}" data-subject="${esc(b.subject || '(no subject)')}">Resend…</button></td></tr>`;
+        }).join('')
+      : '<tr><td class="note" colspan="8">No blasts yet.</td></tr>';
     const wel = blasts.welcome || { sent: 0, opened: 0 };
 
     // Open-rate-by-type summary + per-send history.
@@ -898,7 +910,7 @@ async function showEmail() {
       <div id="composer"></div>
 
       <h3>Blast history</h3>
-      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Opened</th><th>Created</th><th></th></tr></thead><tbody>${blastHistory}</tbody></table>
+      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Sent</th><th class="num">Not sent</th><th class="num">Opened</th><th>Created</th><th></th></tr></thead><tbody>${blastHistory}</tbody></table>
       <div class="note" id="resend-msg"></div>
 
       <h3>Open rate by type</h3>

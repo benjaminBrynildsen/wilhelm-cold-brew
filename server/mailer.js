@@ -55,8 +55,18 @@ if (USER && PASS) {
     port: PORT,
     secure: PORT === 465,
     auth: { user: USER, pass: PASS },
+    // Pooling is critical for blasts: without it nodemailer opens a fresh SMTP
+    // connection + full login per email, and ~80 rapid logins trips Gmail's
+    // anti-abuse limiter (454-4.7.0 "too many login attempts" → ~1hr lockout).
+    // One persistent connection, recycled every ~100 messages (Gmail's per-
+    // connection ceiling), paced to a few messages/sec.
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    rateDelta: 1000,
+    rateLimit: 3,
   });
-  console.log('[mail] SMTP configured as', USER);
+  console.log('[mail] SMTP configured as', USER, '(pooled)');
 } else {
   console.warn('[mail] SMTP not configured (SMTP_USER/SMTP_PASS missing) — emails will be skipped.');
 }
@@ -280,8 +290,20 @@ export async function sendOrderAlert({ email, amountCents, dropName, shippingNam
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const htmlToText = (html) => String(html).replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
-// Throttled blast to a list. Gmail/Workspace rate-limits rapid sends, so we pace
-// them and cap per run; returns per-recipient results so failures can be retried.
+// Account-level provider block (vs. a per-recipient failure). Gmail returns these
+// when it rate-limits the whole account — retrying only deepens the lockout, so
+// when we see one we STOP the blast and leave the remainder cleanly resendable.
+function isProviderBlock(e) {
+  if (!e) return false;
+  if (e.responseCode === 421 || e.responseCode === 454) return true;
+  const msg = String(e.response || e.message || '').toLowerCase();
+  return /4\.7\.0|too many login|too many messages|rate limit|quota exceeded|try again later|temporarily|unusual (sending|activity)|throttl/.test(msg);
+}
+
+// Throttled blast to a list. The pooled transporter handles connection reuse;
+// here we pace per-message and, critically, BAIL on an account-level rate-limit
+// block instead of hammering. Returns per-recipient results plus `unsent`/`stopped`
+// so the caller can mark the remainder and resend later.
 export async function sendBulk(recipients, subject, html, opts) {
   if (!transporter) throw new Error('SMTP not configured');
   const delayMs = (opts && opts.delayMs) || 600;
@@ -293,8 +315,10 @@ export async function sendBulk(recipients, subject, html, opts) {
   const text = htmlToText(html);
   const results = [];
   let sent = 0, failed = 0;
+  let stopped = null;                 // reason string if we bail early on a block
   const n = Math.min(recipients.length, cap);
-  for (let i = 0; i < n; i++) {
+  let i = 0;
+  for (; i < n; i++) {
     const to = recipients[i];
     const token = mkToken();
     const send = () => transporter.sendMail({
@@ -307,8 +331,9 @@ export async function sendBulk(recipients, subject, html, opts) {
       try {
         await send();
       } catch (e1) {
-        // One retry after a longer pause — most bulk failures are transient
-        // SMTP rate-limits / dropped connections, which a brief backoff clears.
+        // An account-level block won't clear in 3s — don't retry it, surface it
+        // so the outer catch can stop the run. Only retry genuine transients.
+        if (isProviderBlock(e1)) throw e1;
         await wait(3000);
         await send();
       }
@@ -316,10 +341,20 @@ export async function sendBulk(recipients, subject, html, opts) {
       await recordSend(token, to, 'blast', blastId);
       sent++; results.push({ to, ok: true });
     } catch (e) {
+      if (isProviderBlock(e)) {
+        // Provider locked us out. Stop here; everyone from i onward is untouched
+        // and resendable (none of them were recorded as sent).
+        stopped = e.response || e.message || 'provider rate limit';
+        results.push({ to, ok: false, error: e.message, blocked: true });
+        break;
+      }
       failed++; results.push({ to, ok: false, error: e.message });
     }
     if (onProgress) { try { onProgress({ sent, failed, i: i + 1, n }); } catch (_) {} }
     if (i < n - 1) await wait(delayMs);
   }
-  return { sent, failed, attempted: n, total: recipients.length, results };
+  // Anyone never attempted (we stopped early) — distinct from a real failure.
+  const unsent = n - sent - failed;
+  if (stopped) console.warn(`[mail] blast stopped early after ${sent} sent — provider block: ${stopped}`);
+  return { sent, failed, unsent, stopped, attempted: sent + failed, total: recipients.length, results };
 }

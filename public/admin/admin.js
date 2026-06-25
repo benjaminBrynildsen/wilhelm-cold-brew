@@ -925,16 +925,26 @@ async function showEmail() {
     const rmsg = document.getElementById('resend-msg');
     document.querySelectorAll('.bresend').forEach((btn) => btn.addEventListener('click', async () => {
       const id = btn.dataset.id, subj = btn.dataset.subject;
-      // First prompt picks the audience, second confirms it.
-      const missed = confirm(`Resend "${subj}"?\n\nOK  = only people who haven't opened it (recommended — reaches the ones who missed it)\nCancel = send to EVERYONE on the list again`);
-      const mode = missed ? 'missed' : 'all';
-      if (!confirm(`Confirm: resend "${subj}" to ${missed ? "everyone who hasn't opened it yet" : 'the ENTIRE active list (all get it again)'}?`)) return;
+      // Three audiences, narrowest-first. 'unsent' is the clean recovery for a
+      // partial/blocked blast: it reaches exactly who never received it, no dupes.
+      let mode;
+      if (confirm(`Resend "${subj}"?\n\nOK  = only people who never RECEIVED it (recommended — completes a partial/blocked blast, no duplicates)\nCancel = other options`)) {
+        mode = 'unsent';
+      } else if (confirm(`Other options for "${subj}":\n\nOK  = everyone who hasn't OPENED it (also re-sends to people who already got it)\nCancel = the ENTIRE active list (everyone gets it again)`)) {
+        mode = 'missed';
+      } else {
+        mode = 'all';
+      }
+      const label = mode === 'unsent' ? 'people who never received it'
+                  : mode === 'missed' ? "everyone who hasn't opened it"
+                  : 'the ENTIRE active list';
+      if (!confirm(`Confirm: resend "${subj}" to ${label}?`)) return;
       rmsg.textContent = 'Starting resend…';
       try {
         const r = await api(`/api/admin/email/blasts/${id}/resend`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }),
         });
-        rmsg.textContent = `Resending to ${num(r.recipientCount || 0)} (${mode === 'all' ? 'everyone' : 'non-openers'}) — watch Blast history for progress.`;
+        rmsg.textContent = `Resending to ${num(r.recipientCount || 0)} (${label}) — watch Blast history for progress.`;
         setTimeout(showEmail, 1000);
       } catch (e) { rmsg.textContent = 'Resend failed: ' + e.message; }
     }));

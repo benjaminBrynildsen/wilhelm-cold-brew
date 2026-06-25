@@ -87,9 +87,15 @@ async function runBlast(blastId, recipients, subject, bodyHtml) {
         }
       },
     });
-    await q(`UPDATE email_blasts SET sent_count=$1, failed_count=$2, status='sent', sent_at=now() WHERE id=$3`,
-      [result.sent, result.failed, blastId]);
-    console.log(`[blast ${blastId}] done: sent ${result.sent}, failed ${result.failed} of ${result.total}`);
+    // If the provider locked us out we stopped early; everyone not sent (real
+    // failures + never-attempted) is folded into failed_count so the row shows
+    // who still needs it, and the status flags it as paused rather than complete.
+    const notSent = result.failed + (result.unsent || 0);
+    const status = result.stopped ? 'blocked' : 'sent';
+    await q(`UPDATE email_blasts SET sent_count=$1, failed_count=$2, status=$3, sent_at=now() WHERE id=$4`,
+      [result.sent, notSent, status, blastId]);
+    console.log(`[blast ${blastId}] ${status}: sent ${result.sent}, not-sent ${notSent} of ${result.total}` +
+      (result.stopped ? ` (provider block: ${result.stopped})` : ''));
   } catch (e) {
     console.error(`[blast ${blastId}] failed:`, e?.message || e);
     await q(`UPDATE email_blasts SET status='failed' WHERE id=$1`, [blastId]).catch(() => {});
@@ -487,23 +493,38 @@ export function mountAdmin(app) {
 
   // Re-send an existing blast (reuses its exact stored subject + body), so a
   // partly-delivered blast can be completed without rebuilding it.
-  //   mode 'missed' (default): skip anyone who PROVABLY got it (they opened it);
-  //                            everyone else on the active list gets it — this
-  //                            guarantees the people who missed it are covered.
+  //   mode 'unsent' (default): send to exactly the people who never RECEIVED it —
+  //                            active list minus anyone with a delivered send row
+  //                            for this blast. Since failed/never-attempted sends
+  //                            aren't recorded (only successes are), this targets
+  //                            precisely who missed a blast that hit a provider
+  //                            lockout, with zero duplicates to those who got it.
+  //   mode 'missed':           skip anyone who PROVABLY got it (they opened it);
+  //                            everyone else on the active list gets it. Wider net
+  //                            than 'unsent' (re-sends to delivered-but-unopened).
   //   mode 'all':              re-send to the entire active list.
   app.post('/api/admin/email/blasts/:id/resend', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     if (!mailReady()) return res.status(501).json({ error: 'email not configured — set SMTP creds first' });
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ error: 'bad blast id' });
-    const mode = req.body?.mode === 'all' ? 'all' : 'missed';
+    const mode = ['all', 'missed', 'unsent'].includes(req.body?.mode) ? req.body.mode : 'unsent';
     try {
       const b = (await q(`SELECT id, subject, body_html FROM email_blasts WHERE id=$1`, [id])).rows[0];
       if (!b) return res.status(404).json({ error: 'blast not found' });
       if (!b.body_html) return res.status(400).json({ error: 'this blast has no stored body to resend' });
 
       let recipients;
-      if (mode === 'missed') {
+      if (mode === 'unsent') {
+        // Active list minus anyone with a recorded (delivered) send for this blast.
+        // A send row only exists on success, so this is exactly who never got it.
+        recipients = (await q(
+          `SELECT email FROM subscribers
+            WHERE unsubscribed_at IS NULL ${EXCL_PV}
+              AND LOWER(email) NOT IN (
+                SELECT LOWER(email) FROM email_sends WHERE blast_id = $1)
+            ORDER BY created_at ASC`, [id])).rows.map((r) => r.email);
+      } else if (mode === 'missed') {
         // Exclude only addresses we can prove were delivered (an open = proof).
         // Phantom/failed history rows have no open, so those people are included.
         recipients = (await q(
@@ -518,7 +539,12 @@ export function mountAdmin(app) {
           `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at ASC`
         )).rows.map((r) => r.email);
       }
-      if (!recipients.length) return res.status(400).json({ error: 'no recipients match — everyone has already opened this blast' });
+      if (!recipients.length) {
+        const why = mode === 'unsent' ? 'everyone on the active list already received this blast'
+                  : mode === 'missed' ? 'everyone has already opened this blast'
+                  : 'no active subscribers';
+        return res.status(400).json({ error: `no recipients match — ${why}` });
+      }
 
       // Record the resend as its own blast row so its opens track separately and
       // the original blast's numbers stay intact.

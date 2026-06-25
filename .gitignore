@@ -3,3 +3,6 @@ node_modules/
 *.log
 .env
 .env.local
+
+# local source photos (optimized copies live in public/drink/assets)
+raw-photos/

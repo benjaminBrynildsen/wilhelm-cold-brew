@@ -10,38 +10,63 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400;500&display=swap"/>
-  <!-- Preload the always-visible LCP images (logo + hero photo). -->
+  <!-- Preload the always-visible logo. The hero photo is preloaded dynamically
+       by the variant script below, so only the chosen image-test arm is fetched. -->
   <link rel="preload" as="image" href="assets/wilhelm-circle.png"/>
-  <link rel="preload" as="image" href="assets/bottle-cigars.jpg"/>
   <link rel="stylesheet" href="optin.css"/>
 
   <!-- /drink config, resolved BEFORE paint (no flash):
         • Background: DARK default for everyone; light preview only via ?v=light.
         • Layout: locked to 'below' (bullets under the photo).
-        • Headline A/B test — A = "...on the list."  B = "...sell out in minutes?"
-          50/50 random, persisted; force with ?h=on-the-list | ?h=sells-out.
-       The chosen headline arm is what gets tracked as the split-test variant. -->
+        • Headline: locked to "on-the-list" (its A/B test concluded). ?h=sells-out previews the old arm.
+        • Hero IMAGE A/B test — 3 arms, even split, persisted per visitor:
+            cigars  = current pour-over-cigars shot (control)
+            barrel  = bottle on a whiskey barrel at dusk (styled render)
+            bottles = real batch of bottles, fresh off the line (product photo)
+          Force/preview an arm with ?img=cigars | ?img=barrel | ?img=bottles.
+       The chosen IMAGE arm is what gets tracked as the split-test variant, so
+       admin → Funnel → "By variant" reads signup conversion per image. -->
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
       var bg = (p.get('v') === 'light') ? 'light' : 'dark';   // dark default; light only via ?v=light
 
-      // Headline split test concluded — "on-the-list" won (tied-or-better on
-      // conversion and aligned with the winning ad hooks), so it's now the
-      // permanent default. No more 50/50 rotation. ?h=sells-out still previews
-      // the old arm for reference. localStorage is overwritten so any returning
-      // visitor (and the buy page's variant read) snaps to on-the-list too.
+      // Headline split test concluded — "on-the-list" won, now the permanent
+      // default. ?h=sells-out still previews the old arm for reference.
       var HL = ['on-the-list', 'sells-out'];
-      var HKEY = 'wilhelm_drink_hl';
       var forcedH = p.get('h');
       var hl = HL.indexOf(forcedH) >= 0 ? forcedH : 'on-the-list';
-      try { localStorage.setItem(HKEY, hl); } catch (e) {}
-
+      try { localStorage.setItem('wilhelm_drink_hl', hl); } catch (e) {}
       window.__DRINK_HL = hl;
-      window.__DRINK_VARIANT = hl;                                          // tracked split-test arm
+
+      // Hero image A/B test. Sticky per visitor (localStorage), ?img= forces an arm.
+      var IMG = {
+        cigars:  { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667,  alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
+        barrel:  { src: 'assets/hero-barrel.jpg',   w: 1024, h: 1024, alt: 'A bottle of Wilhelm Cold Brew on a whiskey barrel at dusk' },
+        bottles: { src: 'assets/hero-bottles.jpg',  w: 1280, h: 1222, alt: 'A fresh batch of Wilhelm Cold Brew bottles, just off the line' }
+      };
+      var ORDER = ['cigars', 'barrel', 'bottles'];
+      var forcedI = p.get('img');
+      var arm = IMG[forcedI] ? forcedI : null;
+      if (!arm) { try { arm = localStorage.getItem('wilhelm_drink_img'); } catch (e) {} }
+      if (!IMG[arm]) { arm = ORDER[Math.floor(Math.random() * ORDER.length)]; }
+      try { localStorage.setItem('wilhelm_drink_img', arm); } catch (e) {}
+      var cfg = IMG[arm];
+
+      window.__DRINK_IMG = arm;
+      window.__DRINK_IMG_SRC = cfg.src;
+      window.__DRINK_IMG_ALT = cfg.alt;
+      window.__DRINK_IMG_W = cfg.w;
+      window.__DRINK_IMG_H = cfg.h;
+      // Preload only the chosen arm's image (it's the LCP element).
+      try { var l = document.createElement('link'); l.rel = 'preload'; l.as = 'image'; l.href = cfg.src; document.head.appendChild(l); } catch (e) {}
+
+      // The live experiment is the image, so that's the tracked split-test arm.
+      window.__DRINK_VARIANT = arm;
       document.documentElement.setAttribute('data-drink-variant', 'below'); // layout (bullets below the photo)
       document.documentElement.setAttribute('data-drink-bg', bg);
       document.documentElement.setAttribute('data-drink-hl', hl);
+      document.documentElement.setAttribute('data-drink-img', arm);
     })();
   </script>
 
@@ -83,7 +108,20 @@
       </script>
 
       <div class="optin-image">
-        <img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/>
+        <!-- Hero image arm chosen before paint (see the variant script in <head>).
+             src is set synchronously below so only the chosen image is fetched. -->
+        <img id="hero-img" alt="Wilhelm Cold Brew" width="1000" height="667"/>
+        <script>
+          (function () {
+            var im = document.getElementById('hero-img');
+            if (im && window.__DRINK_IMG_SRC) {
+              im.width = window.__DRINK_IMG_W; im.height = window.__DRINK_IMG_H;
+              im.alt = window.__DRINK_IMG_ALT;
+              im.src = window.__DRINK_IMG_SRC;   // set last so width/height/alt are in place first
+            }
+          })();
+        </script>
+        <noscript><img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/></noscript>
       </div>
 
       <ul class="sub-bullets">

@@ -480,7 +480,9 @@ function dropActions(d) {
   if (d.status === 'live') status = `<button class="btn ghost dstatus" data-id="${d.id}" data-status="closed">Close</button>`;
   else if (d.status === 'soldout' || d.status === 'closed') status = `<button class="btn ghost dstatus" data-id="${d.id}" data-status="live">Re-open</button>`;
   else status = `<button class="btn dstatus" data-id="${d.id}" data-status="live">Go live</button>`;
-  return status + ' ' + rename;
+  const dup = `<button class="btn ghost ddup" data-id="${d.id}">Duplicate</button>`;
+  const resched = `<button class="btn ghost dopens" data-id="${d.id}" data-opens="${esc(d.opens_at || '')}">Reschedule</button>`;
+  return status + ' ' + rename + ' ' + dup + ' ' + resched;
 }
 
 async function showOrders() {
@@ -617,6 +619,32 @@ async function showOrders() {
         });
         showOrders();
       } catch (e) { document.getElementById('dmsg').textContent = 'Rename failed: ' + e.message; }
+    }));
+    document.querySelectorAll('.ddup').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Duplicate this drop?\n\nCreates a new SCHEDULED copy — same name, price, bottle cap, and tasting card — dated one week later. Sold/orders are not copied. You can then edit it and "Go live" when ready.')) return;
+      try {
+        await api(`/api/admin/drops/${b.dataset.id}/duplicate`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        });
+        showOrders();
+      } catch (e) { document.getElementById('dmsg').textContent = 'Duplicate failed: ' + e.message; }
+    }));
+    document.querySelectorAll('.dopens').forEach((b) => b.addEventListener('click', async () => {
+      const cur = b.dataset.opens ? new Date(b.dataset.opens).toLocaleString() : '';
+      const raw = window.prompt(`New "opens" date & time in your local timezone (${tzAbbr()}), e.g. "2026-06-26 9:00 AM". Leave blank to clear.`, cur);
+      if (raw === null) return; // cancelled
+      let opensAt = null;
+      if (raw.trim()) {
+        const d = new Date(raw.trim());
+        if (isNaN(d)) { document.getElementById('dmsg').textContent = 'Could not read that date — try e.g. 2026-06-26 9:00 AM'; return; }
+        opensAt = d.toISOString();
+      }
+      try {
+        await api(`/api/admin/drops/${b.dataset.id}/opens`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ opensAt }),
+        });
+        showOrders();
+      } catch (e) { document.getElementById('dmsg').textContent = 'Reschedule failed: ' + e.message; }
     }));
     document.getElementById('dcreate').addEventListener('click', async () => {
       const name = document.getElementById('dname').value.trim();
@@ -841,6 +869,9 @@ async function showEmail() {
     const recentToggle = subs.recent.length > RECENT_PREVIEW
       ? `<button class="btn ghost" id="recent-toggle" data-expanded="0">Show all ${num(subs.recent.length)} ↓</button>`
       : '';
+    const unsubRows = (subs.unsubRecent || []).length
+      ? subs.unsubRecent.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(ago(r.unsubscribed_at))}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="2">No unsubscribes yet.</td></tr>';
     const blastHistory = blasts.blasts.length
       ? blasts.blasts.map((b) => {
           // "Not sent" = failures + never-attempted (a blocked blast folds both in).
@@ -853,9 +884,12 @@ async function showEmail() {
           const statusCell = b.status === 'blocked'
             ? `<span style="color:var(--bad)">${esc(b.status)}</span>`
             : esc(b.status);
-          return `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${statusCell}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.sent_count)}</td><td class="num">${notSentCell}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.sent_count)})</td><td>${esc((b.created_at || '').slice(0, 10))}</td><td><button class="btn ghost bresend" data-id="${b.id}" data-subject="${esc(b.subject || '(no subject)')}">Resend…</button></td></tr>`;
+          // Unsubscribes attributed to this send's window (see /email/blasts).
+          const unsub = (b.unsubscribed || 0);
+          const unsubCell = unsub > 0 ? `<span style="color:var(--bad)">${num(unsub)}</span>` : '<span class="note">0</span>';
+          return `<tr><td>${esc(b.subject || '(no subject)')}</td><td>${statusCell}</td><td class="num">${num(b.recipient_count)}</td><td class="num">${num(b.sent_count)}</td><td class="num">${notSentCell}</td><td class="num">${num(b.opened)} (${pct(b.opened, b.sent_count)})</td><td class="num">${unsubCell}</td><td>${esc((b.created_at || '').slice(0, 10))}</td><td><button class="btn ghost bresend" data-id="${b.id}" data-subject="${esc(b.subject || '(no subject)')}">Resend…</button></td></tr>`;
         }).join('')
-      : '<tr><td class="note" colspan="8">No blasts yet.</td></tr>';
+      : '<tr><td class="note" colspan="9">No blasts yet.</td></tr>';
     const wel = blasts.welcome || { sent: 0, opened: 0 };
 
     // Open-rate-by-type summary + per-send history.
@@ -885,6 +919,7 @@ async function showEmail() {
         <div class="card"><div class="k">New (7d)</div><div class="v">${num(subs.last7)}</div></div>
         <div class="card"><div class="k">Welcome open rate</div><div class="v">${pct(wel.opened, wel.sent)}</div></div>
         <div class="card"><div class="k">Welcomes opened</div><div class="v">${num(wel.opened)}<small>/${num(wel.sent)}</small></div></div>
+        <div class="card"><div class="k">Unsubscribed</div><div class="v">${num(subs.unsubTotal || 0)}<small>${(subs.unsubLast7 || 0) > 0 ? ` · ${num(subs.unsubLast7)} in 7d` : ''}</small></div></div>
       </div>
       <div class="row-actions">
         <a class="btn" href="/api/admin/subscribers?format=csv">Export CSV</a>
@@ -906,11 +941,14 @@ async function showEmail() {
       <h3>Signups by ad <span class="note">(first-party — source / campaign / ad)</span></h3>
       <table><thead><tr><th>Source</th><th>Campaign</th><th>Ad (utm_content)</th><th class="num">Signups</th></tr></thead><tbody>${byAdRows || '<tr><td class="note" colspan="4">No tagged signups yet — tag your X ad URLs with ?utm_source=x&utm_campaign=…&utm_content=ad-name.</td></tr>'}</tbody></table>
 
+      <h3>Recent unsubscribes <span class="note">(${num(subs.unsubTotal || 0)} total · who dropped off and when)</span></h3>
+      <table><thead><tr><th>Email</th><th>When</th></tr></thead><tbody>${unsubRows}</tbody></table>
+
       <h3>Compose email</h3>
       <div id="composer"></div>
 
       <h3>Blast history</h3>
-      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Sent</th><th class="num">Not sent</th><th class="num">Opened</th><th>Created</th><th></th></tr></thead><tbody>${blastHistory}</tbody></table>
+      <table><thead><tr><th>Subject</th><th>Status</th><th class="num">Recipients</th><th class="num">Sent</th><th class="num">Not sent</th><th class="num">Opened</th><th class="num">Unsub</th><th>Created</th><th></th></tr></thead><tbody>${blastHistory}</tbody></table>
       <div class="note" id="resend-msg"></div>
 
       <h3>Open rate by type</h3>

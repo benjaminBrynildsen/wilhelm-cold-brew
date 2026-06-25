@@ -343,7 +343,17 @@ export function mountAdmin(app) {
            FROM subscribers
           WHERE unsubscribed_at IS NULL ${EXCL_PV}
           GROUP BY 1,2,3 ORDER BY n DESC`)).rows;
-      res.json({ total, last7, byVariant, byAd, recent: rows });
+      // Unsubscribe visibility — counts + who (internal/test addresses excluded).
+      const unsubTotal = (await q(
+        `SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NOT NULL ${EXCL_PV} ${EXCL_EM}`)).rows[0].n;
+      const unsubLast7 = (await q(
+        `SELECT COUNT(*)::int n FROM subscribers
+          WHERE unsubscribed_at > NOW() - INTERVAL '7 days' ${EXCL_PV} ${EXCL_EM}`)).rows[0].n;
+      const unsubRecent = (await q(
+        `SELECT email, unsubscribed_at FROM subscribers
+          WHERE unsubscribed_at IS NOT NULL ${EXCL_PV} ${EXCL_EM}
+          ORDER BY unsubscribed_at DESC LIMIT 30`)).rows;
+      res.json({ total, last7, byVariant, byAd, recent: rows, unsubTotal, unsubLast7, unsubRecent });
     } catch (e) { console.error('[subscribers]', e); res.status(500).json({ error: e.message }); }
   });
 
@@ -364,6 +374,21 @@ export function mountAdmin(app) {
       const byKind = (await q(
         `SELECT kind, COUNT(*)::int sent, COUNT(first_open_at)::int opened
            FROM email_sends WHERE TRUE ${EXCL_EM} GROUP BY kind ORDER BY sent DESC`)).rows;
+      // Per-blast unsubscribes: attribute each unsub to the most recent blast sent
+      // before it — i.e. the window [this blast.sent_at, next blast.sent_at). No
+      // blast_id is recorded on unsubscribe, so this timestamp window is the signal.
+      const unsubByBlast = (await q(
+        `WITH bs AS (
+           SELECT id, sent_at, LEAD(sent_at) OVER (ORDER BY sent_at) AS next_at
+             FROM email_blasts WHERE sent_at IS NOT NULL)
+         SELECT bs.id,
+                (SELECT COUNT(*)::int FROM subscribers s
+                  WHERE s.unsubscribed_at >= bs.sent_at
+                    AND (bs.next_at IS NULL OR s.unsubscribed_at < bs.next_at)
+                    ${EXCL_PV} ${EXCL_EM}) AS unsubscribed
+           FROM bs`)).rows;
+      const unsubMap = Object.fromEntries(unsubByBlast.map((r) => [r.id, r.unsubscribed]));
+      for (const b of rows) b.unsubscribed = unsubMap[b.id] || 0;
       res.json({ blasts: rows, welcome: wel, byKind });
     } catch (e) { console.error('[blasts]', e); res.status(500).json({ error: e.message }); }
   });
@@ -864,5 +889,39 @@ export function mountAdmin(app) {
         [notes, clip(req.body?.origin), clip(req.body?.varietal), clip(req.body?.elevation), clip(req.body?.roast), id]);
       res.json({ ok: true });
     } catch (e) { console.error('[drops/notes]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Duplicate a drop: clone all its content (name, price, cap, tasting card) into
+  // a fresh 'scheduled' drop so a repeat batch doesn't have to be re-entered. The
+  // new drop's opens_at auto-advances 7 days (a weekly drop lands next week at the
+  // same time). Sold/orders/stripe are NOT copied — those are derived from orders.
+  app.post('/api/admin/drops/:id/duplicate', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const src = (await q(`SELECT * FROM drops WHERE id=$1`, [id])).rows[0];
+      if (!src) return res.status(404).json({ error: 'drop not found' });
+      const r = await q(
+        `INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status,
+                            tasting_notes, origin, varietal, elevation, roast)
+         VALUES ($1,$2,$3,$4,'scheduled',$5,$6,$7,$8,$9) RETURNING id`,
+        [src.name, src.price_cents, src.bottle_cap,
+         src.opens_at ? new Date(new Date(src.opens_at).getTime() + 7 * 86400000).toISOString() : null,
+         src.tasting_notes, src.origin, src.varietal, src.elevation, src.roast]);
+      res.json({ ok: true, id: r.rows[0].id });
+    } catch (e) { console.error('[drops/duplicate]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Reschedule a drop (set/clear opens_at) — the only field with no edit path until
+  // now, needed so a duplicated drop's date can be adjusted off the +7-day default.
+  app.post('/api/admin/drops/:id/opens', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      let opensAt = null;
+      if (req.body?.opensAt) { const d = new Date(req.body.opensAt); if (!isNaN(d)) opensAt = d.toISOString(); }
+      await q(`UPDATE drops SET opens_at=$1 WHERE id=$2`, [opensAt, id]);
+      res.json({ ok: true, opensAt });
+    } catch (e) { console.error('[drops/opens]', e); res.status(500).json({ error: e.message }); }
   });
 }

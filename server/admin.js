@@ -865,21 +865,34 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[unmark-shipped]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // Import tracking numbers from a Pirate Ship export CSV. Matches each row to a
-  // paid order (by our 'Order ID' column, else by Email), records the tracking
-  // number + marks shipped, and emails the purchaser. Two-phase: commit:false
-  // previews the matches (no changes/sends); commit:true records + sends, skipping
-  // anyone already notified so re-uploading the same file is safe.
+  // Import tracking numbers from a Pirate Ship export (.xlsx or .csv). Matches each
+  // row to a paid order (by our 'Order ID' column, else by Email), records the
+  // tracking number + marks shipped, and emails the purchaser. Two-phase:
+  // commit:false previews the matches (no changes/sends); commit:true records +
+  // sends, skipping anyone already notified so re-uploading the same file is safe.
   app.post('/api/admin/orders/import-tracking', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
     try {
-      const csv = String(req.body?.csv || '');
       const commit = req.body?.commit === true;
-      if (!csv.trim()) return res.status(400).json({ error: 'no CSV provided' });
-      const rows = parseCsv(csv).filter((r) => r.some((c) => String(c).trim() !== ''));
-      if (rows.length < 2) return res.status(400).json({ error: 'CSV has no data rows' });
-      const header = rows[0].map((h) => h.trim().toLowerCase());
+      let rows;
+      if (req.body?.xlsx) {
+        // Excel (.xlsx/.xls) — SheetJS to an array-of-arrays. raw:false keeps long
+        // tracking numbers as text rather than mangling them into scientific notation.
+        try {
+          const XLSX = await import('xlsx');
+          const wb = XLSX.read(Buffer.from(String(req.body.xlsx), 'base64'), { type: 'buffer' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '', blankrows: false });
+        } catch (e) { return res.status(400).json({ error: 'could not read the spreadsheet: ' + (e?.message || e) }); }
+      } else {
+        const csv = String(req.body?.csv || '');
+        if (!csv.trim()) return res.status(400).json({ error: 'no file provided' });
+        rows = parseCsv(csv);
+      }
+      rows = (rows || []).filter((r) => Array.isArray(r) && r.some((c) => String(c).trim() !== ''));
+      if (rows.length < 2) return res.status(400).json({ error: 'file has no data rows' });
+      const header = rows[0].map((h) => String(h).trim().toLowerCase());
       const col = (...preds) => { for (const p of preds) { const i = header.findIndex(p); if (i >= 0) return i; } return -1; };
       const tcol = col((h) => h.includes('tracking') && !/url|link/.test(h), (h) => h.includes('tracking'));
       const idcol = col((h) => h === 'order id' || h === 'order_id' || h === 'orderid', (h) => /order\s*id/.test(h));

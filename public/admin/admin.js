@@ -591,6 +591,12 @@ async function showTraffic() {
 
 // ───────── Orders ─────────
 const FLD_DARK = 'background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:7px 9px;color-scheme:dark';
+// ArrayBuffer -> base64 (chunked so big files don't blow the call stack).
+function abToBase64(buf) {
+  const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return btoa(bin);
+}
 // Carrier tracking URL (mirrors server/mailer.js trackingUrl). Default USPS.
 function trackUrl(num, carrier) {
   const n = String(num || '').replace(/\s+/g, ''); const c = String(carrier || '').toLowerCase();
@@ -683,11 +689,11 @@ async function showOrders() {
 
       <h3>Import tracking from Pirate Ship</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
-        <input type="file" id="trackfile" accept=".csv,text/csv" style="${FLD_DARK};padding:6px;max-width:280px"/>
+        <input type="file" id="trackfile" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="${FLD_DARK};padding:6px;max-width:300px"/>
         <button class="btn ghost" id="trackpreview">Preview matches</button>
         <span class="note" id="trackmsg"></span>
       </div>
-      <div class="note">After you buy labels, export the shipments from Pirate Ship and upload that CSV here. It matches each tracking number back to the order (by the Order ID or email column), records it, marks the order shipped, and emails that purchaser their tracking link. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
+      <div class="note">After you buy labels, export the shipments from Pirate Ship (.xlsx or .csv) and upload the file here. It matches each tracking number back to the order (by the Order ID or email column), records it, marks the order shipped, and emails that purchaser their tracking link. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
       <div id="trackresult" style="margin-top:8px"></div>
 
       <h3>Recent orders</h3>
@@ -750,18 +756,20 @@ async function showOrders() {
       } catch (e) { document.getElementById('shipmsg').textContent = 'Failed: ' + e.message; }
     });
 
-    // Import tracking from a Pirate Ship export: preview matches, then send.
-    let trackCsv = null;
+    // Import tracking from a Pirate Ship export (.xlsx or .csv): preview, then send.
+    let trackPayload = null;   // { xlsx: base64 } or { csv: text }
     const tfile = document.getElementById('trackfile');
     const tprev = document.getElementById('trackpreview');
     if (tprev) tprev.addEventListener('click', async () => {
       const tmsg = document.getElementById('trackmsg'), tres = document.getElementById('trackresult');
-      if (!tfile.files || !tfile.files[0]) { tmsg.textContent = 'Choose your Pirate Ship CSV first.'; return; }
+      if (!tfile.files || !tfile.files[0]) { tmsg.textContent = 'Choose your Pirate Ship file first.'; return; }
       tmsg.textContent = 'Reading…';
-      trackCsv = await tfile.files[0].text();
+      const f = tfile.files[0];
+      if (/\.xlsx?$/i.test(f.name)) trackPayload = { xlsx: abToBase64(await f.arrayBuffer()) };
+      else trackPayload = { csv: await f.text() };
       try {
         const r = await api('/api/admin/orders/import-tracking', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv: trackCsv, commit: false }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, commit: false }),
         });
         tmsg.textContent = '';
         const um = (r.unmatched || []).slice(0, 10).map((u) =>
@@ -780,7 +788,7 @@ async function showOrders() {
           tsend.disabled = true; document.getElementById('tracksendmsg').textContent = ' Sending…';
           try {
             const rr = await api('/api/admin/orders/import-tracking', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv: trackCsv, commit: true }),
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, commit: true }),
             });
             document.getElementById('tracksendmsg').textContent = ` Recorded ${rr.recorded}, emailing ${rr.emailing} in the background — refresh shortly to see who's notified.`;
             setTimeout(showOrders, 2500);

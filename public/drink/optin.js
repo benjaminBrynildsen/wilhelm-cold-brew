@@ -263,28 +263,28 @@ function funnel(event, props) {
   })();
 
   // Countdown to the next drop — exact scheduled time if one exists, else next
-  // Friday 9:00 AM ET. Updates every second across all [data-countdown] blocks.
+  // Friday 9:00 AM CT (Central — the drop's timezone). Updates every second across all [data-countdown] blocks.
   (function countdown() {
     const valEls = document.querySelectorAll('[data-countdown-value]');
     if (!valEls.length) return;
 
-    function etOffsetMin(date) {
-      const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false,
+    function centralOffsetMin(date) {
+      const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour12: false,
         year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
         .formatToParts(date).reduce((a, x) => (a[x.type] = x.value, a), {});
       const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
       return (asUTC - date.getTime()) / 60000;
     }
-    function nextFridayNineET() {
+    function nextFridayNineCentral() {
       const now = Date.now();
       for (let i = 0; i < 10; i++) {
         const probe = new Date(now + i * 86400000);
-        const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short',
+        const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short',
           year: 'numeric', month: '2-digit', day: '2-digit' })
           .formatToParts(probe).reduce((a, x) => (a[x.type] = x.value, a), {});
         if (p.weekday === 'Fri') {
           const guess = Date.UTC(+p.year, +p.month - 1, +p.day, 9, 0, 0);
-          const target = guess - etOffsetMin(new Date(guess)) * 60000;
+          const target = guess - centralOffsetMin(new Date(guess)) * 60000;
           if (target > now) return target;
         }
       }
@@ -293,7 +293,7 @@ function funnel(event, props) {
     function targetMs() {
       const s = window.__NEXT_DROP_AT;
       if (s) { const t = new Date(s).getTime(); if (!isNaN(t) && t > Date.now()) return t; }
-      return nextFridayNineET();
+      return nextFridayNineCentral();
     }
     let target = targetMs();
     function render() {

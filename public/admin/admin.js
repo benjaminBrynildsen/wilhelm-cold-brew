@@ -591,6 +591,14 @@ async function showTraffic() {
 
 // ───────── Orders ─────────
 const FLD_DARK = 'background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:7px 9px;color-scheme:dark';
+// Carrier tracking URL (mirrors server/mailer.js trackingUrl). Default USPS.
+function trackUrl(num, carrier) {
+  const n = String(num || '').replace(/\s+/g, ''); const c = String(carrier || '').toLowerCase();
+  if (c.includes('ups') || /^1z/i.test(n)) return 'https://www.ups.com/track?tracknum=' + encodeURIComponent(n);
+  if (c.includes('fedex')) return 'https://www.fedex.com/fedextrack/?trknbr=' + encodeURIComponent(n);
+  if (c.includes('dhl')) return 'https://www.dhl.com/us-en/home/tracking.html?tracking-id=' + encodeURIComponent(n);
+  return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(n);
+}
 function orderStatusBadge(s) {
   const color = s === 'paid' ? 'var(--good)' : s === 'pending' ? 'rgba(246,239,218,.6)' : '#e0833f';
   return `<span style="color:${color};font-weight:600">${esc(s)}</span>`;
@@ -636,8 +644,11 @@ async function showOrders() {
           <td>${esc(r.drop_name || '—')}</td>
           <td>${esc(r.shipping_name || '—')}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
-          <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td></tr>`).join('')
-      : '<tr><td class="note" colspan="6">No orders yet.</td></tr>';
+          <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
+          <td>${r.tracking_number
+            ? `<a href="${esc(trackUrl(r.tracking_number, r.tracking_carrier))}" target="_blank" rel="noopener">${esc(String(r.tracking_number).slice(0, 14))}${String(r.tracking_number).length > 14 ? '…' : ''}</a>${r.ship_notified_at ? ' <span style="color:var(--good)" title="purchaser emailed">✓</span>' : ' <span class="note" title="tracking on file, not yet emailed">·</span>'}`
+            : '<span class="note">—</span>'}</td></tr>`).join('')
+      : '<tr><td class="note" colspan="7">No orders yet.</td></tr>';
     const dropRows = dd.drops.length
       ? dd.drops.map((d) => `<tr>
           <td>${esc(d.name || '(unnamed)')}</td>
@@ -668,10 +679,19 @@ async function showOrders() {
         <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship.' : 'All paid orders shipped.'}</span>
         <span class="note" id="shipmsg"></span>
       </div>
-      <div class="note">Downloads a Pirate Ship bulk-import CSV (unshipped paid orders only). Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off. After you buy the labels, hit "Mark all as shipped" so they drop off this list.</div>
+      <div class="note">Downloads a Pirate Ship bulk-import CSV (unshipped paid orders only). Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off.</div>
+
+      <h3>Import tracking from Pirate Ship</h3>
+      <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
+        <input type="file" id="trackfile" accept=".csv,text/csv" style="${FLD_DARK};padding:6px;max-width:280px"/>
+        <button class="btn ghost" id="trackpreview">Preview matches</button>
+        <span class="note" id="trackmsg"></span>
+      </div>
+      <div class="note">After you buy labels, export the shipments from Pirate Ship and upload that CSV here. It matches each tracking number back to the order (by the Order ID or email column), records it, marks the order shipped, and emails that purchaser their tracking link. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
+      <div id="trackresult" style="margin-top:8px"></div>
 
       <h3>Recent orders</h3>
-      <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th>Ship to</th><th class="num">Total</th><th>Status</th></tr></thead>
+      <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th>Ship to</th><th class="num">Total</th><th>Status</th><th>Tracking</th></tr></thead>
         <tbody>${orderRows}</tbody></table>
 
       <h3>Drops</h3>
@@ -728,6 +748,45 @@ async function showOrders() {
         document.getElementById('shipmsg').textContent = `Marked ${r.marked} shipped.`;
         showOrders();
       } catch (e) { document.getElementById('shipmsg').textContent = 'Failed: ' + e.message; }
+    });
+
+    // Import tracking from a Pirate Ship export: preview matches, then send.
+    let trackCsv = null;
+    const tfile = document.getElementById('trackfile');
+    const tprev = document.getElementById('trackpreview');
+    if (tprev) tprev.addEventListener('click', async () => {
+      const tmsg = document.getElementById('trackmsg'), tres = document.getElementById('trackresult');
+      if (!tfile.files || !tfile.files[0]) { tmsg.textContent = 'Choose your Pirate Ship CSV first.'; return; }
+      tmsg.textContent = 'Reading…';
+      trackCsv = await tfile.files[0].text();
+      try {
+        const r = await api('/api/admin/orders/import-tracking', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv: trackCsv, commit: false }),
+        });
+        tmsg.textContent = '';
+        const um = (r.unmatched || []).slice(0, 10).map((u) =>
+          `<li>${esc(u.tracking)} — ${esc(u.orderId ? 'Order ' + u.orderId : (u.email || 'no id/email'))}</li>`).join('');
+        tres.innerHTML = `
+          <div class="note" style="margin:6px 0">
+            <b style="color:var(--good)">${num(r.willEmail)}</b> purchaser(s) will be emailed their tracking.
+            ${r.skipped.length ? `<br/>${num(r.skipped.length)} already notified — skipped (tracking still recorded).` : ''}
+            ${r.unmatched.length ? `<br/><span style="color:var(--bad)">${num(r.unmatched.length)} row(s) matched no order:</span><ul style="margin:4px 0 0">${um}${r.unmatched.length > 10 ? '<li>…</li>' : ''}</ul>` : ''}
+          </div>
+          ${r.willEmail ? `<button class="btn" id="tracksend">Send ${num(r.willEmail)} tracking email${r.willEmail === 1 ? '' : 's'}</button>` : '<span class="note">Nothing to send.</span>'}
+          <span class="note" id="tracksendmsg"></span>`;
+        const tsend = document.getElementById('tracksend');
+        if (tsend) tsend.addEventListener('click', async () => {
+          if (!confirm(`Send tracking emails to ${r.willEmail} purchaser(s) now?`)) return;
+          tsend.disabled = true; document.getElementById('tracksendmsg').textContent = ' Sending…';
+          try {
+            const rr = await api('/api/admin/orders/import-tracking', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv: trackCsv, commit: true }),
+            });
+            document.getElementById('tracksendmsg').textContent = ` Recorded ${rr.recorded}, emailing ${rr.emailing} in the background — refresh shortly to see who's notified.`;
+            setTimeout(showOrders, 2500);
+          } catch (e) { tsend.disabled = false; document.getElementById('tracksendmsg').textContent = ' Failed: ' + e.message; }
+        });
+      } catch (e) { tmsg.textContent = 'Failed: ' + e.message; }
     });
 
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
@@ -830,7 +889,7 @@ async function showOrders() {
 }
 
 // ───────── Email ─────────
-const KIND_LABEL = { welcome: 'Welcome', blast: 'Blast', order: 'Order' };
+const KIND_LABEL = { welcome: 'Welcome', blast: 'Blast', order: 'Order', shipping: 'Shipping' };
 function toOpen(sec) {
   if (sec == null) return '';
   if (sec < 60) return sec + 's';

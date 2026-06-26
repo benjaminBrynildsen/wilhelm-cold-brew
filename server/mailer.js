@@ -262,6 +262,81 @@ export async function sendOrderConfirmation(to, meta = {}) {
   console.log('[mail] order confirmation sent to', to);
 }
 
+// ───────── Shipping notification (tracking) ─────────
+const SHIP_SUBJECT = 'Your Wilhelm order is on its way';
+
+// Build a carrier tracking URL from the number + (optional) carrier name. Pirate
+// Ship is mostly USPS, so that's the default when the carrier is unknown.
+export function trackingUrl(num, carrier) {
+  const n = String(num || '').replace(/\s+/g, '');
+  const c = String(carrier || '').toLowerCase();
+  if (c.includes('ups') || /^1z/i.test(n)) return 'https://www.ups.com/track?tracknum=' + encodeURIComponent(n);
+  if (c.includes('fedex')) return 'https://www.fedex.com/fedextrack/?trknbr=' + encodeURIComponent(n);
+  if (c.includes('dhl')) return 'https://www.dhl.com/us-en/home/tracking.html?tracking-id=' + encodeURIComponent(n);
+  return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(n);
+}
+
+function shipHtml({ shippingName, tracking, carrier, dropName }) {
+  const greet = shippingName ? `${shippingName}, it's` : "It's";
+  const url = trackingUrl(tracking, carrier);
+  const carrierLabel = carrier ? String(carrier).toUpperCase() : 'the carrier';
+  return `<!doctype html>
+<html><body style="margin:0;background:#e9dcbb;padding:0;">
+  <div style="display:none;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Your Wilhelm Cold Brew is on its way. Here's your tracking.&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e9dcbb;">
+    <tr><td align="center" style="padding:36px 18px;">
+      <table role="presentation" width="100%" style="max-width:540px;background:#f7f0dd;border:1px solid #ddcfa6;border-radius:6px;">
+        <tr><td style="padding:38px 42px 32px;">
+          <div style="text-align:center;padding-bottom:26px;">
+            <img src="${SITE}/drink/assets/wilhelm-circle.png" width="80" height="80" alt="Wilhelm Cold Brew" style="display:inline-block;border-radius:50%;border:0;"/>
+            <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
+          </div>
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
+            <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">It's on its way.</p>
+            <p style="margin:0 0 16px;">${greet} packed and shipped${dropName ? ` — your bottle from <strong>${dropName}</strong>` : ''}. Track it anytime:</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="border-radius:6px;background:#8a6914;">
+              <a href="${url}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">Track your package &rarr;</a>
+            </td></tr></table>
+            <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${carrierLabel} tracking: <strong>${tracking}</strong></p>
+            <p style="margin:0 0 22px;color:#6b6047;">Pour it over a big cube and take your time. If anything's off when it lands, just reply to this email.</p>
+            <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+function shipText({ shippingName, tracking, carrier, dropName }) {
+  return [
+    "It's on its way.",
+    '',
+    `${shippingName ? shippingName + ', your' : 'Your'} Wilhelm Cold Brew${dropName ? ` from ${dropName}` : ''} has shipped.`,
+    '',
+    `${carrier ? String(carrier).toUpperCase() + ' ' : ''}tracking: ${tracking}`,
+    `Track it: ${trackingUrl(tracking, carrier)}`,
+    '',
+    'Pour it over a big cube and take your time. Reply if anything is off when it lands.',
+    '',
+    'Talk soon,',
+    'Ben',
+    'Wilhelm Cold Brew',
+  ].join('\n');
+}
+
+export async function sendShippingNotice(to, meta = {}) {
+  if (!transporter) { console.warn('[mail] skip shipping notice (SMTP not configured):', to); return; }
+  const token = mkToken();
+  await transporter.sendMail({
+    from: FROM, to, subject: SHIP_SUBJECT,
+    html: finalize(shipHtml(meta), token),
+    text: shipText(meta),
+  });
+  await recordSend(token, to, 'shipping', null);
+  console.log('[mail] shipping notice sent to', to);
+}
+
 // Internal "new order" alert to Ben. Plain, untracked, not logged to email_sends.
 export async function sendOrderAlert({ email, amountCents, dropName, shippingName }) {
   if (!transporter || !SIGNUP_NOTIFY) return;

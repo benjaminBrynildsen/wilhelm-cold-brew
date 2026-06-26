@@ -137,6 +137,11 @@ export async function ensureSchema() {
     -- Fulfillment: set when an order's label has been pulled into Pirate Ship, so
     -- the export only ever shows what still needs to ship.
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;
+    -- Tracking, imported from Pirate Ship. ship_notified_at guards against re-sending
+    -- the "your order shipped" email when the same export is uploaded twice.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number  TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_notified_at TIMESTAMPTZ;
 
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (

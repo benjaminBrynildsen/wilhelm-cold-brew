@@ -1,7 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
-import { mailReady, sendBulk, sendWelcome } from './mailer.js';
+import { mailReady, sendBulk, sendWelcome, sendShippingNotice } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
@@ -73,6 +73,37 @@ function windows(req) {
 // Fire a blast in the background and finalize its email_blasts row when done.
 // Detaching the throttled send from the HTTP request means a slow run can't be
 // cut short by a request timeout — the failure mode that left Batch 58 only
+// Minimal RFC-4180-ish CSV parser: handles quoted fields, "" escapes, and
+// newlines inside quotes. Returns rows as arrays of strings.
+function parseCsv(text) {
+  const rows = []; let row = []; let field = ''; let inQ = false;
+  const s = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inQ) {
+      if (ch === '"') { if (s[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += ch;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// Send shipping-notice emails in the background (counts can be large; don't block
+// the import request). Marks ship_notified_at per success so re-uploads don't
+// re-email. Tracking itself is already recorded synchronously by the caller.
+async function runShipNotices(list) {
+  for (const m of list) {
+    try {
+      await sendShippingNotice(m.email, { shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
+      await q(`UPDATE orders SET ship_notified_at = now() WHERE id = $1`, [m.orderId]);
+    } catch (e) { console.warn('[ship-notice] failed for', m.email, e?.message || e); }
+  }
+}
+
 // partly delivered. Progress lands in the blast's sent/failed counts (visible in
 // Blast history). Recipients are recorded to email_sends only on actual success.
 async function runBlast(blastId, recipients, subject, bodyHtml) {
@@ -715,7 +746,8 @@ export function mountAdmin(app) {
           WHERE ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0];
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
-                o.variant, o.created_at, o.paid_at, o.shipped_at, d.name AS drop_name
+                o.variant, o.created_at, o.paid_at, o.shipped_at,
+                o.tracking_number, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ($1::int IS NULL OR o.drop_id = $1)
           ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;
@@ -829,6 +861,71 @@ export function mountAdmin(app) {
       const r = await q(`UPDATE orders SET shipped_at = NULL WHERE id = ANY($1)`, [ids]);
       res.json({ ok: true, cleared: r.rowCount });
     } catch (e) { console.error('[unmark-shipped]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Import tracking numbers from a Pirate Ship export CSV. Matches each row to a
+  // paid order (by our 'Order ID' column, else by Email), records the tracking
+  // number + marks shipped, and emails the purchaser. Two-phase: commit:false
+  // previews the matches (no changes/sends); commit:true records + sends, skipping
+  // anyone already notified so re-uploading the same file is safe.
+  app.post('/api/admin/orders/import-tracking', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
+    try {
+      const csv = String(req.body?.csv || '');
+      const commit = req.body?.commit === true;
+      if (!csv.trim()) return res.status(400).json({ error: 'no CSV provided' });
+      const rows = parseCsv(csv).filter((r) => r.some((c) => String(c).trim() !== ''));
+      if (rows.length < 2) return res.status(400).json({ error: 'CSV has no data rows' });
+      const header = rows[0].map((h) => h.trim().toLowerCase());
+      const col = (...preds) => { for (const p of preds) { const i = header.findIndex(p); if (i >= 0) return i; } return -1; };
+      const tcol = col((h) => h.includes('tracking') && !/url|link/.test(h), (h) => h.includes('tracking'));
+      const idcol = col((h) => h === 'order id' || h === 'order_id' || h === 'orderid', (h) => /order\s*id/.test(h));
+      const ecol = col((h) => h === 'email', (h) => h.includes('email'));
+      const ccol = col((h) => h.includes('carrier') || h.includes('provider') || h === 'service');
+      if (tcol < 0) return res.status(400).json({ error: 'no "Tracking Number" column found in the file' });
+      if (idcol < 0 && ecol < 0) return res.status(400).json({ error: 'need an "Order ID" or "Email" column to match orders' });
+
+      const orders = (await q(
+        `SELECT o.id, o.email, o.shipping_name, o.ship_notified_at,
+                (SELECT name FROM drops d WHERE d.id = o.drop_id) AS drop_name
+           FROM orders o WHERE o.status='paid'`)).rows;
+      const byId = new Map(orders.map((o) => [String(o.id), o]));
+      const byEmail = new Map();
+      orders.forEach((o) => { const k = (o.email || '').toLowerCase(); if (k) { (byEmail.get(k) || byEmail.set(k, []).get(k)).push(o); } });
+
+      const matched = [], skipped = [], unmatched = [];
+      const used = new Set();
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const tracking = (r[tcol] || '').trim();
+        if (!tracking) continue;                                   // no label bought for this row yet
+        const carrier = ccol >= 0 ? (r[ccol] || '').trim() : '';
+        const oid = idcol >= 0 ? (r[idcol] || '').trim() : '';
+        const email = ecol >= 0 ? (r[ecol] || '').trim().toLowerCase() : '';
+        let order = (oid && byId.get(oid)) || null;
+        if (!order && email && byEmail.has(email)) {
+          const cands = byEmail.get(email);
+          order = cands.find((o) => !used.has(o.id)) || cands[0];  // multi-order email: take the next unused
+        }
+        if (!order) { unmatched.push({ tracking, orderId: oid || null, email: email || null }); continue; }
+        if (used.has(order.id)) continue;
+        used.add(order.id);
+        const row = { orderId: order.id, email: order.email, name: order.shipping_name, tracking, carrier, dropName: order.drop_name };
+        (order.ship_notified_at ? skipped : matched).push(row);
+      }
+
+      if (!commit) return res.json({ preview: true, willEmail: matched.length, matched, skipped, unmatched });
+
+      // Record tracking for everyone we matched (incl. already-notified, so the
+      // number is on file), then email the not-yet-notified in the background.
+      for (const m of matched.concat(skipped)) {
+        await q(`UPDATE orders SET tracking_number=$1, tracking_carrier=$2, shipped_at=COALESCE(shipped_at, now()) WHERE id=$3`,
+          [m.tracking, m.carrier || null, m.orderId]).catch((e) => console.warn('[import-tracking] update failed:', e?.message));
+      }
+      runShipNotices(matched);   // fire-and-forget; sets ship_notified_at per success
+      res.json({ ok: true, recorded: matched.length + skipped.length, emailing: matched.length, skipped: skipped.length, unmatched: unmatched.length });
+    } catch (e) { console.error('[import-tracking]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── drops (inventory management) ─────────

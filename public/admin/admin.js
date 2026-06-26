@@ -17,7 +17,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: '', editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -610,8 +610,20 @@ function dropActions(d) {
 async function showOrders() {
   loading();
   try {
+    const dd = await api('/api/admin/drops');
+    // Default the view to the current batch (live, else most recent opened, else
+    // newest) rather than All. null = not yet chosen; '' = user picked "All drops";
+    // an id = a specific drop. Also re-default if the viewed drop was deleted.
+    const currentBatch = () => {
+      const def = dd.drops.find((d) => d.status === 'live')
+               || dd.drops.find((d) => d.status !== 'scheduled')
+               || dd.drops[0];
+      return def ? String(def.id) : '';
+    };
+    if (state.ordersDrop === null) state.ordersDrop = currentBatch();
+    else if (state.ordersDrop && !dd.drops.some((d) => String(d.id) === String(state.ordersDrop))) state.ordersDrop = currentBatch();
     const dropQ = state.ordersDrop ? ('?dropId=' + encodeURIComponent(state.ordersDrop)) : '';
-    const [o, dd] = await Promise.all([api('/api/admin/orders' + dropQ), api('/api/admin/drops')]);
+    const o = await api('/api/admin/orders' + dropQ);
     // Card stats follow the selected drop (or the live one when viewing all).
     const shown = o.selected || o.liveDrop;
     const scoped = !!state.ordersDrop;

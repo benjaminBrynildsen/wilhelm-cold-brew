@@ -166,6 +166,14 @@ let DRINK_HTML = null;
 try { DRINK_HTML = readFileSync(path.join(PUBLIC_DIR, 'drink', 'index.html'), 'utf8'); }
 catch (e) { console.warn('[drink] preload failed (will serve static):', e?.message || e); }
 app.get(['/drink', '/drink/'], async (req, res, next) => {
+  // The page uses relative asset URLs (assets/…, optin.css) that only resolve under
+  // /drink/. Serving them at the no-slash /drink makes the browser resolve them at the
+  // site root → broken images/CSS. Redirect to keep the slash (what express.static did
+  // before this custom route existed), preserving any query string (ad UTMs, ?img=).
+  if (req.path === '/drink') {
+    const i = req.originalUrl.indexOf('?');
+    return res.redirect(301, '/drink/' + (i >= 0 ? req.originalUrl.slice(i) : ''));
+  }
   if (!DRINK_HTML || !DRINK_HTML.includes('<!--SPLIT_CONFIG-->')) return next();
   try {
     const rows = (await q(`SELECT arm_key FROM split_arms WHERE test_id='image' AND enabled = true ORDER BY sort, arm_key`)).rows;

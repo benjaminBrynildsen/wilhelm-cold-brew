@@ -1,7 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
-import { mailReady, sendBulk, sendWelcome, sendShippingNotice } from './mailer.js';
+import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
@@ -930,7 +930,16 @@ export function mountAdmin(app) {
         (order.ship_notified_at ? skipped : matched).push(row);
       }
 
-      if (!commit) return res.json({ preview: true, willEmail: matched.length, matched, skipped, unmatched });
+      if (!commit) {
+        // Render a sample of the actual email (the first match) for the admin preview.
+        let sampleEmail = null;
+        if (matched.length) {
+          const m = matched[0];
+          const r = renderShippingEmail({ shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
+          sampleEmail = { to: m.email, name: m.name, subject: r.subject, html: r.html };
+        }
+        return res.json({ preview: true, willEmail: matched.length, matched, skipped, unmatched, sampleEmail });
+      }
 
       // Record tracking for everyone we matched (incl. already-notified, so the
       // number is on file), then email the not-yet-notified in the background.
@@ -941,6 +950,25 @@ export function mountAdmin(app) {
       runShipNotices(matched);   // fire-and-forget; sets ship_notified_at per success
       res.json({ ok: true, recorded: matched.length + skipped.length, emailing: matched.length, skipped: skipped.length, unmatched: unmatched.length });
     } catch (e) { console.error('[import-tracking]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Send a single shipping email to Ben's own inbox (the from-address) using a
+  // real match's tracking, so the formatting can be eyeballed before the real run.
+  // Not recorded; not marked notified.
+  app.post('/api/admin/orders/tracking-test-send', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
+    try {
+      const to = (process.env.MAIL_FROM || 'ben@wilhelmcoldbrew.com').replace(/^.*<|>.*$/g, '').trim();
+      const meta = {
+        shippingName: req.body?.shippingName ? String(req.body.shippingName).slice(0, 120) : 'You',
+        tracking: String(req.body?.tracking || '9400100000000000000000').slice(0, 60),
+        carrier: req.body?.carrier ? String(req.body.carrier).slice(0, 40) : 'USPS',
+        dropName: req.body?.dropName ? String(req.body.dropName).slice(0, 120) : null,
+      };
+      await sendShippingNotice(to, meta, { record: false });
+      res.json({ ok: true, sentTo: to });
+    } catch (e) { console.error('[tracking-test-send]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── drops (inventory management) ─────────

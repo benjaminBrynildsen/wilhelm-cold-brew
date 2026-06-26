@@ -325,7 +325,14 @@ function shipText({ shippingName, tracking, carrier, dropName }) {
   ].join('\n');
 }
 
-export async function sendShippingNotice(to, meta = {}) {
+// Render the shipping email without sending — used for the admin preview.
+export function renderShippingEmail(meta = {}) {
+  return { subject: SHIP_SUBJECT, html: shipHtml(meta), text: shipText(meta) };
+}
+
+// `record: false` sends without logging to email_sends — used by the "send test
+// to me" button so a test doesn't show up in stats.
+export async function sendShippingNotice(to, meta = {}, { record = true } = {}) {
   if (!transporter) { console.warn('[mail] skip shipping notice (SMTP not configured):', to); return; }
   const token = mkToken();
   await transporter.sendMail({
@@ -333,8 +340,8 @@ export async function sendShippingNotice(to, meta = {}) {
     html: finalize(shipHtml(meta), token),
     text: shipText(meta),
   });
-  await recordSend(token, to, 'shipping', null);
-  console.log('[mail] shipping notice sent to', to);
+  if (record) await recordSend(token, to, 'shipping', null);
+  console.log('[mail] shipping notice sent to', to, record ? '' : '(test)');
 }
 
 // Internal "new order" alert to Ben. Plain, untracked, not logged to email_sends.

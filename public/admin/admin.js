@@ -772,16 +772,43 @@ async function showOrders() {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, commit: false }),
         });
         tmsg.textContent = '';
-        const um = (r.unmatched || []).slice(0, 10).map((u) =>
+        const matchRows = (r.matched || []).map((m) => `<tr>
+            <td>${esc(m.orderId)}</td><td>${esc(m.name || '—')}</td><td>${esc(m.email)}</td>
+            <td>${esc(m.dropName || '—')}</td><td>${esc(m.carrier || '—')}</td>
+            <td><a href="${esc(trackUrl(m.tracking, m.carrier))}" target="_blank" rel="noopener">${esc(m.tracking)}</a></td></tr>`).join('');
+        const um = (r.unmatched || []).slice(0, 12).map((u) =>
           `<li>${esc(u.tracking)} — ${esc(u.orderId ? 'Order ' + u.orderId : (u.email || 'no id/email'))}</li>`).join('');
         tres.innerHTML = `
           <div class="note" style="margin:6px 0">
-            <b style="color:var(--good)">${num(r.willEmail)}</b> purchaser(s) will be emailed their tracking.
-            ${r.skipped.length ? `<br/>${num(r.skipped.length)} already notified — skipped (tracking still recorded).` : ''}
-            ${r.unmatched.length ? `<br/><span style="color:var(--bad)">${num(r.unmatched.length)} row(s) matched no order:</span><ul style="margin:4px 0 0">${um}${r.unmatched.length > 10 ? '<li>…</li>' : ''}</ul>` : ''}
+            <b style="color:var(--good)">${num(r.willEmail)}</b> will be emailed${r.skipped.length ? ` · ${num(r.skipped.length)} already notified (skipped)` : ''}${r.unmatched.length ? ` · <span style="color:var(--bad)">${num(r.unmatched.length)} unmatched</span>` : ''}.
           </div>
-          ${r.willEmail ? `<button class="btn" id="tracksend">Send ${num(r.willEmail)} tracking email${r.willEmail === 1 ? '' : 's'}</button>` : '<span class="note">Nothing to send.</span>'}
-          <span class="note" id="tracksendmsg"></span>`;
+          ${r.willEmail ? `<h4 style="margin:12px 0 4px">Who will be emailed <span class="note">— verify these before sending</span></h4>
+            <table><thead><tr><th>Order</th><th>Name</th><th>Email</th><th>Drop</th><th>Carrier</th><th>Tracking</th></tr></thead><tbody>${matchRows}</tbody></table>` : ''}
+          ${r.unmatched.length ? `<div class="note" style="margin-top:8px;color:var(--bad)">Unmatched (won't be emailed — fix the Order ID/email in the export, or these orders aren't paid):<ul style="margin:4px 0 0">${um}${r.unmatched.length > 12 ? '<li>…</li>' : ''}</ul></div>` : ''}
+          ${r.sampleEmail ? `<h4 style="margin:16px 0 4px">Email preview <span class="note">— exactly what ${esc(r.sampleEmail.name || r.sampleEmail.to)} receives · subject: "${esc(r.sampleEmail.subject)}"</span></h4>
+            <iframe id="trackemailframe" title="shipping email preview" style="width:100%;max-width:600px;height:540px;border:1px solid rgba(232,217,181,0.2);border-radius:6px;background:#fff"></iframe>
+            <div class="row-actions" style="margin-top:8px">
+              <button class="btn ghost" id="tracktest">Send test to me</button>
+              <span class="note">Sends this exact email (with a real tracking number) to your own inbox — not recorded, recipient not notified.</span>
+              <span class="note" id="tracktestmsg"></span>
+            </div>` : ''}
+          <div class="row-actions" style="margin-top:16px;border-top:1px solid rgba(232,217,181,0.15);padding-top:12px">
+            ${r.willEmail ? `<button class="btn" id="tracksend">Send ${num(r.willEmail)} tracking email${r.willEmail === 1 ? '' : 's'}</button>` : '<span class="note">Nothing to send.</span>'}
+            <span class="note" id="tracksendmsg"></span>
+          </div>`;
+        if (r.sampleEmail) { const fr = document.getElementById('trackemailframe'); if (fr) fr.srcdoc = r.sampleEmail.html; }
+        const ttest = document.getElementById('tracktest');
+        if (ttest) ttest.addEventListener('click', async () => {
+          const m = r.matched[0]; ttest.disabled = true; document.getElementById('tracktestmsg').textContent = ' Sending…';
+          try {
+            const rr = await api('/api/admin/orders/tracking-test-send', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName }),
+            });
+            document.getElementById('tracktestmsg').textContent = ` Sent to ${rr.sentTo} — check your inbox.`;
+          } catch (e) { document.getElementById('tracktestmsg').textContent = ' Failed: ' + e.message; }
+          ttest.disabled = false;
+        });
         const tsend = document.getElementById('tracksend');
         if (tsend) tsend.addEventListener('click', async () => {
           if (!confirm(`Send tracking emails to ${r.willEmail} purchaser(s) now?`)) return;

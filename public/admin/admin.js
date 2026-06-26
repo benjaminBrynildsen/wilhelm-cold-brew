@@ -672,14 +672,14 @@ async function showOrders() {
         <div class="card"><div class="k">Missed-drop demand${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
       </div>
 
-      <h3>Ship the orders</h3>
+      <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
-        <a class="btn" href="/api/admin/orders/pirateship.csv">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
-        <button class="btn ghost" id="markshipped">Mark all as shipped</button>
-        <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship.' : 'All paid orders shipped.'}</span>
+        <a class="btn" href="/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
+        <button class="btn ghost" id="markshipped">Mark ${scoped ? 'this batch' : 'all'} as shipped</button>
+        <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship' + (scoped ? ' in this batch' : '') + '.' : (scoped ? 'This batch is fully shipped.' : 'All paid orders shipped.')}</span>
         <span class="note" id="shipmsg"></span>
       </div>
-      <div class="note">Downloads a Pirate Ship bulk-import CSV (unshipped paid orders only). Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off.</div>
+      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'} as a Pirate Ship bulk-import CSV. Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
       <h3>Import tracking from Pirate Ship</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
@@ -740,10 +740,10 @@ async function showOrders() {
     const markShipped = document.getElementById('markshipped');
     if (markShipped) markShipped.addEventListener('click', async () => {
       if (!o.unshipped) { document.getElementById('shipmsg').textContent = 'Nothing to mark.'; return; }
-      if (!confirm(`Mark all ${o.unshipped} unshipped order(s) as shipped? They'll drop off the export list.`)) return;
+      if (!confirm(`Mark ${o.unshipped} unshipped order(s)${scoped ? ' in this batch' : ' across all batches'} as shipped? They'll drop off the export list.`)) return;
       try {
         const r = await api('/api/admin/orders/mark-shipped', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true, dropId: state.ordersDrop || null }),
         });
         document.getElementById('shipmsg').textContent = `Marked ${r.marked} shipped.`;
         showOrders();

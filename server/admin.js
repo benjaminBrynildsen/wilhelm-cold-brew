@@ -752,9 +752,10 @@ export function mountAdmin(app) {
           WHERE ($1::int IS NULL OR o.drop_id = $1)
           ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;
       // Paid orders still awaiting a shipping label (drives the Pirate Ship export).
-      // Not scoped by the drop filter — it's the global ship queue.
+      // Scoped to the selected batch so you ship one drop at a time; global on "All".
       const unshipped = (await q(
-        `SELECT COUNT(*)::int n FROM orders WHERE status='paid' AND shipped_at IS NULL`)).rows[0].n;
+        `SELECT COUNT(*)::int n FROM orders
+          WHERE status='paid' AND shipped_at IS NULL AND ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0].n;
       const live = (await q(
         `SELECT id, name, price_cents, bottle_cap, status,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
@@ -844,9 +845,10 @@ export function mountAdmin(app) {
     try {
       const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((n) => parseInt(n, 10)).filter((n) => n > 0) : [];
       const all = req.body?.all === true;
+      const dropId = parseInt(req.body?.dropId, 10) || null;   // scope "all" to one batch
       if (!all && !ids.length) return res.status(400).json({ error: 'ids[] or all:true required' });
       const r = all
-        ? await q(`UPDATE orders SET shipped_at = now() WHERE status='paid' AND shipped_at IS NULL`)
+        ? await q(`UPDATE orders SET shipped_at = now() WHERE status='paid' AND shipped_at IS NULL AND ($1::int IS NULL OR drop_id = $1)`, [dropId])
         : await q(`UPDATE orders SET shipped_at = now() WHERE status='paid' AND id = ANY($1)`, [ids]);
       res.json({ ok: true, marked: r.rowCount });
     } catch (e) { console.error('[mark-shipped]', e); res.status(500).json({ error: e.message }); }

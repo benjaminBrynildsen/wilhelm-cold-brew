@@ -289,6 +289,22 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 .sec .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 4px; color: var(--gold); margin-bottom: 22px; text-transform: uppercase; }
 .sec .eyebrow.dark { color: var(--gold-deep); }
 
+/* reviews — social proof, dark; photos pop on the dark body */
+.reviews { border-top: 1px solid rgba(232,194,74,0.16); }
+.reviews-inner { max-width: 960px; margin: 0 auto; text-align: center; }
+.reviews h2 { font-family: var(--display); font-weight: 700; font-style: italic; font-size: clamp(34px, 6.5vw, 60px); line-height: 1; color: #efe4c6; margin: 0 0 6px; letter-spacing: -1.5px; }
+.reviews h2 em { color: var(--gold); font-style: italic; }
+.reviews-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: clamp(24px, 4vw, 44px); margin-top: clamp(30px, 5vh, 52px); }
+.review { margin: 0; display: flex; flex-direction: column; }
+.review-photo { border-radius: 8px; overflow: hidden; border: 1px solid rgba(232,194,74,0.35); box-shadow: 0 18px 50px rgba(0,0,0,0.5); }
+.review-photo img { display: block; width: 100%; height: clamp(240px, 36vh, 360px); object-fit: cover; }
+.review blockquote { font-family: var(--display); font-style: italic; font-weight: 500; font-size: clamp(19px, 2.4vw, 25px); line-height: 1.42; color: #e8d9b5; margin: 22px 4px 14px; }
+.review figcaption { font-family: var(--mono); font-size: 13px; letter-spacing: 1.5px; color: var(--gold); text-transform: uppercase; }
+.review-handle { display: block; color: rgba(232,217,181,0.5); font-size: 11px; letter-spacing: 2px; margin-top: 5px; text-transform: none; }
+@media (max-width: 640px) {
+  .reviews-grid { grid-template-columns: 1fr; gap: 34px; max-width: 400px; margin: clamp(30px, 5vh, 52px) auto 0; }
+}
+
 /* proof — dark, stat-forward */
 .proof { border-top: 1px solid rgba(232,194,74,0.16); }
 .proof-inner { display: grid; grid-template-columns: minmax(0, 0.82fr) 1fr; gap: clamp(28px, 5vw, 60px); align-items: center; text-align: left; max-width: 1000px; }

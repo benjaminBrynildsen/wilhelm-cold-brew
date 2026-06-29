@@ -277,7 +277,8 @@ export function trackingUrl(num, carrier) {
 }
 
 function shipHtml({ shippingName, tracking, carrier, dropName }) {
-  const greet = shippingName ? `${shippingName}, it's` : "It's";
+  const first = shippingName ? String(shippingName).trim().split(/\s+/)[0] : '';
+  const greet = first ? `${first}, it's` : "It's";
   const url = trackingUrl(tracking, carrier);
   const carrierLabel = carrier ? String(carrier).toUpperCase() : 'the carrier';
   return `<!doctype html>
@@ -298,7 +299,7 @@ function shipHtml({ shippingName, tracking, carrier, dropName }) {
               <a href="${url}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">Track your package &rarr;</a>
             </td></tr></table>
             <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${carrierLabel} tracking: <strong>${tracking}</strong></p>
-            <p style="margin:0 0 22px;color:#6b6047;">Pour it over a big cube and take your time. If anything's off when it lands, just reply to this email.</p>
+            <p style="margin:0 0 22px;color:#6b6047;">Pour it over a big cube and take your time.</p>
             <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
           </div>
         </td></tr>
@@ -312,12 +313,12 @@ function shipText({ shippingName, tracking, carrier, dropName }) {
   return [
     "It's on its way.",
     '',
-    `${shippingName ? shippingName + ', your' : 'Your'} Wilhelm Cold Brew${dropName ? ` from ${dropName}` : ''} has shipped.`,
+    `${shippingName ? String(shippingName).trim().split(/\s+/)[0] + ', your' : 'Your'} Wilhelm Cold Brew${dropName ? ` from ${dropName}` : ''} has shipped.`,
     '',
     `${carrier ? String(carrier).toUpperCase() + ' ' : ''}tracking: ${tracking}`,
     `Track it: ${trackingUrl(tracking, carrier)}`,
     '',
-    'Pour it over a big cube and take your time. Reply if anything is off when it lands.',
+    'Pour it over a big cube and take your time.',
     '',
     'Talk soon,',
     'Ben',

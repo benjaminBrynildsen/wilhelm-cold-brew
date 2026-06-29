@@ -299,7 +299,6 @@ function shipHtml({ shippingName, tracking, carrier, dropName }) {
               <a href="${url}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">Track your package &rarr;</a>
             </td></tr></table>
             <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${carrierLabel} tracking: <strong>${tracking}</strong></p>
-            <p style="margin:0 0 22px;color:#6b6047;">Pour it over a big cube and take your time.</p>
             <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
           </div>
         </td></tr>
@@ -317,8 +316,6 @@ function shipText({ shippingName, tracking, carrier, dropName }) {
     '',
     `${carrier ? String(carrier).toUpperCase() + ' ' : ''}tracking: ${tracking}`,
     `Track it: ${trackingUrl(tracking, carrier)}`,
-    '',
-    'Pour it over a big cube and take your time.',
     '',
     'Talk soon,',
     'Ben',

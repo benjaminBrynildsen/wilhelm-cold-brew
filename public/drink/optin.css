@@ -331,8 +331,8 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
    light mode (parchment-on-parchment); barely there at the dark→parchment edge. */
 .family::before {
   content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-  width: min(680px, 84%); height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(184,146,47,0.5), transparent);
+  width: min(680px, 84%); height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(184,146,47,0.65), transparent);
 }
 .family-figure { width: clamp(220px, 34vw, 320px); margin: 0 auto 36px; padding: clamp(18px, 3vw, 28px);
   background: radial-gradient(ellipse at 50% 38%, #1b1510 0%, #0c0a08 100%);

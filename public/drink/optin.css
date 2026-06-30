@@ -169,29 +169,31 @@ html[data-drink-variant="above"] .optin > .optin-form { order: 3; }
    parchment and flips text/accents to dark + gold-deep so they stay legible.
    Below-the-fold sections already carry their own parchment backgrounds, so
    only the hero changes. */
-html[data-drink-bg="light"] body {
+/* IMPORTANT: scope every light rule to .optin-hero so ONLY the above-the-fold
+   changes. The body stays dark and all below-the-fold sections (story, reviews,
+   proof, bottles, the final-CTA form) keep their exact dark-version styling. */
+html[data-drink-bg="light"] .optin-hero {
   background:
     radial-gradient(ellipse at 50% 0%, #fffdf6 0%, var(--parchment) 62%),
     var(--parchment);
   color: var(--ink);
 }
-html[data-drink-bg="light"] body::before { mix-blend-mode: multiply; opacity: 0.05; }
-html[data-drink-bg="light"] h1 { color: var(--ink); }
-html[data-drink-bg="light"] h1 em { color: var(--gold-deep); }
-html[data-drink-bg="light"] .sub { color: rgba(12,10,8,0.82); }
-html[data-drink-bg="light"] .sub-bullets li { color: rgba(12,10,8,0.82); }
-html[data-drink-bg="light"] .sub-bullets .mk { color: var(--gold-deep); }
-html[data-drink-bg="light"] .droptag { color: var(--gold-deep); border-color: rgba(184,146,47,0.55); }
-html[data-drink-bg="light"] .hero-price { color: var(--gold-deep); text-shadow: none; }
-html[data-drink-bg="light"] .hero-price span { color: rgba(12,10,8,0.72); }
-html[data-drink-bg="light"] .scroll-cue { color: var(--gold-deep); }
-html[data-drink-bg="light"] .optin-form input[type="email"] {
+html[data-drink-bg="light"] .optin-hero h1 { color: var(--ink); }
+html[data-drink-bg="light"] .optin-hero h1 em { color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .sub { color: rgba(12,10,8,0.82); }
+html[data-drink-bg="light"] .optin-hero .sub-bullets li { color: rgba(12,10,8,0.82); }
+html[data-drink-bg="light"] .optin-hero .sub-bullets .mk { color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .droptag { color: var(--gold-deep); border-color: rgba(184,146,47,0.55); }
+html[data-drink-bg="light"] .optin-hero .hero-price { color: var(--gold-deep); text-shadow: none; }
+html[data-drink-bg="light"] .optin-hero .hero-price span { color: rgba(12,10,8,0.72); }
+html[data-drink-bg="light"] .optin-hero .scroll-cue { color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .optin-form input[type="email"] {
   background: #fff; border-color: rgba(184,146,47,0.55); color: var(--ink);
 }
-html[data-drink-bg="light"] .optin-form input[type="email"]::placeholder { color: rgba(12,10,8,0.45); }
-html[data-drink-bg="light"] .optin-form input[type="email"]:focus { border-color: var(--gold-deep); background: #fff; }
-html[data-drink-bg="light"] .cd-compact .cd-label { color: rgba(12,10,8,0.6); }
-html[data-drink-bg="light"] .cd-compact .cd-value { color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .optin-form input[type="email"]::placeholder { color: rgba(12,10,8,0.45); }
+html[data-drink-bg="light"] .optin-hero .optin-form input[type="email"]:focus { border-color: var(--gold-deep); background: #fff; }
+html[data-drink-bg="light"] .optin-hero .cd-compact .cd-label { color: rgba(12,10,8,0.6); }
+html[data-drink-bg="light"] .optin-hero .cd-compact .cd-value { color: var(--gold-deep); }
 /* Gold button + ink text already reads on either ground — left as-is. */
 
 /* image (variant) — height-capped so it never blows the fold */

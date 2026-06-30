@@ -182,7 +182,13 @@ export function mountAdmin(app) {
     if (!requireAdmin(req, res)) return;
     try {
       const out = {};
-      for (const w of windows(req)) {
+      // Compute ONLY the requested window (?win=h1|today|d7|d30|all|custom) — the
+      // tabs show one at a time, and the all-time window is expensive. Falls back
+      // to every window if no ?win is given (back-compat).
+      const allWins = windows(req);
+      const requested = req.query?.win;
+      const wins = requested ? allWins.filter((w) => w.key === requested) : allWins;
+      for (const w of (wins.length ? wins : allWins)) {
         const args = [w.from, w.to, DRINK_PAGES];
         const ev = await q(
           `SELECT event, COUNT(DISTINCT session_id)::int sessions

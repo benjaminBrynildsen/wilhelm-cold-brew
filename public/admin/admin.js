@@ -142,6 +142,14 @@ function winQuery(key = 'win') {
   return (state[key] === 'custom' && state.customFrom && state.customTo)
     ? `?from=${state.customFrom}&to=${state.customTo}` : '';
 }
+// Like winQuery, but also tells the server which single window to compute (?win=)
+// so it doesn't recompute the all-time window every time. For the funnel endpoint.
+function funnelQuery(key = 'win') {
+  const w = state[key];
+  let qs = '?win=' + encodeURIComponent(w);
+  if (w === 'custom' && state.customFrom && state.customTo) qs += `&from=${state.customFrom}&to=${state.customTo}`;
+  return qs;
+}
 function wireWinbar(reload, key = 'win') {
   document.querySelectorAll('.win[data-win]').forEach((w) =>
     w.addEventListener('click', () => { state[key] = w.dataset.win; reload(); }));
@@ -372,7 +380,7 @@ async function showOverview() {
 async function showFunnel() {
   loading();
   try {
-    const d = await api('/api/admin/funnel' + winQuery());
+    const d = await api('/api/admin/funnel' + funnelQuery());
     const w = d.windows[state.win] || { events: {}, byVariant: {} };
     const ev = w.events || {};
     const landed = ev.page_load || 0;
@@ -462,7 +470,7 @@ async function showSplit() {
   loading();
   try {
     const [d, cfg] = await Promise.all([
-      api('/api/admin/funnel' + winQuery('splitWin')),
+      api('/api/admin/funnel' + funnelQuery('splitWin')),
       api('/api/admin/split-config'),
     ]);
     const w = d.windows[state.splitWin] || { byVariant: {} };

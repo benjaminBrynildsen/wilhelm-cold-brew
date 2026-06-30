@@ -901,10 +901,14 @@ export function mountAdmin(app) {
       if (tcol < 0) return res.status(400).json({ error: 'no "Tracking Number" column found in the file' });
       if (idcol < 0 && ecol < 0) return res.status(400).json({ error: 'need an "Order ID" or "Email" column to match orders' });
 
+      // Scope matching to the batch being shipped (the Orders tab's selected drop)
+      // so an email/Order-ID can't match an old order from a different batch.
+      const dropId = parseInt(req.body?.dropId, 10) || null;
       const orders = (await q(
         `SELECT o.id, o.email, o.shipping_name, o.ship_notified_at,
                 (SELECT name FROM drops d WHERE d.id = o.drop_id) AS drop_name
-           FROM orders o WHERE o.status='paid'`)).rows;
+           FROM orders o
+          WHERE o.status='paid' AND ($1::int IS NULL OR o.drop_id = $1)`, [dropId])).rows;
       const byId = new Map(orders.map((o) => [String(o.id), o]));
       const byEmail = new Map();
       orders.forEach((o) => { const k = (o.email || '').toLowerCase(); if (k) { (byEmail.get(k) || byEmail.set(k, []).get(k)).push(o); } });

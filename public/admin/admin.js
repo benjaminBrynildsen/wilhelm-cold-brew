@@ -769,7 +769,7 @@ async function showOrders() {
       else trackPayload = { csv: await f.text() };
       try {
         const r = await api('/api/admin/orders/import-tracking', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, commit: false }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, dropId: state.ordersDrop || null, commit: false }),
         });
         tmsg.textContent = '';
         const matchRows = (r.matched || []).map((m) => `<tr>
@@ -815,7 +815,7 @@ async function showOrders() {
           tsend.disabled = true; document.getElementById('tracksendmsg').textContent = ' Sending…';
           try {
             const rr = await api('/api/admin/orders/import-tracking', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, commit: true }),
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, dropId: state.ordersDrop || null, commit: true }),
             });
             document.getElementById('tracksendmsg').textContent = ` Recorded ${rr.recorded}, emailing ${rr.emailing} in the background — refresh shortly to see who's notified.`;
             setTimeout(showOrders, 2500);

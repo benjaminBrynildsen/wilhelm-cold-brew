@@ -33,19 +33,29 @@
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
-      // Background A/B test — light vs dark above the fold. 50/50, sticky per visitor;
-      // ?v=light / ?v=dark forces an arm for preview.
+      // Background A/B test — light vs dark above the fold. Live arms come from the
+      // server (window.__SPLIT_ARMS.background, toggled in admin); even split among
+      // them, sticky per visitor. ?v=light / ?v=dark forces ANY known arm for preview.
+      var BG_KNOWN = ['dark', 'light'];
+      var BG_LIVE = ((window.__SPLIT_ARMS && window.__SPLIT_ARMS.background) || BG_KNOWN).filter(function (k) { return BG_KNOWN.indexOf(k) >= 0; });
+      if (!BG_LIVE.length) BG_LIVE = BG_KNOWN;
       var forcedV = p.get('v');
-      var bg = (forcedV === 'light' || forcedV === 'dark') ? forcedV : null;
-      if (!bg) { try { bg = localStorage.getItem('wilhelm_drink_bg'); } catch (e) {} }
-      if (bg !== 'light' && bg !== 'dark') { bg = Math.random() < 0.5 ? 'light' : 'dark'; }
+      var bg;
+      if (BG_KNOWN.indexOf(forcedV) >= 0) {
+        bg = forcedV;                                       // explicit preview — honor any known arm, even paused
+      } else {
+        try { bg = localStorage.getItem('wilhelm_drink_bg'); } catch (e) {}
+        if (BG_LIVE.indexOf(bg) < 0) { bg = BG_LIVE[Math.floor(Math.random() * BG_LIVE.length)]; }   // new/unknown/paused → live arm
+      }
       try { localStorage.setItem('wilhelm_drink_bg', bg); } catch (e) {}
 
       // Headline A/B test — live 50/50 between the control and the new
       // "sold out in 13 minutes" line. ?h= forces ANY known headline (incl. the
       // retired sells-out arm) for preview; sticky per visitor otherwise.
-      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13'];   // all known headlines
-      var HL_LIVE = ['on-the-list', 'sold-out-13'];               // arms in the live rotation
+      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13'];   // all known headlines (incl retired)
+      var HL_KNOWN = ['on-the-list', 'sold-out-13'];              // arms admin can toggle
+      var HL_LIVE = ((window.__SPLIT_ARMS && window.__SPLIT_ARMS.headline) || HL_KNOWN).filter(function (k) { return HL_KNOWN.indexOf(k) >= 0; });
+      if (!HL_LIVE.length) HL_LIVE = HL_KNOWN;                    // never leave nothing to show
       var forcedH = p.get('h');
       var hl;
       if (HL_ALL.indexOf(forcedH) >= 0) {
@@ -66,7 +76,8 @@
       // Live arms come from the server (window.__SPLIT_IMG_ARMS, toggled in admin);
       // fall back to all three if not injected. ?img= can still force ANY arm for preview.
       var DEFAULT_ORDER = ['cigars', 'barrel', 'bottles'];
-      var ORDER = (window.__SPLIT_IMG_ARMS && window.__SPLIT_IMG_ARMS.filter(function (k) { return IMG[k]; })) || DEFAULT_ORDER;
+      var LIVE_IMG = (window.__SPLIT_ARMS && window.__SPLIT_ARMS.image) || window.__SPLIT_IMG_ARMS;
+      var ORDER = (LIVE_IMG && LIVE_IMG.filter(function (k) { return IMG[k]; })) || DEFAULT_ORDER;
       if (!ORDER.length) ORDER = DEFAULT_ORDER;
       var forcedI = p.get('img');
       var arm;

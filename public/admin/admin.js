@@ -483,7 +483,7 @@ async function showSplit() {
     (cfg.arms || []).forEach((a) => { en[a.test_id + ':' + a.arm_key] = a.enabled; });
 
     const sections = SPLIT_TESTS.map((t) => {
-      const toggleable = t.id === 'image';   // only the live image test is toggleable
+      const toggleable = true;   // every live test (image / background / headline) is server-backed and toggleable
       const src = t.source === 'byBg' ? (w.byBg || {}) : t.source === 'byHl' ? (w.byHl || {}) : bv;   // each test reads its own dimension
       // Winner = highest signup rate (Joined ÷ Landed) among arms with ≥1 session.
       let best = { key: null, rate: -1 };
@@ -504,8 +504,8 @@ async function showSplit() {
         // Don't let the last live arm be unchecked (would leave nothing to show).
         const lockOff = toggleable && isLive && liveCount <= 1;
         const ctrl = toggleable ? `<td style="white-space:nowrap">
-            <label class="note"><input type="checkbox" class="arm-active" data-arm="${a.key}" ${isLive ? 'checked' : ''} ${lockOff ? 'disabled' : ''}/> live</label>
-            <button class="btn ghost arm-iso" data-arm="${a.key}" style="padding:2px 8px;margin-left:4px">Isolate</button></td>` : '';
+            <label class="note"><input type="checkbox" class="arm-active" data-test="${t.id}" data-arm="${a.key}" ${isLive ? 'checked' : ''} ${lockOff ? 'disabled' : ''}/> live</label>
+            <button class="btn ghost arm-iso" data-test="${t.id}" data-arm="${a.key}" style="padding:2px 8px;margin-left:4px">Isolate</button></td>` : '';
         return `<tr${winner ? ' style="color:var(--good);font-weight:700"' : ''}>
           <td>${esc(a.label)}${winner ? ' ★' : ''}${toggleable && !isLive ? ' <span class="note">(paused)</span>' : ''}</td>
           <td class="num">${num(ld)}</td><td class="num">${num(e.focus_email || 0)}</td>
@@ -519,9 +519,9 @@ async function showSplit() {
           <tbody>${rows}</tbody></table>
         <div class="note">${totalLanded ? '★ = highest signup rate (Joined ÷ Landed), min 1 session.' : 'No traffic on these versions in this date range yet.'}</div>
         ${toggleable ? `<div class="row-actions" style="margin-top:8px">
-          <button class="btn" id="arms-save">Save live versions</button>
+          <button class="btn arms-save" data-test="${t.id}">Save live versions</button>
           <span class="note">Uncheck a version to pause it, or "Isolate" to run one at 100%. New visitors split across the live ones only.</span>
-          <span class="note" id="arms-msg"></span></div>` : ''}`;
+          <span class="note arms-msg" data-test="${t.id}"></span></div>` : ''}`;
     }).join('');
 
     // ── Best combinations: image × background × headline together ──
@@ -592,28 +592,35 @@ async function showSplit() {
       ${other}`;
     wireWinbar(showSplit, 'splitWin');
 
-    const saveArms = async (enabled) => {
-      const msg = document.getElementById('arms-msg');
+    const msgFor = (testId) => document.querySelector(`.arms-msg[data-test="${testId}"]`);
+    const saveArms = async (testId, enabled) => {
+      const msg = msgFor(testId);
       try {
         await api('/api/admin/split-config', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ testId: 'image', enabled }),
+          body: JSON.stringify({ testId, enabled }),
         });
         if (msg) msg.textContent = 'Saved ✓';
         showSplit();
       } catch (e) { if (msg) msg.textContent = 'Failed: ' + e.message; }
     };
-    const armsSave = document.getElementById('arms-save');
-    if (armsSave) armsSave.addEventListener('click', () => {
+    // collect the checkbox state for one test's arms
+    const armState = (testId) => {
       const enabled = {};
-      document.querySelectorAll('.arm-active').forEach((c) => { enabled[c.dataset.arm] = c.checked; });
-      if (!Object.values(enabled).some(Boolean)) { const m = document.getElementById('arms-msg'); if (m) m.textContent = 'Keep at least one version live.'; return; }
-      saveArms(enabled);
-    });
+      document.querySelectorAll(`.arm-active[data-test="${testId}"]`).forEach((c) => { enabled[c.dataset.arm] = c.checked; });
+      return enabled;
+    };
+    document.querySelectorAll('.arms-save').forEach((btn) => btn.addEventListener('click', () => {
+      const testId = btn.dataset.test;
+      const enabled = armState(testId);
+      if (!Object.values(enabled).some(Boolean)) { const m = msgFor(testId); if (m) m.textContent = 'Keep at least one version live.'; return; }
+      saveArms(testId, enabled);
+    }));
     document.querySelectorAll('.arm-iso').forEach((b) => b.addEventListener('click', () => {
+      const testId = b.dataset.test;
       const enabled = {};
-      document.querySelectorAll('.arm-active').forEach((c) => { enabled[c.dataset.arm] = (c.dataset.arm === b.dataset.arm); });
-      saveArms(enabled);
+      document.querySelectorAll(`.arm-active[data-test="${testId}"]`).forEach((c) => { enabled[c.dataset.arm] = (c.dataset.arm === b.dataset.arm); });
+      saveArms(testId, enabled);
     }));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }

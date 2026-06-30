@@ -176,10 +176,15 @@ app.get(['/drink', '/drink/'], async (req, res, next) => {
   }
   if (!DRINK_HTML || !DRINK_HTML.includes('<!--SPLIT_CONFIG-->')) return next();
   try {
-    const rows = (await q(`SELECT arm_key FROM split_arms WHERE test_id='image' AND enabled = true ORDER BY sort, arm_key`)).rows;
-    const arms = rows.map((r) => r.arm_key);
-    if (!arms.length) return next();
-    const html = DRINK_HTML.replace('<!--SPLIT_CONFIG-->', `<script>window.__SPLIT_IMG_ARMS=${JSON.stringify(arms)}</script>`);
+    // Pull the live arms for EVERY split test (image / background / headline) so the
+    // page only randomizes among versions left enabled in admin. Grouped by test_id.
+    const rows = (await q(`SELECT test_id, arm_key FROM split_arms WHERE enabled = true ORDER BY test_id, sort, arm_key`)).rows;
+    const byTest = {};
+    for (const r of rows) (byTest[r.test_id] = byTest[r.test_id] || []).push(r.arm_key);
+    if (!byTest.image || !byTest.image.length) return next();   // image is the original guard; keep the static fallback if it's somehow empty
+    // __SPLIT_ARMS drives all three; __SPLIT_IMG_ARMS kept for backward-compat with any cached page.
+    const inject = `<script>window.__SPLIT_ARMS=${JSON.stringify(byTest)};window.__SPLIT_IMG_ARMS=${JSON.stringify(byTest.image)}</script>`;
+    const html = DRINK_HTML.replace('<!--SPLIT_CONFIG-->', inject);
     res.set('Cache-Control', 'no-store');
     res.type('html').send(html);
   } catch (e) { console.warn('[drink] config inject failed (static fallback):', e?.message || e); next(); }

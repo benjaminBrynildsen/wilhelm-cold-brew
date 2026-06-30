@@ -224,6 +224,7 @@ export function mountAdmin(app) {
           `WITH base AS (
              SELECT session_id,
                     EXTRACT(EPOCH FROM (MAX(created_at)-MIN(created_at)))::int dur,
+                    MAX(variant) AS variant,
                     MAX(data->>'bg') AS bg,
                     MAX(data->>'hl') AS hl,
                     BOOL_OR(event='focus_email') AS focused,
@@ -253,7 +254,16 @@ export function mountAdmin(app) {
                              COUNT(*) FILTER (WHERE focused)::int focused,
                              COUNT(*) FILTER (WHERE clicked)::int clicked,
                              COUNT(*) FILTER (WHERE joined)::int joined
-                        FROM base WHERE hl IS NOT NULL GROUP BY hl) g) AS byhl`,
+                        FROM base WHERE hl IS NOT NULL GROUP BY hl) g) AS byhl,
+             (SELECT COALESCE(json_agg(json_build_object(
+                       'variant', variant, 'bg', bg, 'hl', hl,
+                       'page_load', landed, 'subscribed', joined)
+                       ORDER BY joined DESC, landed DESC), '[]'::json)
+                FROM (SELECT variant, bg, hl, COUNT(*)::int landed,
+                             COUNT(*) FILTER (WHERE joined)::int joined
+                        FROM base
+                       WHERE variant IS NOT NULL OR bg IS NOT NULL OR hl IS NOT NULL
+                       GROUP BY variant, bg, hl) g) AS bycombo`,
           args)).rows[0];
         const reviewsConv = {
           reached: agg.rev_reached, reachedSub: agg.rev_reached_sub,
@@ -263,6 +273,7 @@ export function mountAdmin(app) {
         };
         const byBg = agg.bybg || {};
         const byHl = agg.byhl || {};
+        const byCombo = agg.bycombo || [];
 
         out[w.key] = {
           sessionCount: agg.total,
@@ -271,6 +282,7 @@ export function mountAdmin(app) {
           byVariant,
           byBg,
           byHl,
+          byCombo,
           sections,
           reviewsConv,
         };

@@ -524,6 +524,42 @@ async function showSplit() {
           <span class="note" id="arms-msg"></span></div>` : ''}`;
     }).join('');
 
+    // ── Best combinations: image × background × headline together ──
+    // Each session is tagged with all three arms, so we can see which full
+    // recipe converts best (not just one dimension at a time).
+    const MIN_COMBO = 8;   // min Landed before a combo can claim the ★ winner
+    const labelFor = (source, key) => {
+      if (key == null) return '<span class="note">any</span>';
+      const t = SPLIT_TESTS.find((x) => x.source === source);
+      const arm = t && t.arms.find((a) => a.key === key);
+      return esc(arm ? arm.label : key);
+    };
+    const combos = (w.byCombo || [])
+      .map((c) => {
+        const ld = c.page_load || 0, su = c.subscribed || 0;
+        return { variant: c.variant, bg: c.bg, hl: c.hl, ld, su, rate: ld ? su / ld : -1 };
+      })
+      .sort((a, b) => (b.rate - a.rate) || (b.ld - a.ld));
+    const bestCombo = combos.find((c) => c.ld >= MIN_COMBO);
+    let comboBlock = '';
+    if (combos.length) {
+      const rows = combos.map((c) => {
+        const winner = bestCombo && c === bestCombo;
+        const low = c.ld < MIN_COMBO;
+        return `<tr${winner ? ' style="color:var(--good);font-weight:700"' : low ? ' style="opacity:.6"' : ''}>
+          <td>${labelFor('byVariant', c.variant)}</td>
+          <td>${labelFor('byBg', c.bg)}</td>
+          <td>${labelFor('byHl', c.hl)}</td>
+          <td class="num">${num(c.ld)}</td><td class="num">${num(c.su)}</td>
+          <td class="num">${pct(c.su, c.ld)}${winner ? ' ★' : ''}${low ? ' <span class="note">(low)</span>' : ''}</td></tr>`;
+      }).join('');
+      comboBlock = `<h3>Best combinations <span class="note">— image × background × headline together</span></h3>
+        <table><thead><tr><th>Image</th><th>Background</th><th>Headline</th>
+          <th class="num">Landed</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+        <div class="note">Every session is bucketed into one recipe of all three tests; this ranks the full recipes by signup rate (Joined ÷ Landed). ★ = best recipe with at least ${MIN_COMBO} sessions. Dim rows are still low-sample — treat as early signal. "any" means that dimension wasn't recorded for that session (older traffic).</div>`;
+    }
+
     // Any variants seen in the data that aren't part of a known test.
     const otherKeys = Object.keys(bv).filter((v) => !known.has(v)).sort();
     let other = '';
@@ -552,6 +588,7 @@ async function showSplit() {
           <tr><td>Didn't reach the reviews</td><td class="num">${num(rc.notReached || 0)}</td><td class="num">${num(rc.notReachedSub || 0)}</td><td class="num">${pct(rc.notReachedSub || 0, rc.notReached || 0)}</td></tr>
         </tbody></table>
       <div class="note">Directional, not a clean A/B — reviews are always on and below the fold, so deep scrollers are inherently more engaged. To truly isolate the reviews' effect we'd run a reviews on/off test.</div>
+      ${comboBlock}
       ${other}`;
     wireWinbar(showSplit, 'splitWin');
 

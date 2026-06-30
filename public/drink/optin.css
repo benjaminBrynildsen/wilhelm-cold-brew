@@ -325,7 +325,15 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 }
 
 /* family — parchment, like the heritage story */
-.family { background: var(--parchment); color: var(--ink); }
+.family { background: var(--parchment); color: var(--ink); position: relative; }
+/* subtle centered hairline marking the hero → story boundary. Fades at the
+   edges so it reads as an intentional rule, not a hard line. Most visible in
+   light mode (parchment-on-parchment); barely there at the dark→parchment edge. */
+.family::before {
+  content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: min(680px, 84%); height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(184,146,47,0.5), transparent);
+}
 .family-figure { width: clamp(220px, 34vw, 320px); margin: 0 auto 36px; padding: clamp(18px, 3vw, 28px);
   background: radial-gradient(ellipse at 50% 38%, #1b1510 0%, #0c0a08 100%);
   border: 1px solid var(--gold-deep); box-shadow: 0 24px 60px rgba(0,0,0,0.28), inset 0 0 0 4px rgba(200,154,85,0.18); position: relative; }

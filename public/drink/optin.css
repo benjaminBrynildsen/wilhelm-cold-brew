@@ -195,6 +195,21 @@ html[data-drink-bg="light"] .optin-hero .optin-form input[type="email"]:focus { 
 html[data-drink-bg="light"] .optin-hero .cd-compact .cd-label { color: rgba(12,10,8,0.6); }
 html[data-drink-bg="light"] .optin-hero .cd-compact .cd-value { color: var(--gold-deep); }
 /* Gold button + ink text already reads on either ground — left as-is. */
+/* Success / confirmation state lives inside .optin-hero, so in light mode its
+   cream text would vanish on parchment. Flip text to ink and the bright-gold
+   accents to gold-deep so the "you're on the list" screen stays legible. */
+html[data-drink-bg="light"] .optin-hero .success h2 { color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .success p { color: rgba(12,10,8,0.8); }
+html[data-drink-bg="light"] .optin-hero .success .meta { color: rgba(12,10,8,0.5); }
+html[data-drink-bg="light"] .optin-hero .success .steps-intro { color: rgba(12,10,8,0.82); }
+html[data-drink-bg="light"] .optin-hero .success .step-t { color: var(--ink); }
+html[data-drink-bg="light"] .optin-hero .success .step-d { color: rgba(12,10,8,0.7); }
+html[data-drink-bg="light"] .optin-hero .success .step-n { color: var(--gold-deep); border-color: rgba(184,146,47,0.6); }
+html[data-drink-bg="light"] .optin-hero .success .contact-lead { color: rgba(12,10,8,0.85); }
+html[data-drink-bg="light"] .optin-hero .success .contact-sub { color: rgba(12,10,8,0.6); }
+html[data-drink-bg="light"] .optin-hero .success .seal { border-color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .success .seal::after { border-color: rgba(184,146,47,0.35); }
+html[data-drink-bg="light"] .optin-hero .success .seal svg { stroke: var(--gold-deep); }
 
 /* image (variant) — height-capped so it never blows the fold */
 .optin-image { display: block; width: 100%; max-width: 420px; margin: clamp(20px, 3.4vh, 38px) auto clamp(20px, 3.4vh, 38px); position: relative; }

@@ -467,6 +467,7 @@ async function showSplit() {
     ]);
     const w = d.windows[state.splitWin] || { byVariant: {} };
     const bv = w.byVariant || {};
+    const rc = w.reviewsConv || {};
     const origin = location.origin;
     const known = new Set();
     // enabled state per arm, by test ("image" arms are toggleable). Default on.
@@ -535,7 +536,15 @@ async function showSplit() {
       <div class="note" style="margin:6px 0 14px">Signup conversion by split-test version for the selected date range.
         <b>Landed</b> = sessions that saw it · <b>Joined</b> = signed up · <b>Conv.</b> = Joined ÷ Landed.
         Open a <b>Preview</b> link to view that version (it pins your browser to that arm).</div>
-      ${sections}${other}`;
+      ${sections}
+      <h3>Reviews <span class="note">— social proof below the fold</span></h3>
+      <table><thead><tr><th>Visitor</th><th class="num">Sessions</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead>
+        <tbody>
+          <tr style="color:var(--good);font-weight:700"><td>Scrolled to the reviews ★</td><td class="num">${num(rc.reached || 0)}</td><td class="num">${num(rc.reachedSub || 0)}</td><td class="num">${pct(rc.reachedSub || 0, rc.reached || 0)}</td></tr>
+          <tr><td>Didn't reach the reviews</td><td class="num">${num(rc.notReached || 0)}</td><td class="num">${num(rc.notReachedSub || 0)}</td><td class="num">${pct(rc.notReachedSub || 0, rc.notReached || 0)}</td></tr>
+        </tbody></table>
+      <div class="note">Directional, not a clean A/B — reviews are always on and below the fold, so deep scrollers are inherently more engaged. To truly isolate the reviews' effect we'd run a reviews on/off test.</div>
+      ${other}`;
     wireWinbar(showSplit, 'splitWin');
 
     const saveArms = async (enabled) => {

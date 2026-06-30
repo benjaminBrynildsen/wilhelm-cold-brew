@@ -10,6 +10,7 @@ const STEPS = [
 ];
 // Scroll-depth funnel (in page order, after the hero).
 const SECTIONS = [
+  { key: 'reviews', label: 'Scrolled to the reviews' },
   { key: 'family', label: 'Scrolled to the story' },
   { key: 'proof', label: 'Scrolled to the proof' },
   { key: 'bottles', label: 'Scrolled to the bottles' },
@@ -426,6 +427,7 @@ async function showFunnel() {
         <td class="num">${cr}</td></tr>`;
     }).join('');
 
+    const rc = w.reviewsConv || {};
     content().innerHTML = winbar() + `
       <div class="cards">
         <div class="card"><div class="k">Drink sessions</div><div class="v">${num(w.sessionCount)}</div></div>
@@ -436,6 +438,12 @@ async function showFunnel() {
       <h3>How far they scroll</h3>
       <div class="note" style="margin-bottom:10px">Of everyone who landed, how many scrolled down to each section.</div>
       ${scrollSteps}
+      <h3>Reviews → signups</h3>
+      <div class="cards">
+        <div class="card"><div class="k">Saw reviews · signed up</div><div class="v" style="color:var(--good)">${pct(rc.reachedSub || 0, rc.reached || 0)}<small> · ${num(rc.reachedSub || 0)}/${num(rc.reached || 0)}</small></div></div>
+        <div class="card"><div class="k">Didn't reach reviews · signed up</div><div class="v">${pct(rc.notReachedSub || 0, rc.notReached || 0)}<small> · ${num(rc.notReachedSub || 0)}/${num(rc.notReached || 0)}</small></div></div>
+      </div>
+      <div class="note" style="margin-top:6px">Signup rate of sessions that scrolled to the reviews section vs those that didn't. Directional — some sign up at the hero before scrolling down.</div>
       <h3>Split test — by variant</h3>
       <table><thead><tr><th>Variant</th><th class="num">Landed</th><th class="num">Focused</th>
         <th class="num">Clicked</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead>

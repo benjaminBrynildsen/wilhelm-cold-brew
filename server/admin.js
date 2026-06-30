@@ -221,12 +221,41 @@ export function mountAdmin(app) {
         const sections = {};
         for (const r of secRows.rows) if (r.section) sections[r.section] = r.sessions;
 
+        // Signup rate of sessions that scrolled to the reviews section vs those
+        // that didn't — does seeing reviews correlate with converting?
+        const rc = (await q(
+          `WITH drink AS (
+             SELECT DISTINCT session_id FROM journey_events
+              WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}),
+           reached AS (
+             SELECT DISTINCT session_id FROM journey_events
+              WHERE page = ANY($3) AND event='section_reached' AND data->>'section'='reviews'
+                AND created_at >= $1 AND created_at < $2 ${EXCL_JE}),
+           subs AS (
+             SELECT DISTINCT session_id FROM journey_events
+              WHERE page = ANY($3) AND event='subscribed'
+                AND created_at >= $1 AND created_at < $2 ${EXCL_JE})
+           SELECT
+             (SELECT COUNT(*)::int FROM reached) AS reached,
+             (SELECT COUNT(*)::int FROM reached WHERE session_id IN (SELECT session_id FROM subs)) AS reached_sub,
+             (SELECT COUNT(*)::int FROM drink WHERE session_id NOT IN (SELECT session_id FROM reached)) AS notreached,
+             (SELECT COUNT(*)::int FROM drink WHERE session_id NOT IN (SELECT session_id FROM reached)
+                                                AND session_id IN (SELECT session_id FROM subs)) AS notreached_sub`,
+          args)).rows[0];
+        const reviewsConv = {
+          reached: rc.reached, reachedSub: rc.reached_sub,
+          reachedPct: rc.reached ? +((rc.reached_sub / rc.reached) * 100).toFixed(1) : 0,
+          notReached: rc.notreached, notReachedSub: rc.notreached_sub,
+          notReachedPct: rc.notreached ? +((rc.notreached_sub / rc.notreached) * 100).toFixed(1) : 0,
+        };
+
         out[w.key] = {
           sessionCount: dur.rows[0].total,
           medianSeconds: dur.rows[0].median_s,
           events,
           byVariant,
           sections,
+          reviewsConv,
         };
       }
       res.json({ windows: out });

@@ -202,15 +202,6 @@ export function mountAdmin(app) {
           (byVariant[r.variant] = byVariant[r.variant] || {})[r.event] = r.sessions;
         }
 
-        const dur = await q(
-          `WITH s AS (
-             SELECT session_id, EXTRACT(EPOCH FROM (MAX(created_at)-MIN(created_at)))::int dur
-               FROM journey_events
-              WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}
-              GROUP BY session_id)
-           SELECT COUNT(*)::int total,
-                  COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dur),0)::int median_s FROM s`, args);
-
         // distinct sessions that scrolled to each section
         const secRows = await q(
           `SELECT data->>'section' section, COUNT(DISTINCT session_id)::int sessions
@@ -221,56 +212,46 @@ export function mountAdmin(app) {
         const sections = {};
         for (const r of secRows.rows) if (r.section) sections[r.section] = r.sessions;
 
-        // Signup rate of sessions that scrolled to the reviews section vs those
-        // that didn't — does seeing reviews correlate with converting?
-        const rc = (await q(
-          `WITH drink AS (
-             SELECT DISTINCT session_id FROM journey_events
-              WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}),
-           reached AS (
-             SELECT DISTINCT session_id FROM journey_events
-              WHERE page = ANY($3) AND event='section_reached' AND data->>'section'='reviews'
-                AND created_at >= $1 AND created_at < $2 ${EXCL_JE}),
-           subs AS (
-             SELECT DISTINCT session_id FROM journey_events
-              WHERE page = ANY($3) AND event='subscribed'
-                AND created_at >= $1 AND created_at < $2 ${EXCL_JE})
-           SELECT
-             (SELECT COUNT(*)::int FROM reached) AS reached,
-             (SELECT COUNT(*)::int FROM reached WHERE session_id IN (SELECT session_id FROM subs)) AS reached_sub,
-             (SELECT COUNT(*)::int FROM drink WHERE session_id NOT IN (SELECT session_id FROM reached)) AS notreached,
-             (SELECT COUNT(*)::int FROM drink WHERE session_id NOT IN (SELECT session_id FROM reached)
-                                                AND session_id IN (SELECT session_id FROM subs)) AS notreached_sub`,
-          args)).rows[0];
-        const reviewsConv = {
-          reached: rc.reached, reachedSub: rc.reached_sub,
-          reachedPct: rc.reached ? +((rc.reached_sub / rc.reached) * 100).toFixed(1) : 0,
-          notReached: rc.notreached, notReachedSub: rc.notreached_sub,
-          notReachedPct: rc.notreached ? +((rc.notreached_sub / rc.notreached) * 100).toFixed(1) : 0,
-        };
-
-        // Background test (light vs dark) — session-level so it's independent of the
-        // image variant. A session's bg comes from any of its tagged events.
-        const bgr = await q(
+        // ONE session-level pass per window (base materialized + scanned once) powers
+        // median time, the background test, and the reviews-conversion comparison.
+        const agg = (await q(
           `WITH base AS (
-             SELECT session_id, MAX(data->>'bg') AS bg,
+             SELECT session_id,
+                    EXTRACT(EPOCH FROM (MAX(created_at)-MIN(created_at)))::int dur,
+                    MAX(data->>'bg') AS bg,
                     BOOL_OR(event='focus_email') AS focused,
                     BOOL_OR(event='submit_attempt') AS clicked,
-                    BOOL_OR(event='subscribed') AS joined
+                    BOOL_OR(event='subscribed') AS joined,
+                    BOOL_OR(event='section_reached' AND data->>'section'='reviews') AS reached
                FROM journey_events
               WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}
               GROUP BY session_id)
-           SELECT bg, COUNT(*)::int landed,
-                  COUNT(*) FILTER (WHERE focused)::int focused,
-                  COUNT(*) FILTER (WHERE clicked)::int clicked,
-                  COUNT(*) FILTER (WHERE joined)::int joined
-             FROM base WHERE bg IS NOT NULL GROUP BY bg`, args);
-        const byBg = {};
-        for (const r of bgr.rows) byBg[r.bg] = { page_load: r.landed, focus_email: r.focused, submit_attempt: r.clicked, subscribed: r.joined };
+           SELECT
+             (SELECT COUNT(*)::int FROM base) AS total,
+             (SELECT COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dur),0)::int FROM base) AS median_s,
+             (SELECT COUNT(*) FILTER (WHERE reached)::int FROM base) AS rev_reached,
+             (SELECT COUNT(*) FILTER (WHERE reached AND joined)::int FROM base) AS rev_reached_sub,
+             (SELECT COUNT(*) FILTER (WHERE NOT reached)::int FROM base) AS rev_notreached,
+             (SELECT COUNT(*) FILTER (WHERE NOT reached AND joined)::int FROM base) AS rev_notreached_sub,
+             (SELECT COALESCE(json_object_agg(bg, json_build_object(
+                       'page_load', landed, 'focus_email', focused, 'submit_attempt', clicked, 'subscribed', joined)), '{}'::json)
+                FROM (SELECT bg, COUNT(*)::int landed,
+                             COUNT(*) FILTER (WHERE focused)::int focused,
+                             COUNT(*) FILTER (WHERE clicked)::int clicked,
+                             COUNT(*) FILTER (WHERE joined)::int joined
+                        FROM base WHERE bg IS NOT NULL GROUP BY bg) g) AS bybg`,
+          args)).rows[0];
+        const reviewsConv = {
+          reached: agg.rev_reached, reachedSub: agg.rev_reached_sub,
+          reachedPct: agg.rev_reached ? +((agg.rev_reached_sub / agg.rev_reached) * 100).toFixed(1) : 0,
+          notReached: agg.rev_notreached, notReachedSub: agg.rev_notreached_sub,
+          notReachedPct: agg.rev_notreached ? +((agg.rev_notreached_sub / agg.rev_notreached) * 100).toFixed(1) : 0,
+        };
+        const byBg = agg.bybg || {};
 
         out[w.key] = {
-          sessionCount: dur.rows[0].total,
-          medianSeconds: dur.rows[0].median_s,
+          sessionCount: agg.total,
+          medianSeconds: agg.median_s,
           events,
           byVariant,
           byBg,

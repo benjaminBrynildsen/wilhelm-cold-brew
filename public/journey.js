@@ -9,6 +9,9 @@
     window.__DRINK_VARIANT ||
     document.documentElement.getAttribute('data-drink-variant') ||
     null;
+  // Background A/B arm (light/dark) — tagged onto every event so the funnel can
+  // read its conversion independently of the image-variant test.
+  var BG = window.__DRINK_BG || document.documentElement.getAttribute('data-drink-bg') || null;
 
   // Internal flag: visiting any page with ?internal=1 marks this device; flagged
   // events are tagged is_internal:true and excluded from the admin by default.
@@ -28,6 +31,7 @@
   function track(event, data, extra) {
     var d = data || {};
     if (IS_INTERNAL) d.is_internal = true;
+    if (BG && d.bg == null) d.bg = BG;
     var ev = { sessionId: SESSION_ID, event: String(event), data: d, page: PAGE, variant: VARIANT };
     if (extra) { for (var k in extra) ev[k] = extra[k]; }
     queue.push(ev);

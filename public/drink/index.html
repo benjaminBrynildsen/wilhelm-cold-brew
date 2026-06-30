@@ -30,7 +30,13 @@
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
-      var bg = (p.get('v') === 'light') ? 'light' : 'dark';   // dark default; light only via ?v=light
+      // Background A/B test — light vs dark above the fold. 50/50, sticky per visitor;
+      // ?v=light / ?v=dark forces an arm for preview.
+      var forcedV = p.get('v');
+      var bg = (forcedV === 'light' || forcedV === 'dark') ? forcedV : null;
+      if (!bg) { try { bg = localStorage.getItem('wilhelm_drink_bg'); } catch (e) {} }
+      if (bg !== 'light' && bg !== 'dark') { bg = Math.random() < 0.5 ? 'light' : 'dark'; }
+      try { localStorage.setItem('wilhelm_drink_bg', bg); } catch (e) {}
 
       // Headline split test concluded — "on-the-list" won, now the permanent
       // default. ?h=sells-out still previews the old arm for reference.
@@ -74,6 +80,7 @@
 
       // The live experiment is the image, so that's the tracked split-test arm.
       window.__DRINK_VARIANT = arm;
+      window.__DRINK_BG = bg;                                // tracked separately as the background test
       document.documentElement.setAttribute('data-drink-variant', 'below'); // layout (bullets below the photo)
       document.documentElement.setAttribute('data-drink-bg', bg);
       document.documentElement.setAttribute('data-drink-hl', hl);

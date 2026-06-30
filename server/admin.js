@@ -249,11 +249,31 @@ export function mountAdmin(app) {
           notReachedPct: rc.notreached ? +((rc.notreached_sub / rc.notreached) * 100).toFixed(1) : 0,
         };
 
+        // Background test (light vs dark) — session-level so it's independent of the
+        // image variant. A session's bg comes from any of its tagged events.
+        const bgr = await q(
+          `WITH base AS (
+             SELECT session_id, MAX(data->>'bg') AS bg,
+                    BOOL_OR(event='focus_email') AS focused,
+                    BOOL_OR(event='submit_attempt') AS clicked,
+                    BOOL_OR(event='subscribed') AS joined
+               FROM journey_events
+              WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}
+              GROUP BY session_id)
+           SELECT bg, COUNT(*)::int landed,
+                  COUNT(*) FILTER (WHERE focused)::int focused,
+                  COUNT(*) FILTER (WHERE clicked)::int clicked,
+                  COUNT(*) FILTER (WHERE joined)::int joined
+             FROM base WHERE bg IS NOT NULL GROUP BY bg`, args);
+        const byBg = {};
+        for (const r of bgr.rows) byBg[r.bg] = { page_load: r.landed, focus_email: r.focused, submit_attempt: r.clicked, subscribed: r.joined };
+
         out[w.key] = {
           sessionCount: dur.rows[0].total,
           medianSeconds: dur.rows[0].median_s,
           events,
           byVariant,
+          byBg,
           sections,
           reviewsConv,
         };

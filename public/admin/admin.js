@@ -23,12 +23,16 @@ const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', sp
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
 const SPLIT_TESTS = [
-  { id: 'image', name: 'Hero image', sub: '/drink hero photo (live)', param: 'img', base: '/drink/', arms: [
+  { id: 'image', name: 'Hero image', sub: '/drink hero photo (live)', param: 'img', base: '/drink/', source: 'byVariant', arms: [
     { key: 'cigars', label: 'Cigars (control)' },
     { key: 'barrel', label: 'Barrel / flag render' },
     { key: 'bottles', label: 'Real bottles photo' },
   ] },
-  { id: 'headline', name: 'Headline', sub: 'concluded — pinned to "on the list"', param: 'h', base: '/drink/', arms: [
+  { id: 'background', name: 'Background', sub: 'above the fold — light vs dark (live)', param: 'v', base: '/drink/', source: 'byBg', arms: [
+    { key: 'dark', label: 'Dark (current default)' },
+    { key: 'light', label: 'Light / parchment' },
+  ] },
+  { id: 'headline', name: 'Headline', sub: 'concluded — pinned to "on the list"', param: 'h', base: '/drink/', source: 'byVariant', arms: [
     { key: 'on-the-list', label: '"…on the list."' },
     { key: 'sells-out', label: '"…sell out in minutes?"' },
   ] },
@@ -471,18 +475,19 @@ async function showSplit() {
 
     const sections = SPLIT_TESTS.map((t) => {
       const toggleable = t.id === 'image';   // only the live image test is toggleable
+      const src = t.source === 'byBg' ? (w.byBg || {}) : bv;   // each test reads its own dimension
       // Winner = highest signup rate (Joined ÷ Landed) among arms with ≥1 session.
       let best = { key: null, rate: -1 };
       let totalLanded = 0;
       t.arms.forEach((a) => {
-        const e = bv[a.key] || {}; const ld = e.page_load || 0; totalLanded += ld;
+        const e = src[a.key] || {}; const ld = e.page_load || 0; totalLanded += ld;
         const r = ld ? (e.subscribed || 0) / ld : -1;
         if (ld > 0 && r > best.rate) best = { key: a.key, rate: r };
       });
       const liveCount = toggleable ? t.arms.filter((a) => en[t.id + ':' + a.key] !== false).length : 0;
       const rows = t.arms.map((a) => {
-        known.add(a.key);
-        const e = bv[a.key] || {};
+        if (t.source !== 'byBg') known.add(a.key);   // don't let bg arms (e.g. "dark") shadow a legacy variant
+        const e = src[a.key] || {};
         const ld = e.page_load || 0, su = e.subscribed || 0;
         const winner = a.key === best.key;
         const isLive = en[t.id + ':' + a.key] !== false;

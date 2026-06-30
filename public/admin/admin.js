@@ -32,9 +32,9 @@ const SPLIT_TESTS = [
     { key: 'dark', label: 'Dark (current default)' },
     { key: 'light', label: 'Light / parchment' },
   ] },
-  { id: 'headline', name: 'Headline', sub: 'concluded — pinned to "on the list"', param: 'h', base: '/drink/', source: 'byVariant', arms: [
-    { key: 'on-the-list', label: '"…on the list."' },
-    { key: 'sells-out', label: '"…sell out in minutes?"' },
+  { id: 'headline', name: 'Headline', sub: 'hero headline (live)', param: 'h', base: '/drink/', source: 'byHl', arms: [
+    { key: 'on-the-list', label: '"…on the list." (control)' },
+    { key: 'sold-out-13', label: '"…sold out in 13 minutes."' },
   ] },
 ];
 
@@ -484,7 +484,7 @@ async function showSplit() {
 
     const sections = SPLIT_TESTS.map((t) => {
       const toggleable = t.id === 'image';   // only the live image test is toggleable
-      const src = t.source === 'byBg' ? (w.byBg || {}) : bv;   // each test reads its own dimension
+      const src = t.source === 'byBg' ? (w.byBg || {}) : t.source === 'byHl' ? (w.byHl || {}) : bv;   // each test reads its own dimension
       // Winner = highest signup rate (Joined ÷ Landed) among arms with ≥1 session.
       let best = { key: null, rate: -1 };
       let totalLanded = 0;

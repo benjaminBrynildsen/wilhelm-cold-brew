@@ -38,11 +38,19 @@
       if (bg !== 'light' && bg !== 'dark') { bg = Math.random() < 0.5 ? 'light' : 'dark'; }
       try { localStorage.setItem('wilhelm_drink_bg', bg); } catch (e) {}
 
-      // Headline split test concluded — "on-the-list" won, now the permanent
-      // default. ?h=sells-out still previews the old arm for reference.
-      var HL = ['on-the-list', 'sells-out'];
+      // Headline A/B test — live 50/50 between the control and the new
+      // "sold out in 13 minutes" line. ?h= forces ANY known headline (incl. the
+      // retired sells-out arm) for preview; sticky per visitor otherwise.
+      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13'];   // all known headlines
+      var HL_LIVE = ['on-the-list', 'sold-out-13'];               // arms in the live rotation
       var forcedH = p.get('h');
-      var hl = HL.indexOf(forcedH) >= 0 ? forcedH : 'on-the-list';
+      var hl;
+      if (HL_ALL.indexOf(forcedH) >= 0) {
+        hl = forcedH;                                       // explicit preview — honor any known headline, even retired
+      } else {
+        try { hl = localStorage.getItem('wilhelm_drink_hl'); } catch (e) {}
+        if (HL_LIVE.indexOf(hl) < 0) { hl = HL_LIVE[Math.floor(Math.random() * HL_LIVE.length)]; }   // new/unknown/retired → live arm
+      }
       try { localStorage.setItem('wilhelm_drink_hl', hl); } catch (e) {}
       window.__DRINK_HL = hl;
 
@@ -117,12 +125,14 @@
     <div class="optin" data-state>
       <h1 id="optin-h1">To buy, you have to be <em>on the list.</em></h1>
       <script>
-        /* Headline A/B — swap to variant B before paint (synchronous, runs right
-           after the <h1> during parse). A stays as the default markup above. */
-        if (window.__DRINK_HL === 'sells-out') {
+        /* Headline A/B — swap the H1 before paint (synchronous, runs right after
+           the <h1> during parse). on-the-list stays as the default markup above. */
+        (function () {
           var __h1 = document.getElementById('optin-h1');
-          if (__h1) __h1.innerHTML = 'Why does a $49 cold brew <em>sell out in minutes?</em>';
-        }
+          if (!__h1) return;
+          if (window.__DRINK_HL === 'sells-out') __h1.innerHTML = 'Why does a $49 cold brew <em>sell out in minutes?</em>';
+          else if (window.__DRINK_HL === 'sold-out-13') __h1.innerHTML = 'Last Friday, we sold out in <em>13 minutes.</em> Seriously.';
+        })();
       </script>
 
       <div class="optin-image">

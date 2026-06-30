@@ -225,6 +225,7 @@ export function mountAdmin(app) {
              SELECT session_id,
                     EXTRACT(EPOCH FROM (MAX(created_at)-MIN(created_at)))::int dur,
                     MAX(data->>'bg') AS bg,
+                    MAX(data->>'hl') AS hl,
                     BOOL_OR(event='focus_email') AS focused,
                     BOOL_OR(event='submit_attempt') AS clicked,
                     BOOL_OR(event='subscribed') AS joined,
@@ -245,7 +246,14 @@ export function mountAdmin(app) {
                              COUNT(*) FILTER (WHERE focused)::int focused,
                              COUNT(*) FILTER (WHERE clicked)::int clicked,
                              COUNT(*) FILTER (WHERE joined)::int joined
-                        FROM base WHERE bg IS NOT NULL GROUP BY bg) g) AS bybg`,
+                        FROM base WHERE bg IS NOT NULL GROUP BY bg) g) AS bybg,
+             (SELECT COALESCE(json_object_agg(hl, json_build_object(
+                       'page_load', landed, 'focus_email', focused, 'submit_attempt', clicked, 'subscribed', joined)), '{}'::json)
+                FROM (SELECT hl, COUNT(*)::int landed,
+                             COUNT(*) FILTER (WHERE focused)::int focused,
+                             COUNT(*) FILTER (WHERE clicked)::int clicked,
+                             COUNT(*) FILTER (WHERE joined)::int joined
+                        FROM base WHERE hl IS NOT NULL GROUP BY hl) g) AS byhl`,
           args)).rows[0];
         const reviewsConv = {
           reached: agg.rev_reached, reachedSub: agg.rev_reached_sub,
@@ -254,6 +262,7 @@ export function mountAdmin(app) {
           notReachedPct: agg.rev_notreached ? +((agg.rev_notreached_sub / agg.rev_notreached) * 100).toFixed(1) : 0,
         };
         const byBg = agg.bybg || {};
+        const byHl = agg.byhl || {};
 
         out[w.key] = {
           sessionCount: agg.total,
@@ -261,6 +270,7 @@ export function mountAdmin(app) {
           events,
           byVariant,
           byBg,
+          byHl,
           sections,
           reviewsConv,
         };

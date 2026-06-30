@@ -12,6 +12,8 @@
   // Background A/B arm (light/dark) — tagged onto every event so the funnel can
   // read its conversion independently of the image-variant test.
   var BG = window.__DRINK_BG || document.documentElement.getAttribute('data-drink-bg') || null;
+  // Headline A/B arm — same idea, tracked as its own dimension.
+  var HEADLINE = window.__DRINK_HL || document.documentElement.getAttribute('data-drink-hl') || null;
 
   // Internal flag: visiting any page with ?internal=1 marks this device; flagged
   // events are tagged is_internal:true and excluded from the admin by default.
@@ -32,6 +34,7 @@
     var d = data || {};
     if (IS_INTERNAL) d.is_internal = true;
     if (BG && d.bg == null) d.bg = BG;
+    if (HEADLINE && d.hl == null) d.hl = HEADLINE;
     var ev = { sessionId: SESSION_ID, event: String(event), data: d, page: PAGE, variant: VARIANT };
     if (extra) { for (var k in extra) ev[k] = extra[k]; }
     queue.push(ev);

@@ -70,6 +70,20 @@ function windows(req) {
   return wins;
 }
 
+// A SQL fragment (prefixed with " AND ...") restricting rows to an hour-of-day
+// range in REPORT_TZ, e.g. hours='16-24' → 4pm through midnight Central. Returns
+// '' if unset/invalid. REPORT_TZ is a constant and the bounds are clamped ints,
+// so the interpolation is safe.
+function hourOfDayFrag(hours) {
+  const m = String(hours || '').match(/^(\d{1,2})-(\d{1,2})$/);
+  if (!m) return '';
+  const fromH = Math.max(0, Math.min(24, parseInt(m[1], 10)));
+  const toH = Math.max(0, Math.min(24, parseInt(m[2], 10)));
+  if (!(toH > fromH)) return '';
+  const h = `EXTRACT(HOUR FROM (created_at AT TIME ZONE '${REPORT_TZ}'))`;
+  return ` AND ${h} >= ${fromH} AND ${h} < ${toH}`;
+}
+
 // Fire a blast in the background and finalize its email_blasts row when done.
 // Detaching the throttled send from the HTTP request means a slow run can't be
 // cut short by a request timeout — the failure mode that left Batch 58 only
@@ -154,16 +168,20 @@ export function mountAdmin(app) {
   app.get('/api/admin/overview', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
+      // Optional hour-of-day slice, e.g. ?hours=16-24 → only 4pm–midnight (Central).
+      // Applies WITHIN whichever day/range window is selected. REPORT_TZ is a fixed
+      // constant and the hours are validated ints, so this is not injectable.
+      const hourFrag = hourOfDayFrag(req.query?.hours);
       const out = {};
       for (const w of windows(req)) {
         const p = [w.from, w.to];
         const sessions = await q(
-          `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}`, p);
+          `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p);
         const drinkSessions = await q(
-          `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}`,
+          `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
           [w.from, w.to, DRINK_PAGES]);
         const signups = await q(
-          `SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p);
+          `SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p);
         const ds = drinkSessions.rows[0].n, su = signups.rows[0].n;
         out[w.key] = {
           sessions: sessions.rows[0].n,

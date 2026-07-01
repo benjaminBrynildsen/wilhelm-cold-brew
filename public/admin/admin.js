@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', customFrom: '', customTo: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -358,12 +358,23 @@ async function showJourneyDetail(sid) {
 }
 
 // ───────── Overview ─────────
+// Hour-of-day presets for the overview (Central time). '' = whole day.
+const OV_HOURS = [['', 'All day'], ['16-24', '4pm–midnight'], ['0-12', 'Midnight–noon'], ['9-17', '9am–5pm']];
 async function showOverview() {
   loading();
   try {
-    const d = await api('/api/admin/overview' + winQuery());
+    let path = '/api/admin/overview' + winQuery();
+    if (state.ovHours) path += (path.includes('?') ? '&' : '?') + 'hours=' + encodeURIComponent(state.ovHours);
+    const d = await api(path);
     const w = d.windows[state.win] || {};
-    content().innerHTML = winbar() + `
+    const hoursBar = `<div class="winbar">
+      <span class="winlabel">HOURS</span>
+      ${OV_HOURS.map(([k, l]) => `<div class="win ${state.ovHours === k ? 'active' : ''}" data-hours="${k}">${l}</div>`).join('')}
+    </div>`;
+    const hoursNote = state.ovHours
+      ? ` Showing only ${esc((OV_HOURS.find((h) => h[0] === state.ovHours) || [, state.ovHours])[1])} (Central) within that window.`
+      : '';
+    content().innerHTML = winbar() + hoursBar + `
       <div class="cards">
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
         <div class="card"><div class="k">Drink-page sessions</div><div class="v">${num(w.drinkSessions)}</div></div>
@@ -371,8 +382,10 @@ async function showOverview() {
         <div class="card"><div class="k">Drink conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
       </div>
-      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.</div>`;
+      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.${hoursNote}</div>`;
     wireWinbar(showOverview);
+    document.querySelectorAll('[data-hours]').forEach((el) =>
+      el.addEventListener('click', () => { state.ovHours = el.dataset.hours; showOverview(); }));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 

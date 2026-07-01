@@ -52,8 +52,8 @@
       // Headline A/B test — live 50/50 between the control and the new
       // "sold out in 13 minutes" line. ?h= forces ANY known headline (incl. the
       // retired sells-out arm) for preview; sticky per visitor otherwise.
-      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13'];   // all known headlines (incl retired)
-      var HL_KNOWN = ['on-the-list', 'sold-out-13'];              // arms admin can toggle
+      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13', 'sold-out-list'];   // all known headlines (incl retired)
+      var HL_KNOWN = ['on-the-list', 'sold-out-13', 'sold-out-list'];              // arms admin can toggle
       var HL_LIVE = ((window.__SPLIT_ARMS && window.__SPLIT_ARMS.headline) || HL_KNOWN).filter(function (k) { return HL_KNOWN.indexOf(k) >= 0; });
       if (!HL_LIVE.length) HL_LIVE = HL_KNOWN;                    // never leave nothing to show
       var forcedH = p.get('h');
@@ -146,6 +146,7 @@
           if (!__h1) return;
           if (window.__DRINK_HL === 'sells-out') __h1.innerHTML = 'Why does a $49 cold brew <em>sell out in minutes?</em>';
           else if (window.__DRINK_HL === 'sold-out-13') __h1.innerHTML = 'Last Friday, we sold out in <em>13 minutes.</em> Seriously.';
+          else if (window.__DRINK_HL === 'sold-out-list') __h1.innerHTML = 'Last Friday, we sold out to our list in <em>13 minutes.</em>';
         })();
       </script>
 

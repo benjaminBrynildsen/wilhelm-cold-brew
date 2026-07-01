@@ -35,6 +35,7 @@ const SPLIT_TESTS = [
   { id: 'headline', name: 'Headline', sub: 'hero headline (live)', param: 'h', base: '/drink/', source: 'byHl', arms: [
     { key: 'on-the-list', label: '"…on the list." (control)' },
     { key: 'sold-out-13', label: '"…sold out in 13 minutes."' },
+    { key: 'sold-out-list', label: '"…sold out to our list in 13 minutes."' },
   ] },
 ];
 

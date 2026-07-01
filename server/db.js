@@ -117,7 +117,8 @@ export async function ensureSchema() {
       ('background','dark',true,0),
       ('background','light',true,1),
       ('headline','on-the-list',true,0),
-      ('headline','sold-out-13',true,1)
+      ('headline','sold-out-13',true,1),
+      ('headline','sold-out-list',true,2)
     ON CONFLICT (test_id, arm_key) DO NOTHING;
 
     -- Columns added after launch (no-op if already present).

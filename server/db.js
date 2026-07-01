@@ -201,6 +201,13 @@ export async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS orders_drop_idx   ON orders (drop_id);
     CREATE INDEX IF NOT EXISTS orders_status_idx ON orders (status);
+
+    -- Editable app settings (key → JSON). Used for the shipping-email template.
+    CREATE TABLE IF NOT EXISTS settings (
+      key        TEXT PRIMARY KEY,
+      value      JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
   console.log('[db] schema ready');
 }

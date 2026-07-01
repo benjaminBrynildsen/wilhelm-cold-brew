@@ -263,7 +263,17 @@ export async function sendOrderConfirmation(to, meta = {}) {
 }
 
 // ───────── Shipping notification (tracking) ─────────
-const SHIP_SUBJECT = 'Your Wilhelm order is on its way';
+// The copy is editable from the admin (stored in settings/ship_email); these are
+// the fallback defaults, and also what "Reset to default" restores. Body/subject
+// support tokens: {{first_name}} {{drop}} {{tracking}} {{carrier}}.
+export const SHIP_EMAIL_DEFAULTS = {
+  subject: 'Your Wilhelm order is on its way',
+  heading: "It's on its way.",
+  body: "Hi {{first_name}}, it's packed and shipped{{drop}}. Track it anytime:",
+  signoff: 'Talk soon,\nBen\nWilhelm Cold Brew',
+};
+
+const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // Build a carrier tracking URL from the number + (optional) carrier name. Pirate
 // Ship is mostly USPS, so that's the default when the carrier is unknown.
@@ -276,11 +286,40 @@ export function trackingUrl(num, carrier) {
   return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(n);
 }
 
-function shipHtml({ shippingName, tracking, carrier, dropName }) {
+// Token values from the order meta. first_name falls back to "there" so a
+// greeting always reads; drop includes its own " from …" so it can be dropped in.
+function shipTokens({ shippingName, tracking, carrier, dropName } = {}) {
   const first = shippingName ? String(shippingName).trim().split(/\s+/)[0] : '';
-  const greet = first ? `${first}, it's` : "It's";
-  const url = trackingUrl(tracking, carrier);
-  const carrierLabel = carrier ? String(carrier).toUpperCase() : 'the carrier';
+  return {
+    first_name: first || 'there',
+    drop: dropName ? ` from ${dropName}` : '',
+    tracking: tracking != null ? String(tracking) : '',
+    carrier: carrier ? String(carrier).toUpperCase() : '',
+  };
+}
+function fillTokens(text, tokens, esc) {
+  return String(text || '').replace(/\{\{(\w+)\}\}/g, (m, k) =>
+    (k in tokens) ? (esc ? escHtml(tokens[k]) : tokens[k]) : m);
+}
+// Merge a stored/draft template over the defaults (missing fields fall back).
+function mergeShipTpl(tpl) { return { ...SHIP_EMAIL_DEFAULTS, ...(tpl || {}) }; }
+
+// Load the saved shipping-email template (or defaults if none saved / DB down).
+export async function getShipTemplate() {
+  try {
+    const r = await q(`SELECT value FROM settings WHERE key = 'ship_email'`);
+    return mergeShipTpl(r.rows[0]?.value);
+  } catch (e) { console.warn('[mail] ship template load failed, using defaults:', e?.message || e); return { ...SHIP_EMAIL_DEFAULTS }; }
+}
+
+function shipHtml(meta, tpl) {
+  const t = mergeShipTpl(tpl);
+  const tokens = shipTokens(meta);
+  const url = trackingUrl(meta.tracking, meta.carrier);
+  const carrierLabel = tokens.carrier || 'the carrier';
+  const bodyHtml = String(t.body || '').split(/\n{2,}/).map((para) =>
+    `<p style="margin:0 0 16px;">${fillTokens(para, tokens, true).replace(/\n/g, '<br/>')}</p>`).join('');
+  const signoffHtml = fillTokens(t.signoff, tokens, true).replace(/\n/g, '<br/>');
   return `<!doctype html>
 <html><body style="margin:0;background:#e9dcbb;padding:0;">
   <div style="display:none;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Your Wilhelm Cold Brew is on its way. Here's your tracking.&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;</div>
@@ -293,13 +332,13 @@ function shipHtml({ shippingName, tracking, carrier, dropName }) {
             <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
           </div>
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
-            <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">It's on its way.</p>
-            <p style="margin:0 0 16px;">${greet} packed and shipped${dropName ? ` — your bottle from <strong>${dropName}</strong>` : ''}. Track it anytime:</p>
+            <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">${fillTokens(t.heading, tokens, true)}</p>
+            ${bodyHtml}
             <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="border-radius:6px;background:#8a6914;">
               <a href="${url}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">Track your package &rarr;</a>
             </td></tr></table>
-            <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${carrierLabel} tracking: <strong>${tracking}</strong></p>
-            <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
+            <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${carrierLabel} tracking: <strong>${escHtml(tokens.tracking)}</strong></p>
+            <p style="margin:0;">${signoffHtml}</p>
           </div>
         </td></tr>
       </table>
@@ -308,35 +347,42 @@ function shipHtml({ shippingName, tracking, carrier, dropName }) {
 </body></html>`;
 }
 
-function shipText({ shippingName, tracking, carrier, dropName }) {
+function shipText(meta, tpl) {
+  const t = mergeShipTpl(tpl);
+  const tokens = shipTokens(meta);
   return [
-    "It's on its way.",
+    fillTokens(t.heading, tokens, false),
     '',
-    `${shippingName ? String(shippingName).trim().split(/\s+/)[0] + ', your' : 'Your'} Wilhelm Cold Brew${dropName ? ` from ${dropName}` : ''} has shipped.`,
+    fillTokens(t.body, tokens, false),
     '',
-    `${carrier ? String(carrier).toUpperCase() + ' ' : ''}tracking: ${tracking}`,
-    `Track it: ${trackingUrl(tracking, carrier)}`,
+    `${tokens.carrier ? tokens.carrier + ' ' : ''}tracking: ${tokens.tracking}`,
+    `Track it: ${trackingUrl(meta.tracking, meta.carrier)}`,
     '',
-    'Talk soon,',
-    'Ben',
-    'Wilhelm Cold Brew',
+    fillTokens(t.signoff, tokens, false),
   ].join('\n');
 }
 
-// Render the shipping email without sending — used for the admin preview.
-export function renderShippingEmail(meta = {}) {
-  return { subject: SHIP_SUBJECT, html: shipHtml(meta), text: shipText(meta) };
+// Render with an EXPLICIT template (for the admin's live preview of unsaved edits).
+export function renderShippingEmailWith(meta = {}, tpl) {
+  const t = mergeShipTpl(tpl);
+  return { subject: fillTokens(t.subject, shipTokens(meta), false), html: shipHtml(meta, t), text: shipText(meta, t) };
+}
+
+// Render the shipping email (loads the saved template) without sending — admin preview.
+export async function renderShippingEmail(meta = {}) {
+  return renderShippingEmailWith(meta, await getShipTemplate());
 }
 
 // `record: false` sends without logging to email_sends — used by the "send test
 // to me" button so a test doesn't show up in stats.
 export async function sendShippingNotice(to, meta = {}, { record = true } = {}) {
   if (!transporter) { console.warn('[mail] skip shipping notice (SMTP not configured):', to); return; }
+  const t = await getShipTemplate();
   const token = mkToken();
   await transporter.sendMail({
-    from: FROM, to, subject: SHIP_SUBJECT,
-    html: finalize(shipHtml(meta), token),
-    text: shipText(meta),
+    from: FROM, to, subject: fillTokens(t.subject, shipTokens(meta), false),
+    html: finalize(shipHtml(meta, t), token),
+    text: shipText(meta, t),
   });
   if (record) await recordSend(token, to, 'shipping', null);
   console.log('[mail] shipping notice sent to', to, record ? '' : '(test)');

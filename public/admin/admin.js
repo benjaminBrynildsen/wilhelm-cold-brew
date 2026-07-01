@@ -725,7 +725,10 @@ async function showOrders() {
     if (state.ordersDrop === null) state.ordersDrop = currentBatch();
     else if (state.ordersDrop && !dd.drops.some((d) => String(d.id) === String(state.ordersDrop))) state.ordersDrop = currentBatch();
     const dropQ = state.ordersDrop ? ('?dropId=' + encodeURIComponent(state.ordersDrop)) : '';
-    const o = await api('/api/admin/orders' + dropQ);
+    const [o, shipTpl] = await Promise.all([
+      api('/api/admin/orders' + dropQ),
+      api('/api/admin/ship-email').catch(() => null),
+    ]);
     // Card stats follow the selected drop (or the live one when viewing all).
     const shown = o.selected || o.liveDrop;
     const scoped = !!state.ordersDrop;
@@ -775,7 +778,26 @@ async function showOrders() {
       </div>
       <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'} as a Pirate Ship bulk-import CSV. Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
-      <h3>Import tracking from Pirate Ship</h3>
+      ${(() => {
+        const t = (shipTpl && shipTpl.tpl) || {};
+        return `<h3>Shipping email <span class="note">— the tracking email each purchaser receives</span></h3>
+      <div class="note" style="margin-bottom:8px">Edit the copy below. The Wilhelm header, the <b>Track your package</b> button and the tracking-number line are always included automatically. Tokens you can use: <code>{{first_name}}</code>, <code>{{drop}}</code> (e.g. " from Friday Drop"), <code>{{tracking}}</code>, <code>{{carrier}}</code>.</div>
+      <label class="note">Subject<input id="se-subject" value="${esc(t.subject || '')}" style="width:100%;${FLD_DARK};margin-top:4px"/></label>
+      <label class="note" style="display:block;margin-top:8px">Heading (the big gold line)<input id="se-heading" value="${esc(t.heading || '')}" style="width:100%;${FLD_DARK};margin-top:4px"/></label>
+      <label class="note" style="display:block;margin-top:8px">Body (blank line = new paragraph)<textarea id="se-body" rows="4" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:4px">${esc(t.body || '')}</textarea></label>
+      <label class="note" style="display:block;margin-top:8px">Sign-off (one line each)<textarea id="se-signoff" rows="3" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:4px">${esc(t.signoff || '')}</textarea></label>
+      <div class="row-actions" style="margin-top:8px;flex-wrap:wrap;align-items:center;gap:8px">
+        <button class="btn" id="se-save">Save</button>
+        <button class="btn ghost" id="se-preview">Update preview</button>
+        <button class="btn ghost" id="se-test">Send test to me</button>
+        <button class="btn ghost" id="se-reset">Reset to default</button>
+        <span class="note" id="se-msg"></span>
+      </div>
+      <div class="note" style="margin:8px 0 4px">Preview <span class="note">— sample order (Kaleb · Friday Drop)</span></div>
+      <iframe id="se-frame" title="shipping email preview" style="width:100%;max-width:600px;height:520px;border:1px solid rgba(232,217,181,0.2);border-radius:6px;background:#fff"></iframe>
+
+      <h3 style="margin-top:26px">Import tracking from Pirate Ship</h3>`;
+      })()}
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
         <input type="file" id="trackfile" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="${FLD_DARK};padding:6px;max-width:300px"/>
         <button class="btn ghost" id="trackpreview">Preview matches</button>
@@ -830,6 +852,52 @@ async function showOrders() {
 
     const odSel = document.getElementById('ordersDrop');
     if (odSel) odSel.addEventListener('change', (e) => { state.ordersDrop = e.target.value; showOrders(); });
+
+    // Shipping-email editor: live preview, save, test, reset.
+    (() => {
+      const frame = document.getElementById('se-frame');
+      const seMsg = document.getElementById('se-msg');
+      if (!frame) return;
+      if (shipTpl && shipTpl.sample) frame.srcdoc = shipTpl.sample.html;
+      const readDraft = () => ({
+        subject: (document.getElementById('se-subject') || {}).value || '',
+        heading: (document.getElementById('se-heading') || {}).value || '',
+        body: (document.getElementById('se-body') || {}).value || '',
+        signoff: (document.getElementById('se-signoff') || {}).value || '',
+      });
+      const render = async (save) => {
+        const r = await api('/api/admin/ship-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...readDraft(), save }),
+        });
+        if (r.sample) frame.srcdoc = r.sample.html;
+        return r;
+      };
+      const prev = document.getElementById('se-preview');
+      if (prev) prev.addEventListener('click', async () => { seMsg.textContent = 'Rendering…'; try { await render(false); seMsg.textContent = 'Preview updated'; } catch (e) { seMsg.textContent = 'Failed: ' + e.message; } });
+      const save = document.getElementById('se-save');
+      if (save) save.addEventListener('click', async () => { seMsg.textContent = 'Saving…'; try { await render(true); seMsg.textContent = 'Saved ✓ — new purchasers get this version.'; } catch (e) { seMsg.textContent = 'Failed: ' + e.message; } });
+      const reset = document.getElementById('se-reset');
+      if (reset) reset.addEventListener('click', () => {
+        const def = (shipTpl && shipTpl.defaults) || {};
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+        set('se-subject', def.subject); set('se-heading', def.heading); set('se-body', def.body); set('se-signoff', def.signoff);
+        seMsg.textContent = 'Reset to default — click Save to keep it.';
+        render(false).catch(() => {});
+      });
+      const test = document.getElementById('se-test');
+      if (test) test.addEventListener('click', async () => {
+        seMsg.textContent = 'Saving + sending test…';
+        try {
+          await render(true);   // save first so the test matches the editor
+          const rr = await api('/api/admin/orders/tracking-test-send', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shippingName: 'Kaleb Anderson', tracking: '9400100000000000000000', carrier: 'USPS', dropName: 'Friday Drop' }),
+          });
+          seMsg.textContent = `Saved + test sent to ${rr.sentTo}.`;
+        } catch (e) { seMsg.textContent = 'Failed: ' + e.message; }
+      });
+    })();
 
     const markShipped = document.getElementById('markshipped');
     if (markShipped) markShipped.addEventListener('click', async () => {

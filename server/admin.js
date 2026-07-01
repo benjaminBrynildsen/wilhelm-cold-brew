@@ -1,7 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
-import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail } from './mailer.js';
+import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
@@ -1015,7 +1015,7 @@ export function mountAdmin(app) {
         let sampleEmail = null;
         if (matched.length) {
           const m = matched[0];
-          const r = renderShippingEmail({ shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
+          const r = await renderShippingEmail({ shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
           sampleEmail = { to: m.email, name: m.name, subject: r.subject, html: r.html };
         }
         return res.json({ preview: true, willEmail: matched.length, matched, skipped, unmatched, sampleEmail });
@@ -1049,6 +1049,38 @@ export function mountAdmin(app) {
       await sendShippingNotice(to, meta, { record: false });
       res.json({ ok: true, sentTo: to });
     } catch (e) { console.error('[tracking-test-send]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── editable shipping-email template ─────────
+  // Sample order used to render the preview with realistic tokens.
+  const SHIP_SAMPLE = { shippingName: 'Kaleb Anderson', tracking: '9400100000000000000000', carrier: 'USPS', dropName: 'Friday Drop' };
+  const cleanTpl = (b) => ({
+    subject: String(b?.subject ?? '').slice(0, 200),
+    heading: String(b?.heading ?? '').slice(0, 200),
+    body: String(b?.body ?? '').slice(0, 4000),
+    signoff: String(b?.signoff ?? '').slice(0, 500),
+  });
+
+  app.get('/api/admin/ship-email', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const tpl = await getShipTemplate();
+      res.json({ tpl, defaults: SHIP_EMAIL_DEFAULTS, sample: renderShippingEmailWith(SHIP_SAMPLE, tpl) });
+    } catch (e) { console.error('[ship-email/get]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // save=false → just render the draft for live preview (no persist).
+  // save=true  → upsert the template, then return the rendered sample.
+  app.post('/api/admin/ship-email', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const tpl = cleanTpl(req.body);
+      if (req.body?.save) {
+        await q(`INSERT INTO settings (key, value, updated_at) VALUES ('ship_email', $1, now())
+                 ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [JSON.stringify(tpl)]);
+      }
+      res.json({ ok: true, saved: !!req.body?.save, sample: renderShippingEmailWith(SHIP_SAMPLE, tpl) });
+    } catch (e) { console.error('[ship-email/save]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── drops (inventory management) ─────────

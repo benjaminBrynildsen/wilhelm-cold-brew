@@ -10,6 +10,7 @@ import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE } from './u
 import { receiveJourney, subscribe } from './ingest.js';
 import { mountAdmin } from './admin.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
+import { mcPushUnsubscribe } from './mailchimp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -106,11 +107,14 @@ app.get('/api/e/:token', (req, res) => {
 async function handleUnsub(req, res) {
   const t = String(req.query.t || (req.body && req.body.t) || '').slice(0, 64);
   if (/^[a-f0-9]{8,64}$/.test(t)) {
-    await q(
+    const r = await q(
       `UPDATE subscribers SET unsubscribed_at = now()
         WHERE unsubscribed_at IS NULL
-          AND email = (SELECT email FROM email_sends WHERE token = $1 LIMIT 1)`, [t]
-    ).catch((e) => console.warn('[unsub] failed:', e?.message || e));
+          AND email = (SELECT email FROM email_sends WHERE token = $1 LIMIT 1)
+        RETURNING email`, [t]
+    ).catch((e) => { console.warn('[unsub] failed:', e?.message || e); return { rows: [] }; });
+    // Mirror the opt-out into Mailchimp so a Mailchimp-sent blast can't reach them either.
+    if (r.rows[0]?.email) mcPushUnsubscribe(r.rows[0].email);
   }
   if (req.method === 'POST') return res.status(200).send('ok'); // one-click
   res.set('Content-Type', 'text/html').send(`<!doctype html><html><body style="margin:0;background:#0c0a08;color:#e8d9b5;font-family:Georgia,serif;text-align:center;padding:80px 24px;">

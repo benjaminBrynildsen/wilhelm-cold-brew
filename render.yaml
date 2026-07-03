@@ -21,8 +21,13 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
-      # Optional: enables the one-click "Pull from Mailchimp" unsubscribe sync
-      # in the admin Email tab. Create the key in Mailchimp → Account & billing
-      # → Extras → API keys. The paste-an-export fallback works without it.
+      # Optional: enables the two-way Mailchimp sync — new signups/unsubscribes
+      # are pushed to Mailchimp live, and the admin Email tab gets a one-click
+      # full reconcile. Create the key in Mailchimp → Account & billing →
+      # Extras → API keys. The paste-an-export fallback works without it.
       - key: MAILCHIMP_API_KEY
+        sync: false
+      # Only needed if the Mailchimp account has more than one audience — the
+      # id of the audience to sync with (Mailchimp → Audience → Settings).
+      - key: MAILCHIMP_LIST_ID
         sync: false

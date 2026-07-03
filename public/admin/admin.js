@@ -1357,11 +1357,11 @@ async function showEmail() {
       <h3>Recent unsubscribes <span class="note">(${num(subs.unsubTotal || 0)} total · who dropped off and when)</span></h3>
       <table><thead><tr><th>Email</th><th>When</th></tr></thead><tbody>${unsubRows}</tbody></table>
 
-      <h3>Sync Mailchimp unsubscribes <span class="note">(so this list stops emailing people who opted out over there)</span></h3>
-      <div class="note">Emails sent through Mailchimp record their unsubscribes in Mailchimp only — this list doesn't know about them until you sync. Either pull them automatically, or paste them in: in Mailchimp go to Audience → All contacts, filter Email marketing = Unsubscribed, export, and paste the file's contents (or just the addresses) below.</div>
+      <h3>Mailchimp sync <span class="note">(keep this list and the Mailchimp audience matching, both directions)</span></h3>
+      <div class="note">With MAILCHIMP_API_KEY set on the server, new signups and unsubscribes flow to Mailchimp automatically as they happen. The button below is the catch-up pass: it pulls Mailchimp's unsubscribes + bounces into this list, adds any active subscribers Mailchimp is missing, and opts out anyone who unsubscribed here but is still subscribed there. It never re-subscribes someone who opted out on either side. No API key? Paste Mailchimp's unsubscribed-contacts export below instead (Audience → All contacts → filter Email marketing = Unsubscribed → export).</div>
       <div class="row-actions" style="margin-top:10px">
-        <button class="btn" id="mc-pull">Pull from Mailchimp</button>
-        <span class="note">one click — needs MAILCHIMP_API_KEY set on the server</span>
+        <button class="btn" id="mc-pull">Sync with Mailchimp</button>
+        <span class="note">two-way — needs MAILCHIMP_API_KEY set on the server</span>
       </div>
       <textarea id="mc-paste" rows="4" placeholder="…or paste unsubscribed addresses / the whole Mailchimp export here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:10px;display:block"></textarea>
       <div class="row-actions" style="margin-top:8px">
@@ -1412,6 +1412,10 @@ async function showEmail() {
       if (r.already.length) lines.push(`${num(r.already.length)} already unsubscribed here (no change).`);
       if (r.notFound.length) lines.push(`${num(r.notFound.length)} not on this list — Mailchimp-only contacts, nothing to sync: ${mcList(r.notFound)}`);
       if (r.audiences) lines.push('Checked Mailchimp audience' + (r.audiences.length > 1 ? 's' : '') + ': ' + r.audiences.map((a) => `${a.name} (${num(a.fetched)} opted out/bounced)`).join(', '));
+      if (r.push) {
+        lines.push(`Pushed to Mailchimp (${r.push.audience}): ${num(r.push.added)} missing signups added, ${num(r.push.optedOut)} of our unsubscribes opted out there.`);
+        if (r.push.errorCount) lines.push(`⚠ ${num(r.push.errorCount)} pushes failed — first few: ${r.push.errors.join('; ')}`);
+      }
       return lines.join('\n');
     };
     // After an apply, re-render the tab so the counts/tables update, then restore
@@ -1433,7 +1437,7 @@ async function showEmail() {
       } catch (e) { mcMsg.textContent = 'Import failed: ' + e.message; }
     });
     document.getElementById('mc-pull').addEventListener('click', async () => {
-      mcMsg.textContent = 'Pulling unsubscribes from Mailchimp…'; mcApply.hidden = true;
+      mcMsg.textContent = 'Syncing with Mailchimp (both directions)…'; mcApply.hidden = true;
       try {
         const r = await mcPost('/api/admin/mailchimp/sync');
         await mcFinish(mcSummary(r));

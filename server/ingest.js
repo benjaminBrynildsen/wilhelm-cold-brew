@@ -2,6 +2,7 @@
 import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE } from './util.js';
 import { sendWelcome, sendSignupAlert } from './mailer.js';
+import { mcPushSignup } from './mailchimp.js';
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
 export async function receiveJourney(req, res) {
@@ -97,6 +98,7 @@ export async function subscribe(req, res) {
       sendWelcome(email).catch((e) => console.warn('[subscribe] welcome email failed:', e?.message || e));
       sendSignupAlert(email, { variant, country: countryFrom(req) })
         .catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
+      mcPushSignup(email);   // keep the Mailchimp audience current with new signups
     }
   } catch (err) {
     console.warn('[subscribe] insert failed:', err?.message || err);

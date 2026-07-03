@@ -3,6 +3,7 @@
 import { q } from './db.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
+import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed } from './mailchimp.js';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
@@ -112,8 +113,6 @@ function parseCsv(text) {
 // funnel Mailchimp's unsubscribes into our marker (subscribers.unsubscribed_at),
 // fed either by a pasted export or by the Mailchimp API (see the routes).
 
-const MAILCHIMP_API_KEY = process.env.MAILCHIMP_API_KEY || '';
-
 // Pull every email address out of arbitrary pasted text — a one-per-line list,
 // a comma-separated paste, or Mailchimp's full CSV export all work.
 function extractEmails(text) {
@@ -143,19 +142,6 @@ async function markUnsubscribed(emails, apply) {
     }
   }
   return { given: emails.length, marked, already, notFound };
-}
-
-// Minimal Mailchimp API GET. The datacenter comes from the key's suffix
-// (…-us21 → us21.api.mailchimp.com); auth is HTTP Basic with the key as password.
-async function mcGet(dc, path) {
-  const r = await fetch(`https://${dc}.api.mailchimp.com/3.0${path}`, {
-    headers: { Authorization: 'Basic ' + Buffer.from('key:' + MAILCHIMP_API_KEY).toString('base64') },
-  });
-  if (!r.ok) {
-    const body = await r.text().catch(() => '');
-    throw new Error(`Mailchimp API ${r.status}${body ? ': ' + body.slice(0, 200) : ''}`);
-  }
-  return r.json();
 }
 
 // Send shipping-notice emails in the background (counts can be large; don't block
@@ -531,40 +517,65 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[unsub-import]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // API route: pulls every unsubscribed + cleaned (hard-bounced) member from
-  // every Mailchimp audience and marks them here. Cleaned addresses bounce, so
-  // they're marked too — no point sending to them either. Applies immediately:
-  // Mailchimp is authoritative about its own unsubscribes.
+  // API route: full two-way reconcile. New signups and unsubscribes are already
+  // pushed to Mailchimp live (ingest.js / index.js), so this is the catch-up
+  // pass for anything that predates the key or slipped through:
+  //   Pull — every unsubscribed + cleaned (hard-bounced) member from every
+  //          audience is marked unsubscribed here. Applied immediately:
+  //          Mailchimp is authoritative about its own opt-outs.
+  //   Push — active subscribers missing from the target audience are added
+  //          (status_if_new only — never resubscribes a Mailchimp opt-out),
+  //          and our unsubscribes still 'subscribed' there are opted out.
   app.post('/api/admin/mailchimp/sync', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      if (!MAILCHIMP_API_KEY) {
-        return res.status(400).json({
-          error: 'MAILCHIMP_API_KEY is not set. In Mailchimp: profile icon → Account & billing → Extras → API keys → Create A Key, then add it as MAILCHIMP_API_KEY in Render → Environment and redeploy. Until then, paste the export below instead.',
-        });
-      }
-      const dc = MAILCHIMP_API_KEY.split('-').pop();
-      if (!/^[a-z]{2,4}\d+$/.test(dc)) {
-        return res.status(400).json({ error: 'MAILCHIMP_API_KEY looks malformed — it should end in a datacenter suffix like "-us21".' });
-      }
-      const lists = (await mcGet(dc, '/lists?count=100&fields=lists.id,lists.name')).lists || [];
+      const problem = mcKeyProblem();
+      if (problem) return res.status(400).json({ error: problem });
+      const lists = await mcLists();
       if (!lists.length) return res.status(400).json({ error: 'The Mailchimp account has no audiences.' });
-      const emails = new Set();
+
+      // Pull phase.
+      const optedOut = new Set();
       const audiences = [];
       for (const list of lists) {
         let fetched = 0;
         for (const status of ['unsubscribed', 'cleaned']) {
-          for (let offset = 0; ; offset += 1000) {
-            const page = await mcGet(dc,
-              `/lists/${list.id}/members?status=${status}&count=1000&offset=${offset}&fields=members.email_address,total_items`);
-            for (const m of page.members || []) { emails.add(String(m.email_address).toLowerCase()); fetched++; }
-            if (offset + 1000 >= (page.total_items || 0)) break;
-          }
+          for (const m of await mcMembers(list.id, status)) { optedOut.add(m.email); fetched++; }
         }
         audiences.push({ name: list.name, fetched });
       }
-      const result = await markUnsubscribed([...emails], true);
-      res.json({ ok: true, applied: true, audiences, ...result });
+      const result = await markUnsubscribed([...optedOut], true);
+
+      // Push phase — target audience state first, then our lists (queried AFTER
+      // the pull so freshly marked people aren't re-added). Internal/test
+      // addresses stay out of Mailchimp (same exclusions as email metrics).
+      const listId = await mcListId();
+      const listName = (lists.find((l) => l.id === listId) || {}).name || listId;
+      const mcStatus = new Map((await mcMembers(listId)).map((m) => [m.email, m.status]));
+      const ourActive = (await q(
+        `SELECT LOWER(email) email FROM subscribers
+          WHERE unsubscribed_at IS NULL ${EXCL_PV} ${EXCL_EM} ORDER BY created_at ASC`)).rows.map((r) => r.email);
+      const ourUnsubbed = (await q(
+        `SELECT LOWER(email) email FROM subscribers
+          WHERE unsubscribed_at IS NOT NULL ${EXCL_EM}`)).rows.map((r) => r.email);
+      const toAdd = ourActive.filter((e) => !mcStatus.has(e));
+      const toOptOut = ourUnsubbed.filter((e) => ['subscribed', 'pending'].includes(mcStatus.get(e)));
+      let added = 0, optedOutInMc = 0;
+      const pushErrors = [];
+      for (const e of toAdd) {
+        try { await mcEnsureMember(e); added++; }
+        catch (err) { pushErrors.push(`${e}: ${err.message}`); }
+      }
+      for (const e of toOptOut) {
+        try { await mcMarkUnsubscribed(e); optedOutInMc++; }
+        catch (err) { pushErrors.push(`${e}: ${err.message}`); }
+      }
+      if (pushErrors.length) console.warn('[mailchimp-sync] push errors:', pushErrors.slice(0, 10));
+
+      res.json({
+        ok: true, applied: true, audiences, ...result,
+        push: { audience: listName, added, optedOut: optedOutInMc, errors: pushErrors.slice(0, 5), errorCount: pushErrors.length },
+      });
     } catch (e) { console.error('[mailchimp-sync]', e); res.status(500).json({ error: e.message }); }
   });
 

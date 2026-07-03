@@ -106,6 +106,58 @@ function parseCsv(text) {
   return rows;
 }
 
+// ───────── Mailchimp unsubscribe sync helpers ─────────
+// Some blasts go out through Mailchimp; people who unsubscribe THERE only exist
+// in Mailchimp's records, so our own sends would still email them. These helpers
+// funnel Mailchimp's unsubscribes into our marker (subscribers.unsubscribed_at),
+// fed either by a pasted export or by the Mailchimp API (see the routes).
+
+const MAILCHIMP_API_KEY = process.env.MAILCHIMP_API_KEY || '';
+
+// Pull every email address out of arbitrary pasted text — a one-per-line list,
+// a comma-separated paste, or Mailchimp's full CSV export all work.
+function extractEmails(text) {
+  const found = String(text || '').toLowerCase().match(/[a-z0-9._%+'-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || [];
+  return [...new Set(found)];
+}
+
+// Classify the given (lowercased) emails against subscribers and, when apply is
+// true, stamp unsubscribed_at on the active ones. notFound = Mailchimp-only
+// contacts we never had, so there's nothing to mark (we can't email them anyway).
+async function markUnsubscribed(emails, apply) {
+  const marked = [], already = [], notFound = [];
+  if (emails.length) {
+    const rows = (await q(
+      `SELECT LOWER(email) email, unsubscribed_at FROM subscribers WHERE LOWER(email) = ANY($1)`, [emails])).rows;
+    const byEmail = new Map(rows.map((r) => [r.email, r]));
+    for (const e of emails) {
+      const r = byEmail.get(e);
+      if (!r) notFound.push(e);
+      else if (r.unsubscribed_at) already.push(e);
+      else marked.push(e);
+    }
+    if (apply && marked.length) {
+      await q(
+        `UPDATE subscribers SET unsubscribed_at = now()
+          WHERE LOWER(email) = ANY($1) AND unsubscribed_at IS NULL`, [marked]);
+    }
+  }
+  return { given: emails.length, marked, already, notFound };
+}
+
+// Minimal Mailchimp API GET. The datacenter comes from the key's suffix
+// (…-us21 → us21.api.mailchimp.com); auth is HTTP Basic with the key as password.
+async function mcGet(dc, path) {
+  const r = await fetch(`https://${dc}.api.mailchimp.com/3.0${path}`, {
+    headers: { Authorization: 'Basic ' + Buffer.from('key:' + MAILCHIMP_API_KEY).toString('base64') },
+  });
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    throw new Error(`Mailchimp API ${r.status}${body ? ': ' + body.slice(0, 200) : ''}`);
+  }
+  return r.json();
+}
+
 // Send shipping-notice emails in the background (counts can be large; don't block
 // the import request). Marks ship_notified_at per success so re-uploads don't
 // re-email. Tracking itself is already recorded synchronously by the caller.
@@ -462,6 +514,58 @@ export function mountAdmin(app) {
           ORDER BY unsubscribed_at DESC LIMIT 30`)).rows;
       res.json({ total, last7, byVariant, byAd, recent: rows, unsubTotal, unsubLast7, unsubRecent });
     } catch (e) { console.error('[subscribers]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── Mailchimp unsubscribe sync ─────────
+  // Paste route: body { text, apply }. text is Mailchimp's unsubscribed-contacts
+  // export (or any paste containing emails). apply=false (default) is a dry-run
+  // preview; the UI shows what would change, then re-posts with apply=true.
+  app.post('/api/admin/subscribers/unsubscribe-import', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const emails = extractEmails(req.body?.text);
+      if (!emails.length) return res.status(400).json({ error: 'No email addresses found in the pasted text.' });
+      const apply = req.body?.apply === true;
+      const result = await markUnsubscribed(emails, apply);
+      res.json({ ok: true, applied: apply, ...result });
+    } catch (e) { console.error('[unsub-import]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // API route: pulls every unsubscribed + cleaned (hard-bounced) member from
+  // every Mailchimp audience and marks them here. Cleaned addresses bounce, so
+  // they're marked too — no point sending to them either. Applies immediately:
+  // Mailchimp is authoritative about its own unsubscribes.
+  app.post('/api/admin/mailchimp/sync', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!MAILCHIMP_API_KEY) {
+        return res.status(400).json({
+          error: 'MAILCHIMP_API_KEY is not set. In Mailchimp: profile icon → Account & billing → Extras → API keys → Create A Key, then add it as MAILCHIMP_API_KEY in Render → Environment and redeploy. Until then, paste the export below instead.',
+        });
+      }
+      const dc = MAILCHIMP_API_KEY.split('-').pop();
+      if (!/^[a-z]{2,4}\d+$/.test(dc)) {
+        return res.status(400).json({ error: 'MAILCHIMP_API_KEY looks malformed — it should end in a datacenter suffix like "-us21".' });
+      }
+      const lists = (await mcGet(dc, '/lists?count=100&fields=lists.id,lists.name')).lists || [];
+      if (!lists.length) return res.status(400).json({ error: 'The Mailchimp account has no audiences.' });
+      const emails = new Set();
+      const audiences = [];
+      for (const list of lists) {
+        let fetched = 0;
+        for (const status of ['unsubscribed', 'cleaned']) {
+          for (let offset = 0; ; offset += 1000) {
+            const page = await mcGet(dc,
+              `/lists/${list.id}/members?status=${status}&count=1000&offset=${offset}&fields=members.email_address,total_items`);
+            for (const m of page.members || []) { emails.add(String(m.email_address).toLowerCase()); fetched++; }
+            if (offset + 1000 >= (page.total_items || 0)) break;
+          }
+        }
+        audiences.push({ name: list.name, fetched });
+      }
+      const result = await markUnsubscribed([...emails], true);
+      res.json({ ok: true, applied: true, audiences, ...result });
+    } catch (e) { console.error('[mailchimp-sync]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test arm config (which versions are live) ─────────

@@ -1357,6 +1357,19 @@ async function showEmail() {
       <h3>Recent unsubscribes <span class="note">(${num(subs.unsubTotal || 0)} total · who dropped off and when)</span></h3>
       <table><thead><tr><th>Email</th><th>When</th></tr></thead><tbody>${unsubRows}</tbody></table>
 
+      <h3>Sync Mailchimp unsubscribes <span class="note">(so this list stops emailing people who opted out over there)</span></h3>
+      <div class="note">Emails sent through Mailchimp record their unsubscribes in Mailchimp only — this list doesn't know about them until you sync. Either pull them automatically, or paste them in: in Mailchimp go to Audience → All contacts, filter Email marketing = Unsubscribed, export, and paste the file's contents (or just the addresses) below.</div>
+      <div class="row-actions" style="margin-top:10px">
+        <button class="btn" id="mc-pull">Pull from Mailchimp</button>
+        <span class="note">one click — needs MAILCHIMP_API_KEY set on the server</span>
+      </div>
+      <textarea id="mc-paste" rows="4" placeholder="…or paste unsubscribed addresses / the whole Mailchimp export here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:10px;display:block"></textarea>
+      <div class="row-actions" style="margin-top:8px">
+        <button class="btn" id="mc-preview">Preview</button>
+        <button class="btn" id="mc-apply" hidden></button>
+      </div>
+      <div class="note" id="mc-msg" style="white-space:pre-wrap"></div>
+
       <h3>Compose email</h3>
       <div id="composer"></div>
 
@@ -1376,6 +1389,57 @@ async function showEmail() {
       <div class="note">Open rates are directional — Apple Mail &amp; Gmail prefetch images, which inflates opens. "Opened" shows time from send to first open.</div>`;
 
     mountComposer(subs);
+
+    // Mailchimp unsubscribe sync: paste → preview → apply, or one-click API pull.
+    // These read the server's error body (the plain api() helper throws away the
+    // message, and the "key not set" error carries the setup instructions).
+    const mcPost = async (path, body) => {
+      const r = await fetch(path, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      return j;
+    };
+    const mcMsg = document.getElementById('mc-msg');
+    const mcApply = document.getElementById('mc-apply');
+    const mcList = (arr) => arr.slice(0, 20).join(', ') + (arr.length > 20 ? ` … +${num(arr.length - 20)} more` : '');
+    const mcSummary = (r) => {
+      const lines = [];
+      if (r.applied) lines.push(`Marked ${num(r.marked.length)} unsubscribed — they won't get any more sends from here.` + (r.marked.length ? ` (${mcList(r.marked)})` : ''));
+      else lines.push(r.marked.length ? `${num(r.marked.length)} will be marked unsubscribed: ${mcList(r.marked)}` : 'Nothing new to mark.');
+      if (r.already.length) lines.push(`${num(r.already.length)} already unsubscribed here (no change).`);
+      if (r.notFound.length) lines.push(`${num(r.notFound.length)} not on this list — Mailchimp-only contacts, nothing to sync: ${mcList(r.notFound)}`);
+      if (r.audiences) lines.push('Checked Mailchimp audience' + (r.audiences.length > 1 ? 's' : '') + ': ' + r.audiences.map((a) => `${a.name} (${num(a.fetched)} opted out/bounced)`).join(', '));
+      return lines.join('\n');
+    };
+    // After an apply, re-render the tab so the counts/tables update, then restore
+    // the result message onto the freshly created element.
+    const mcFinish = async (msg) => { await showEmail(); document.getElementById('mc-msg').textContent = msg; };
+    document.getElementById('mc-preview').addEventListener('click', async () => {
+      mcMsg.textContent = 'Checking…'; mcApply.hidden = true;
+      try {
+        const r = await mcPost('/api/admin/subscribers/unsubscribe-import', { text: document.getElementById('mc-paste').value });
+        mcMsg.textContent = mcSummary(r);
+        if (r.marked.length) { mcApply.hidden = false; mcApply.textContent = `Mark ${num(r.marked.length)} unsubscribed`; }
+      } catch (e) { mcMsg.textContent = 'Preview failed: ' + e.message; }
+    });
+    mcApply.addEventListener('click', async () => {
+      mcMsg.textContent = 'Marking…'; mcApply.hidden = true;
+      try {
+        const r = await mcPost('/api/admin/subscribers/unsubscribe-import', { text: document.getElementById('mc-paste').value, apply: true });
+        await mcFinish(mcSummary(r));
+      } catch (e) { mcMsg.textContent = 'Import failed: ' + e.message; }
+    });
+    document.getElementById('mc-pull').addEventListener('click', async () => {
+      mcMsg.textContent = 'Pulling unsubscribes from Mailchimp…'; mcApply.hidden = true;
+      try {
+        const r = await mcPost('/api/admin/mailchimp/sync');
+        await mcFinish(mcSummary(r));
+      } catch (e) { mcMsg.textContent = 'Sync failed: ' + e.message; }
+    });
+
     document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });
     document.getElementById('hblast').addEventListener('change', (e) => { state.emailBlast = e.target.value; showEmail(); });
     const recentToggleBtn = document.getElementById('recent-toggle');

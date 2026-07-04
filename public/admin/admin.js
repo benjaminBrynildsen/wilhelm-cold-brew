@@ -62,11 +62,16 @@ const pct = (a, b) => (b ? ((a / b) * 100).toFixed(1) : '0.0') + '%';
   state.authed ? renderApp() : renderLogin();
 })();
 
+// SimpleWebAuthn browser lib (vendored). null if the bundle failed to load.
+const WA = () => window.SimpleWebAuthnBrowser;
+const waSupported = () => { const w = WA(); return !!(w && w.browserSupportsWebAuthn && w.browserSupportsWebAuthn()); };
+
 function renderLogin() {
   app.innerHTML = `
     <div class="login">
       <h1>Wilhelm</h1>
       <div class="sub">Admin</div>
+      <button type="button" id="faceid" style="display:none;width:100%;margin-bottom:10px;padding:11px;border-radius:8px;border:1px solid var(--gold,#c8a24a);background:transparent;color:var(--gold,#c8a24a);font:inherit;font-weight:600;cursor:pointer">Sign in with Face ID / Touch ID</button>
       <form id="lf">
         <input type="password" id="pw" placeholder="password" autocomplete="current-password"/>
         <div class="err" id="le"></div>
@@ -85,22 +90,101 @@ function renderLogin() {
       state.authed = true; renderApp();
     } catch (err) { document.getElementById('le').textContent = 'Error — try again.'; }
   });
+  // Show the Face ID button only if this browser supports it AND a device is registered.
+  const fbtn = document.getElementById('faceid');
+  fbtn.addEventListener('click', faceIdLogin);
+  if (waSupported()) {
+    fetch('/api/admin/webauthn/available').then((r) => r.json())
+      .then((d) => { if (d.available) fbtn.style.display = ''; }).catch(() => {});
+  }
+}
+
+async function faceIdLogin() {
+  const le = document.getElementById('le');
+  le.textContent = '';
+  try {
+    const opts = await (await fetch('/api/admin/webauthn/auth-options', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })).json();
+    if (opts.error) { le.textContent = opts.error; return; }
+    const asr = await WA().startAuthentication({ optionsJSON: opts });
+    const r = await fetch('/api/admin/webauthn/auth-verify', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asr }),
+    });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); le.textContent = j.error || 'Face ID sign-in failed.'; return; }
+    state.authed = true; renderApp();
+  } catch (e) {
+    le.textContent = (e && e.name === 'NotAllowedError') ? 'Face ID canceled.' : 'Face ID unavailable — use your password.';
+  }
 }
 
 function renderApp() {
   app.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
       <div><h1>Wilhelm Cold Brew</h1><div class="sub">Funnel &amp; analytics</div></div>
-      <button class="btn ghost" id="logout">Log out</button>
+      <div class="row-actions" style="gap:8px">
+        <button class="btn ghost" id="faceid-manage">Face ID</button>
+        <button class="btn ghost" id="logout">Log out</button>
+      </div>
     </div>
+    <div id="faceid-panel" style="display:none"></div>
     <div class="tabs" id="tabs"></div>
     <div id="content"></div>`;
   document.getElementById('logout').addEventListener('click', async () => {
     await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
     state.authed = false; renderLogin();
   });
+  document.getElementById('faceid-manage').addEventListener('click', () => {
+    const p = document.getElementById('faceid-panel');
+    if (p.style.display === 'none') { p.style.display = ''; renderFaceIdPanel(); } else { p.style.display = 'none'; }
+  });
   renderTabs();
   show(state.tab);
+}
+
+async function renderFaceIdPanel() {
+  const panel = document.getElementById('faceid-panel');
+  panel.innerHTML = '<div class="note" style="margin:10px 0">Loading…</div>';
+  try {
+    const d = await api('/api/admin/webauthn/credentials');
+    const ok = waSupported();
+    panel.innerHTML = `
+      <div style="border:1px solid rgba(232,217,181,0.2);border-radius:8px;padding:14px;margin:10px 0;background:rgba(0,0,0,0.15)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <b>Face ID / Touch ID sign-in</b>
+          <button class="btn" id="fa-add" ${ok ? '' : 'disabled'}>Set up on this device</button>
+        </div>
+        <div class="note" style="margin:6px 0 10px">Register this phone or computer so you (or your brother) can sign in with Face ID / Touch ID instead of the password. The password always works as a backup.${ok ? '' : ' <span style="color:var(--bad)">This browser doesn’t support it.</span>'}</div>
+        ${(d.credentials || []).length ? `<table><thead><tr><th>Device</th><th>Added</th><th>Last used</th><th></th></tr></thead><tbody>
+          ${d.credentials.map((c) => `<tr><td>${esc(c.label || 'Device')}</td><td>${c.created_at ? ago(c.created_at) : '—'}</td><td>${c.last_used_at ? ago(c.last_used_at) : 'never'}</td><td><button class="btn ghost fa-del" data-id="${esc(c.id)}">Remove</button></td></tr>`).join('')}
+        </tbody></table>` : '<div class="note">No devices registered yet.</div>'}
+        <div class="note" id="fa-msg" style="margin-top:8px"></div>
+      </div>`;
+    const add = document.getElementById('fa-add');
+    if (add) add.addEventListener('click', registerFaceId);
+    panel.querySelectorAll('.fa-del').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Remove this device? It will no longer be able to sign in with Face ID.')) return;
+      try { await api('/api/admin/webauthn/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: b.dataset.id }) }); renderFaceIdPanel(); }
+      catch (e) { document.getElementById('fa-msg').textContent = 'Failed: ' + e.message; }
+    }));
+  } catch (e) { panel.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+async function registerFaceId() {
+  const msg = document.getElementById('fa-msg');
+  msg.textContent = 'Follow the prompt on your device…';
+  try {
+    const opts = await (await fetch('/api/admin/webauthn/register-options', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })).json();
+    if (opts.error) { msg.textContent = opts.error; return; }
+    const att = await WA().startRegistration({ optionsJSON: opts });
+    await api('/api/admin/webauthn/register-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ att }) });
+    msg.textContent = 'Done — you can now sign in with Face ID / Touch ID on this device.';
+    renderFaceIdPanel();
+  } catch (e) {
+    msg.textContent = (e && e.name === 'NotAllowedError') ? 'Canceled.' : ('Error: ' + (e.message || e));
+  }
 }
 
 function renderTabs() {

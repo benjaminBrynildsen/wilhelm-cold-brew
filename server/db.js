@@ -208,6 +208,18 @@ export async function ensureSchema() {
       value      JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- WebAuthn / passkey credentials (Face ID / Touch ID admin sign-in). One shared
+    -- admin, so every row is a registered device for that admin.
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id           TEXT PRIMARY KEY,          -- credential ID (base64url)
+      public_key   BYTEA NOT NULL,
+      counter      BIGINT NOT NULL DEFAULT 0,
+      transports   TEXT,                      -- JSON array
+      label        TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_used_at TIMESTAMPTZ
+    );
   `);
   console.log('[db] schema ready');
 }

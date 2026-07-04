@@ -4,6 +4,10 @@ import { q } from './db.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed } from './mailchimp.js';
+import {
+  generateRegistrationOptions, verifyRegistrationResponse,
+  generateAuthenticationOptions, verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
@@ -27,6 +31,39 @@ function requireAdmin(req, res) {
   res.status(401).json({ error: 'unauthorized' });
   return false;
 }
+// The 30-day admin session cookie — set by password login AND passkey sign-in.
+function setAdminCookie(res) {
+  res.cookie(COOKIE, 'ok', {
+    httpOnly: true, signed: true, sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 30 * 86400000,
+  });
+}
+
+// ───────── WebAuthn / passkeys (Face ID / Touch ID) ─────────
+// Relying-party info derived from the request host so it works on prod + localhost.
+// rpID drops any leading www. so a passkey works on both apex and www.
+function rpInfo(req) {
+  const host = req.get('host') || 'wilhelmcoldbrew.com';
+  const hostname = host.split(':')[0];
+  const isLocal = hostname === 'localhost' || /^127\./.test(hostname);
+  return { rpID: hostname.replace(/^www\./, ''), origin: `${isLocal ? 'http' : 'https'}://${host}`, rpName: 'Wilhelm Cold Brew' };
+}
+// Short-lived signed cookie holding the in-flight WebAuthn challenge.
+function challengeCookieOpts() {
+  return { httpOnly: true, signed: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 5 * 60 * 1000, path: '/' };
+}
+function deviceLabel(req) {
+  const ua = req.get('user-agent') || '';
+  if (/iphone/i.test(ua)) return 'iPhone';
+  if (/ipad/i.test(ua)) return 'iPad';
+  if (/macintosh|mac os/i.test(ua)) return 'Mac';
+  if (/android/i.test(ua)) return 'Android phone';
+  if (/windows/i.test(ua)) return 'Windows PC';
+  return 'This device';
+}
+const WA_USER_ID = new Uint8Array(Buffer.from('wilhelm-admin'));
+const WA_USER_NAME = 'admin@wilhelmcoldbrew.com';
 
 // ───────── time windows ─────────
 // Reports use Central time (the business's timezone) for day boundaries — a
@@ -189,11 +226,7 @@ export function mountAdmin(app) {
   app.post('/api/admin/login', (req, res) => {
     const pw = String(req.body?.password || '');
     if (pw && pw === ADMIN_PASSWORD) {
-      res.cookie(COOKIE, 'ok', {
-        httpOnly: true, signed: true, sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 30 * 86400000,
-      });
+      setAdminCookie(res);
       return res.json({ ok: true });
     }
     res.status(401).json({ error: 'wrong password' });
@@ -201,6 +234,109 @@ export function mountAdmin(app) {
 
   app.post('/api/admin/logout', (req, res) => { res.clearCookie(COOKIE); res.json({ ok: true }); });
   app.get('/api/admin/me', (req, res) => res.json({ authed: isAdmin(req) }));
+
+  // Public: does the site have any passkeys registered? (login page shows the
+  // Face ID button only if so). Never throws — worst case hide the button.
+  app.get('/api/admin/webauthn/available', async (req, res) => {
+    try { const r = await q(`SELECT COUNT(*)::int n FROM webauthn_credentials`); res.json({ available: r.rows[0].n > 0 }); }
+    catch (e) { res.json({ available: false }); }
+  });
+
+  // Registering a new device requires being logged in already (password/passkey) —
+  // only an authenticated admin can add a Face ID device.
+  app.post('/api/admin/webauthn/register-options', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { rpID, rpName } = rpInfo(req);
+      const existing = (await q(`SELECT id, transports FROM webauthn_credentials`)).rows;
+      const options = await generateRegistrationOptions({
+        rpName, rpID, userID: WA_USER_ID, userName: WA_USER_NAME,
+        attestationType: 'none',
+        excludeCredentials: existing.map((c) => ({ id: c.id, transports: c.transports ? JSON.parse(c.transports) : undefined })),
+        authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      });
+      res.cookie('wilhelm_wa_reg', options.challenge, challengeCookieOpts());
+      res.json(options);
+    } catch (e) { console.error('[webauthn/register-options]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/admin/webauthn/register-verify', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const expectedChallenge = req.signedCookies['wilhelm_wa_reg'];
+      if (!expectedChallenge) return res.status(400).json({ error: 'setup expired — try again' });
+      const { rpID, origin } = rpInfo(req);
+      const verification = await verifyRegistrationResponse({
+        response: req.body?.att, expectedChallenge,
+        expectedOrigin: origin, expectedRPID: rpID, requireUserVerification: false,
+      });
+      res.clearCookie('wilhelm_wa_reg');
+      if (!verification.verified || !verification.registrationInfo) return res.status(400).json({ error: 'could not verify this device' });
+      const { credential } = verification.registrationInfo;
+      const label = String(req.body?.label || '').slice(0, 60) || deviceLabel(req);
+      await q(`INSERT INTO webauthn_credentials (id, public_key, counter, transports, label, created_at)
+               VALUES ($1,$2,$3,$4,$5, now())
+               ON CONFLICT (id) DO UPDATE SET public_key=$2, counter=$3, transports=$4`,
+        [credential.id, Buffer.from(credential.publicKey), credential.counter || 0,
+         credential.transports ? JSON.stringify(credential.transports) : null, label]);
+      res.json({ ok: true, label });
+    } catch (e) { console.error('[webauthn/register-verify]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Public: start a passkey sign-in.
+  app.post('/api/admin/webauthn/auth-options', async (req, res) => {
+    try {
+      const { rpID } = rpInfo(req);
+      const creds = (await q(`SELECT id, transports FROM webauthn_credentials`)).rows;
+      const options = await generateAuthenticationOptions({
+        rpID,
+        allowCredentials: creds.map((c) => ({ id: c.id, transports: c.transports ? JSON.parse(c.transports) : undefined })),
+        userVerification: 'preferred',
+      });
+      res.cookie('wilhelm_wa_auth', options.challenge, challengeCookieOpts());
+      res.json(options);
+    } catch (e) { console.error('[webauthn/auth-options]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Public: finish a passkey sign-in → sets the admin session cookie.
+  app.post('/api/admin/webauthn/auth-verify', async (req, res) => {
+    try {
+      const expectedChallenge = req.signedCookies['wilhelm_wa_auth'];
+      if (!expectedChallenge) return res.status(400).json({ error: 'sign-in expired — try again' });
+      const { rpID, origin } = rpInfo(req);
+      const id = req.body?.asr?.id;
+      const row = (await q(`SELECT * FROM webauthn_credentials WHERE id=$1`, [id])).rows[0];
+      if (!row) { res.clearCookie('wilhelm_wa_auth'); return res.status(400).json({ error: 'this device isn’t registered' }); }
+      const verification = await verifyAuthenticationResponse({
+        response: req.body.asr, expectedChallenge, expectedOrigin: origin, expectedRPID: rpID,
+        credential: {
+          id: row.id, publicKey: row.public_key, counter: Number(row.counter),
+          transports: row.transports ? JSON.parse(row.transports) : undefined,
+        },
+        requireUserVerification: false,
+      });
+      res.clearCookie('wilhelm_wa_auth');
+      if (!verification.verified) return res.status(401).json({ error: 'verification failed' });
+      await q(`UPDATE webauthn_credentials SET counter=$1, last_used_at=now() WHERE id=$2`,
+        [verification.authenticationInfo.newCounter, row.id]);
+      setAdminCookie(res);
+      res.json({ ok: true });
+    } catch (e) { console.error('[webauthn/auth-verify]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/admin/webauthn/credentials', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(`SELECT id, label, created_at, last_used_at FROM webauthn_credentials ORDER BY created_at`);
+      res.json({ credentials: r.rows });
+    } catch (e) { console.error('[webauthn/credentials]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/admin/webauthn/delete', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { await q(`DELETE FROM webauthn_credentials WHERE id=$1`, [String(req.body?.id || '')]); res.json({ ok: true }); }
+    catch (e) { console.error('[webauthn/delete]', e); res.status(500).json({ error: e.message }); }
+  });
 
   // ───────── overview ─────────
   app.get('/api/admin/overview', async (req, res) => {

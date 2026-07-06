@@ -212,6 +212,45 @@ html[data-drink-bg="light"] .optin-hero .success .seal { border-color: var(--gol
 html[data-drink-bg="light"] .optin-hero .success .seal::after { border-color: rgba(184,146,47,0.35); }
 html[data-drink-bg="light"] .optin-hero .success .seal svg { stroke: var(--gold-deep); }
 
+/* ───────── above-the-fold social proof (A/B: data-drink-proof) ─────────
+   All styles hidden by default (control = 'off'); the matching one is revealed. */
+.hero-proof { margin: clamp(10px, 1.8vh, 18px) auto clamp(2px, 1vh, 8px); max-width: 460px; }
+.hero-proof .hp { display: none; }
+html[data-drink-proof="a"] .hero-proof .hp-a,
+html[data-drink-proof="b"] .hero-proof .hp-b,
+html[data-drink-proof="c"] .hero-proof .hp-c { display: flex; }
+.hero-proof .hp-stars { color: var(--gold); letter-spacing: 2px; }
+/* Style A — featured review quote */
+.hero-proof .hp-a { flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.hero-proof .hp-a .hp-stars { font-size: 15px; }
+.hero-proof .hp-a .hp-quote { font-family: var(--display); font-style: italic; font-size: clamp(16px, 2.3vh, 19px); color: var(--parchment); line-height: 1.4; }
+.hero-proof .hp-a .hp-by { font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(232,217,181,0.55); }
+/* Style B — trust + scarcity stat strip */
+.hero-proof .hp-b { align-items: center; justify-content: center; gap: clamp(10px, 3vw, 20px); flex-wrap: wrap; }
+.hero-proof .hp-b .hp-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hero-proof .hp-b .hp-stat b { font-family: var(--display); font-weight: 700; font-size: clamp(17px, 2.6vh, 21px); color: var(--parchment); letter-spacing: 0.3px; }
+.hero-proof .hp-b .hp-stat b.hp-stars { color: var(--gold); font-size: 15px; letter-spacing: 2px; }
+.hero-proof .hp-b .hp-stat small { font-family: var(--mono); font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: rgba(232,217,181,0.55); }
+.hero-proof .hp-b .hp-sep { width: 1px; align-self: stretch; background: rgba(232,194,74,0.28); }
+/* Style C — avatars + social count */
+.hero-proof .hp-c { align-items: center; justify-content: center; gap: 10px; }
+.hero-proof .hp-c .hp-avatars { display: inline-flex; }
+.hero-proof .hp-c .hp-avatars i { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--ink); margin-left: -8px; background: radial-gradient(circle at 35% 30%, #d8b048, var(--gold-deep)); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+.hero-proof .hp-c .hp-avatars i:first-child { margin-left: 0; }
+.hero-proof .hp-c .hp-c-text { font-family: var(--body); font-size: clamp(13px, 1.9vh, 15px); color: rgba(232,217,181,0.9); }
+.hero-proof .hp-c .hp-c-text b { color: var(--parchment); font-weight: 600; }
+.hero-proof .hp-c .hp-stars { font-size: 12px; margin-left: 2px; }
+/* Light-mode: flip cream text → ink and bright gold → gold-deep (scoped to hero). */
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-stars,
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-b .hp-stat b.hp-stars { color: var(--gold-deep); }
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-a .hp-quote,
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-b .hp-stat b,
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-c .hp-c-text b { color: var(--ink); }
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-a .hp-by,
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-b .hp-stat small { color: rgba(12,10,8,0.55); }
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-c .hp-c-text { color: rgba(12,10,8,0.8); }
+html[data-drink-bg="light"] .optin-hero .hero-proof .hp-c .hp-avatars i { border-color: var(--parchment); }
+
 /* image (variant) — height-capped so it never blows the fold */
 .optin-image { display: block; width: 100%; max-width: 420px; margin: clamp(20px, 3.4vh, 38px) auto clamp(20px, 3.4vh, 38px); position: relative; }
 .optin-image img { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.35); border-radius: 5px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }

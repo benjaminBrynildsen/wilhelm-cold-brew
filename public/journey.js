@@ -14,6 +14,8 @@
   var BG = window.__DRINK_BG || document.documentElement.getAttribute('data-drink-bg') || null;
   // Headline A/B arm — same idea, tracked as its own dimension.
   var HEADLINE = window.__DRINK_HL || document.documentElement.getAttribute('data-drink-hl') || null;
+  // Above-the-fold social-proof A/B arm (off | a | b | c).
+  var PROOF = window.__DRINK_PROOF || document.documentElement.getAttribute('data-drink-proof') || null;
 
   // Internal flag: visiting any page with ?internal=1 marks this device; flagged
   // events are tagged is_internal:true and excluded from the admin by default.
@@ -35,6 +37,7 @@
     if (IS_INTERNAL) d.is_internal = true;
     if (BG && d.bg == null) d.bg = BG;
     if (HEADLINE && d.hl == null) d.hl = HEADLINE;
+    if (PROOF && d.proof == null) d.proof = PROOF;
     var ev = { sessionId: SESSION_ID, event: String(event), data: d, page: PAGE, variant: VARIANT };
     if (extra) { for (var k in extra) ev[k] = extra[k]; }
     queue.push(ev);

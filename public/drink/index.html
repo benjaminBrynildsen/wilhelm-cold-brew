@@ -67,6 +67,25 @@
       try { localStorage.setItem('wilhelm_drink_hl', hl); } catch (e) {}
       window.__DRINK_HL = hl;
 
+      // Above-the-fold social-proof A/B — 'off' (control) vs a proof style (a|b|c).
+      // Paused by default (not seeded), so LIVE traffic all gets 'off'. Preview any
+      // style with ?proof=a|b|c (?proof=on aliases to 'a'). Goes live via split_arms.
+      var PROOF_STYLES = ['a', 'b', 'c'];
+      var PROOF_KNOWN = ['off'].concat(PROOF_STYLES);
+      var PROOF_LIVE = ((window.__SPLIT_ARMS && window.__SPLIT_ARMS.proof) || ['off']).filter(function (k) { return PROOF_KNOWN.indexOf(k) >= 0; });
+      if (!PROOF_LIVE.length) PROOF_LIVE = ['off'];
+      var forcedP = p.get('proof');
+      if (forcedP === 'on') forcedP = 'a';
+      var proof;
+      if (PROOF_KNOWN.indexOf(forcedP) >= 0) {
+        proof = forcedP;                                  // explicit preview — honor any style, even paused
+      } else {
+        try { proof = localStorage.getItem('wilhelm_drink_proof'); } catch (e) {}
+        if (PROOF_LIVE.indexOf(proof) < 0) { proof = PROOF_LIVE[Math.floor(Math.random() * PROOF_LIVE.length)]; }
+      }
+      try { localStorage.setItem('wilhelm_drink_proof', proof); } catch (e) {}
+      window.__DRINK_PROOF = proof;
+
       // Hero image A/B test. Sticky per visitor (localStorage), ?img= forces an arm.
       var IMG = {
         cigars:  { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667,  alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
@@ -107,6 +126,7 @@
       document.documentElement.setAttribute('data-drink-bg', bg);
       document.documentElement.setAttribute('data-drink-hl', hl);
       document.documentElement.setAttribute('data-drink-img', arm);
+      document.documentElement.setAttribute('data-drink-proof', proof);
     })();
   </script>
 
@@ -149,6 +169,30 @@
           else if (window.__DRINK_HL === 'sold-out-list') __h1.innerHTML = 'Last Friday, we sold out to our list in <em>13 minutes.</em>';
         })();
       </script>
+
+      <!-- Above-the-fold social proof (A/B: data-drink-proof = off | a | b | c).
+           Hidden by default; CSS reveals the matching style. Real quotes from /reviews. -->
+      <div class="hero-proof" aria-label="What customers say">
+        <!-- Style A — featured review quote -->
+        <div class="hp hp-a">
+          <span class="hp-stars" aria-hidden="true">★★★★★</span>
+          <span class="hp-quote">“Some of the best coffee I’ve ever had.”</span>
+          <span class="hp-by">Kaleb S. · Instagram</span>
+        </div>
+        <!-- Style B — trust + scarcity stat strip -->
+        <div class="hp hp-b">
+          <span class="hp-stat"><b class="hp-stars" aria-hidden="true">★★★★★</b><small>real reviews</small></span>
+          <span class="hp-sep" aria-hidden="true"></span>
+          <span class="hp-stat"><b>13&nbsp;min</b><small>last sell-out</small></span>
+          <span class="hp-sep" aria-hidden="true"></span>
+          <span class="hp-stat"><b>300+</b><small>on the list</small></span>
+        </div>
+        <!-- Style C — avatars + social count -->
+        <div class="hp hp-c">
+          <span class="hp-avatars" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="hp-c-text"><b>300+ people</b> are on the list <span class="hp-stars" aria-hidden="true">★★★★★</span></span>
+        </div>
+      </div>
 
       <div class="optin-image">
         <!-- Hero image arm chosen before paint (see the variant script in <head>).

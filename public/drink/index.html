@@ -87,10 +87,16 @@
       window.__DRINK_PROOF = proof;
 
       // Hero image A/B test. Sticky per visitor (localStorage), ?img= forces an arm.
+      // 'reviews' swaps the product photo for a two-up of the real review screenshots
+      // (the same uncropped posts as #reviews) — pair arms render both images.
       var IMG = {
         cigars:  { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667,  alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
         barrel:  { src: 'assets/hero-barrel.jpg',   w: 1024, h: 1024, alt: 'A bottle of Wilhelm Cold Brew on a whiskey barrel at dusk' },
-        bottles: { src: 'assets/hero-bottles.jpg',  w: 1280, h: 1222, alt: 'A fresh batch of Wilhelm Cold Brew bottles, just off the line' }
+        bottles: { src: 'assets/hero-bottles.jpg',  w: 1280, h: 1222, alt: 'A fresh batch of Wilhelm Cold Brew bottles, just off the line' },
+        reviews: { pair: [
+          { src: 'assets/review-finley-full-2.jpg', w: 720, h: 1280, alt: 'James Finley (@thefinley) on X: This is a fantastic sipping coffee. Great with a small splash of milk or black.' },
+          { src: 'assets/review-kaleb-full.jpg',    w: 720, h: 1203, alt: '@kalebspangler on Instagram: Some of the best coffee I’ve ever had!' }
+        ] }
       };
       // Live arms come from the server (window.__SPLIT_IMG_ARMS, toggled in admin);
       // fall back to all three if not injected. ?img= can still force ANY arm for preview.
@@ -116,8 +122,13 @@
       window.__DRINK_IMG_ALT = cfg.alt;
       window.__DRINK_IMG_W = cfg.w;
       window.__DRINK_IMG_H = cfg.h;
-      // Preload only the chosen arm's image (it's the LCP element).
-      try { var l = document.createElement('link'); l.rel = 'preload'; l.as = 'image'; l.href = cfg.src; document.head.appendChild(l); } catch (e) {}
+      window.__DRINK_IMG_PAIR = cfg.pair;
+      // Preload only the chosen arm's image(s) — it's the LCP element.
+      try {
+        (cfg.pair || [cfg]).forEach(function (c) {
+          var l = document.createElement('link'); l.rel = 'preload'; l.as = 'image'; l.href = c.src; document.head.appendChild(l);
+        });
+      } catch (e) {}
 
       // The live experiment is the image, so that's the tracked split-test arm.
       window.__DRINK_VARIANT = arm;
@@ -198,6 +209,13 @@
         <!-- Hero image arm chosen before paint (see the variant script in <head>).
              src is set synchronously below so only the chosen image is fetched. -->
         <img id="hero-img" alt="Wilhelm Cold Brew" width="1000" height="667"/>
+        <!-- 'reviews' arm: the two real review screenshots (same posts as #reviews),
+             side by side in place of the product photo. srcs are set synchronously
+             below so other arms never fetch them; CSS shows/hides per data-drink-img. -->
+        <div class="optin-reviews" aria-label="Real customer posts">
+          <img id="rev-img-0" alt="" width="720" height="1280"/>
+          <img id="rev-img-1" alt="" width="720" height="1203"/>
+        </div>
         <script>
           (function () {
             var im = document.getElementById('hero-img');
@@ -206,6 +224,11 @@
               im.alt = window.__DRINK_IMG_ALT;
               im.src = window.__DRINK_IMG_SRC;   // set last so width/height/alt are in place first
             }
+            (window.__DRINK_IMG_PAIR || []).forEach(function (c, i) {
+              var el = document.getElementById('rev-img-' + i);
+              if (!el) return;
+              el.width = c.w; el.height = c.h; el.alt = c.alt; el.src = c.src;
+            });
           })();
         </script>
         <noscript><img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/></noscript>

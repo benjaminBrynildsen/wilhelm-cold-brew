@@ -256,6 +256,16 @@ html[data-drink-bg="light"] .optin-hero .hero-proof .hp-c .hp-avatars i { border
 .optin-image img { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.35); border-radius: 5px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
+
+/* Hero image arm "reviews" — the two real review screenshots (Finley on X, Kaleb
+   on Instagram) side by side in place of the product photo. Hidden on every other
+   arm; their srcs are only set when this arm is chosen, so nothing extra loads.
+   Tops aligned, no cropping (Kaleb's quote sits at the bottom of his shot). */
+.optin-image .optin-reviews { display: none; }
+html[data-drink-img="reviews"] .optin-image #hero-img { display: none; }
+html[data-drink-img="reviews"] .optin-image .optin-reviews {
+  display: grid; grid-template-columns: 1fr 1fr; gap: clamp(8px, 1.8vw, 12px); align-items: start;
+}
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */
 html[data-drink-variant="image"] .optin-image,
 html[data-drink-variant="bullets"] .optin-image,

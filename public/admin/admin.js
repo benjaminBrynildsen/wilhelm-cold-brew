@@ -27,6 +27,7 @@ const SPLIT_TESTS = [
     { key: 'cigars', label: 'Cigars (control)' },
     { key: 'barrel', label: 'Barrel / flag render' },
     { key: 'bottles', label: 'Real bottles photo' },
+    { key: 'reviews', label: 'Review screenshots (two-up)' },
   ] },
   { id: 'background', name: 'Background', sub: 'above the fold — light vs dark (live)', param: 'v', base: '/drink/', source: 'byBg', arms: [
     { key: 'dark', label: 'Dark (current default)' },

@@ -266,6 +266,18 @@ html[data-drink-img="reviews"] .optin-image #hero-img { display: none; }
 html[data-drink-img="reviews"] .optin-image .optin-reviews {
   display: grid; grid-template-columns: 1fr 1fr; gap: clamp(8px, 1.8vw, 12px); align-items: start;
 }
+/* The screenshots carry the pitch, so let them run bigger than the product photo:
+   bleed through the card's side padding (mobile = edge to edge of the card). */
+html[data-drink-img="reviews"] .optin-image {
+  max-width: none;
+  width: calc(100% + 2 * clamp(24px, 5vw, 52px));
+  margin-inline: calc(-1 * clamp(24px, 5vw, 52px));
+}
+@media (min-width: 760px) {
+  html[data-drink-img="reviews"] .optin-image { width: calc(100% + 80px); max-width: 600px; margin-inline: -40px; }
+  /* beat the generic 40vh desktop cap so the pair reads at a glance */
+  html[data-drink-img="reviews"] .optin-hero .optin-image img { max-height: 52vh; }
+}
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */
 html[data-drink-variant="image"] .optin-image,
 html[data-drink-variant="bullets"] .optin-image,

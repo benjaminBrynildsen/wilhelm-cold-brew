@@ -279,6 +279,19 @@ html[data-drink-img="reviews"] .optin-image {
   /* beat the generic 40vh desktop cap so the pair reads at a glance */
   html[data-drink-img="reviews"] .optin-hero .optin-image img { max-height: 52vh; }
 }
+/* Hero image arm "minimal" — the control photo, but the three sub-bullets come
+   off and the compact countdown steps up (label over a big mono value, like the
+   final CTA's) to carry the urgency on its own. */
+html[data-drink-img="minimal"] .optin-hero .sub-bullets { display: none; }
+html[data-drink-img="minimal"] .optin-hero .cd-compact {
+  flex-direction: column; gap: 4px; align-items: center;
+  margin-bottom: clamp(10px, 1.8vh, 18px);
+}
+html[data-drink-img="minimal"] .optin-hero .cd-compact .cd-label { font-size: 11px; letter-spacing: 3px; }
+html[data-drink-img="minimal"] .optin-hero .cd-compact .cd-value {
+  font-size: clamp(26px, 5.6vw, 38px); letter-spacing: 1px; line-height: 1;
+}
+
 /* split-test gate (html attribute set pre-paint); no-JS falls back to full layout */
 html[data-drink-variant="image"] .optin-image,
 html[data-drink-variant="bullets"] .optin-image,

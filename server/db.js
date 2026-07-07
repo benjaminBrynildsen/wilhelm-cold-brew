@@ -115,6 +115,7 @@ export async function ensureSchema() {
       ('image','barrel',true,1),
       ('image','bottles',true,2),
       ('image','reviews',false,3),  -- review-screenshot two-up; ships paused, flip live in admin
+      ('image','minimal',false,4),  -- no bullets, big countdown; ships paused, flip live in admin
       ('background','dark',true,0),
       ('background','light',true,1),
       ('headline','on-the-list',true,0),

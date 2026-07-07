@@ -96,7 +96,11 @@
         reviews: { pair: [
           { src: 'assets/review-finley-hero.jpg', w: 720, h: 1086, alt: 'James Finley (@thefinley) on X: This is a fantastic sipping coffee. Great with a small splash of milk or black.' },
           { src: 'assets/review-kaleb-hero.jpg',  w: 720, h: 1086, alt: '@kalebspangler on Instagram: Some of the best coffee I’ve ever had!' }
-        ] }
+        ] },
+        // 'minimal' keeps the control photo but drops the three sub-bullets and
+        // runs the countdown big instead (CSS keys off data-drink-img="minimal"),
+        // so vs 'cigars' it isolates "bullets vs big countdown".
+        minimal: { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667, alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' }
       };
       // Live arms come from the server (window.__SPLIT_IMG_ARMS, toggled in admin);
       // fall back to all three if not injected. ?img= can still force ANY arm for preview.

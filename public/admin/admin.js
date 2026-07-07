@@ -1787,9 +1787,17 @@ async function showEmail() {
     const recentToggle = subs.recent.length > RECENT_PREVIEW
       ? `<button class="btn ghost" id="recent-toggle" data-expanded="0">Show all ${num(subs.recent.length)} ↓</button>`
       : '';
+    // "Bought?" — flags churned CUSTOMERS (they've paid before) vs churned browsers.
+    // Recent buyers (last 60 days) glow red: losing them from the list costs real money.
+    const boughtCell = (r) => {
+      if (!r.order_count) return '<td class="note">—</td>';
+      const recent = r.last_paid_at && (Date.now() - new Date(r.last_paid_at).getTime()) < 60 * 86400000;
+      const label = `${num(r.order_count)} order${r.order_count > 1 ? 's' : ''} · ${money(r.total_cents)} · last ${ago(r.last_paid_at)}`;
+      return `<td style="${recent ? 'color:var(--bad);font-weight:700' : 'color:var(--gold)'}">${esc(label)}${recent ? ' ⚠' : ''}</td>`;
+    };
     const unsubRows = (subs.unsubRecent || []).length
-      ? subs.unsubRecent.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(ago(r.unsubscribed_at))}</td></tr>`).join('')
-      : '<tr><td class="note" colspan="2">No unsubscribes yet.</td></tr>';
+      ? subs.unsubRecent.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(ago(r.unsubscribed_at))}</td>${boughtCell(r)}</tr>`).join('')
+      : '<tr><td class="note" colspan="3">No unsubscribes yet.</td></tr>';
     const blastHistory = blasts.blasts.length
       ? blasts.blasts.map((b) => {
           // "Not sent" = failures + never-attempted (a blocked blast folds both in).
@@ -1860,7 +1868,7 @@ async function showEmail() {
       <table><thead><tr><th>Source</th><th>Campaign</th><th>Ad (utm_content)</th><th class="num">Signups</th></tr></thead><tbody>${byAdRows || '<tr><td class="note" colspan="4">No tagged signups yet — tag your X ad URLs with ?utm_source=x&utm_campaign=…&utm_content=ad-name.</td></tr>'}</tbody></table>
 
       <h3>Recent unsubscribes <span class="note">(${num(subs.unsubTotal || 0)} total · who dropped off and when)</span></h3>
-      <table><thead><tr><th>Email</th><th>When</th></tr></thead><tbody>${unsubRows}</tbody></table>
+      <table><thead><tr><th>Email</th><th>When</th><th>Bought?</th></tr></thead><tbody>${unsubRows}</tbody></table>
 
       <h3>Mailchimp sync <span class="note">(keep this list and the Mailchimp audience matching, both directions)</span></h3>
       <div class="note">With MAILCHIMP_API_KEY set on the server, new signups and unsubscribes flow to Mailchimp automatically as they happen. The button below is the catch-up pass: it pulls Mailchimp's unsubscribes + bounces into this list, adds any active subscribers Mailchimp is missing, and opts out anyone who unsubscribed here but is still subscribed there. It never re-subscribes someone who opted out on either side. No API key? Paste Mailchimp's unsubscribed-contacts export below instead (Audience → All contacts → filter Email marketing = Unsubscribed → export).</div>

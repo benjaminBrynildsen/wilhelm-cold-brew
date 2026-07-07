@@ -631,10 +631,19 @@ export function mountAdmin(app) {
       const unsubLast7 = (await q(
         `SELECT COUNT(*)::int n FROM subscribers
           WHERE unsubscribed_at > NOW() - INTERVAL '7 days' ${EXCL_PV} ${EXCL_EM}`)).rows[0].n;
+      // Each unsubscriber's purchase history — a churned buyer matters more than
+      // a churned browser, so the table shows whether (and when) they bought.
       const unsubRecent = (await q(
-        `SELECT email, unsubscribed_at FROM subscribers
-          WHERE unsubscribed_at IS NOT NULL ${EXCL_PV} ${EXCL_EM}
-          ORDER BY unsubscribed_at DESC LIMIT 30`)).rows;
+        `SELECT s.email, s.unsubscribed_at, o.order_count, o.last_paid_at, o.total_cents
+           FROM subscribers s
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int order_count, MAX(paid_at) last_paid_at,
+                    COALESCE(SUM(amount_total_cents), 0)::int total_cents
+               FROM orders
+              WHERE LOWER(orders.email) = LOWER(s.email) AND status = 'paid'
+           ) o ON true
+          WHERE s.unsubscribed_at IS NOT NULL ${EXCL_PV.replace('AND ip_hash', 'AND s.ip_hash')} ${EXCL_EM.replace(/LOWER\(email\)/g, 'LOWER(s.email)')}
+          ORDER BY s.unsubscribed_at DESC LIMIT 30`)).rows;
       res.json({ total, last7, byVariant, byAd, recent: rows, unsubTotal, unsubLast7, unsubRecent });
     } catch (e) { console.error('[subscribers]', e); res.status(500).json({ error: e.message }); }
   });

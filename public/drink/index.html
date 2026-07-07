@@ -33,6 +33,19 @@
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
+      // Autopilot-weighted arm pick. __SPLIT_WEIGHTS (injected by the server when
+      // the bandit is on) gives each live arm a traffic share; absent → even split.
+      // Only NEW visitors roll — returning visitors keep their sticky arm.
+      var __W = window.__SPLIT_WEIGHTS || {};
+      function wpick(arms, test) {
+        var ws = __W[test];
+        if (!ws) return arms[Math.floor(Math.random() * arms.length)];
+        var tot = 0, wts = [], i;
+        for (i = 0; i < arms.length; i++) { var x = +ws[arms[i]]; wts.push(x > 0 ? x : 0.02); tot += wts[i]; }
+        var r = Math.random() * tot;
+        for (i = 0; i < arms.length; i++) { r -= wts[i]; if (r <= 0) return arms[i]; }
+        return arms[arms.length - 1];
+      }
       // Background A/B test — light vs dark above the fold. Live arms come from the
       // server (window.__SPLIT_ARMS.background, toggled in admin); even split among
       // them, sticky per visitor. ?v=light / ?v=dark forces ANY known arm for preview.
@@ -45,7 +58,7 @@
         bg = forcedV;                                       // explicit preview — honor any known arm, even paused
       } else {
         try { bg = localStorage.getItem('wilhelm_drink_bg'); } catch (e) {}
-        if (BG_LIVE.indexOf(bg) < 0) { bg = BG_LIVE[Math.floor(Math.random() * BG_LIVE.length)]; }   // new/unknown/paused → live arm
+        if (BG_LIVE.indexOf(bg) < 0) { bg = wpick(BG_LIVE, 'background'); }   // new/unknown/paused → live arm (autopilot-weighted)
       }
       try { localStorage.setItem('wilhelm_drink_bg', bg); } catch (e) {}
 
@@ -62,7 +75,7 @@
         hl = forcedH;                                       // explicit preview — honor any known headline, even retired
       } else {
         try { hl = localStorage.getItem('wilhelm_drink_hl'); } catch (e) {}
-        if (HL_LIVE.indexOf(hl) < 0) { hl = HL_LIVE[Math.floor(Math.random() * HL_LIVE.length)]; }   // new/unknown/retired → live arm
+        if (HL_LIVE.indexOf(hl) < 0) { hl = wpick(HL_LIVE, 'headline'); }   // new/unknown/retired → live arm (autopilot-weighted)
       }
       try { localStorage.setItem('wilhelm_drink_hl', hl); } catch (e) {}
       window.__DRINK_HL = hl;
@@ -81,7 +94,7 @@
         proof = forcedP;                                  // explicit preview — honor any style, even paused
       } else {
         try { proof = localStorage.getItem('wilhelm_drink_proof'); } catch (e) {}
-        if (PROOF_LIVE.indexOf(proof) < 0) { proof = PROOF_LIVE[Math.floor(Math.random() * PROOF_LIVE.length)]; }
+        if (PROOF_LIVE.indexOf(proof) < 0) { proof = wpick(PROOF_LIVE, 'proof'); }
       }
       try { localStorage.setItem('wilhelm_drink_proof', proof); } catch (e) {}
       window.__DRINK_PROOF = proof;
@@ -119,8 +132,8 @@
         arm = forcedI;                                   // explicit preview — honor any arm, even a paused one
       } else {
         try { arm = localStorage.getItem('wilhelm_drink_img'); } catch (e) {}
-        if (!arm || !IMG[arm] || ORDER.indexOf(arm) < 0) {  // new, unknown, or paused arm → (re)bucket into a live one
-          arm = ORDER[Math.floor(Math.random() * ORDER.length)];
+        if (!arm || !IMG[arm] || ORDER.indexOf(arm) < 0) {  // new, unknown, or paused arm → (re)bucket into a live one (autopilot-weighted)
+          arm = wpick(ORDER, 'image');
         }
       }
       try { localStorage.setItem('wilhelm_drink_img', arm); } catch (e) {}

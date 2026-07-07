@@ -205,6 +205,28 @@ export async function ensureSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_notified_at TIMESTAMPTZ;
 
+    -- Autopilot bookkeeping on split arms: set when the bandit turns an arm off
+    -- (vs a manual pause). Re-enabling an arm clears both.
+    ALTER TABLE split_arms ADD COLUMN IF NOT EXISTS auto_paused_at TIMESTAMPTZ;
+    ALTER TABLE split_arms ADD COLUMN IF NOT EXISTS auto_reason    TEXT;
+    -- Set when an arm is manually (re-)enabled: the kill rule only counts
+    -- evidence gathered after this, so a revived arm gets a genuine fresh shot.
+    ALTER TABLE split_arms ADD COLUMN IF NOT EXISTS revived_at     TIMESTAMPTZ;
+
+    -- Autopilot daily decision log: what each arm did (landed/joined, Central
+    -- day) and the traffic weight the bandit gave it. One row per day/test/arm,
+    -- refreshed through the day — the admin's daily results view reads this.
+    CREATE TABLE IF NOT EXISTS bandit_log (
+      day        TEXT NOT NULL,           -- YYYY-MM-DD (America/Chicago)
+      test_id    TEXT NOT NULL,
+      arm_key    TEXT NOT NULL,
+      weight     REAL,
+      landed     INTEGER NOT NULL DEFAULT 0,
+      joined     INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (day, test_id, arm_key)
+    );
+
     -- Ad creative registry for the admin "Ad Fit" tab. name matches the ad URL's
     -- utm_content, so traffic/conversion data joins to the creative. covers is the
     -- list of knowledge-point keys the ad itself communicates (see adfit config).

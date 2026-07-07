@@ -100,7 +100,12 @@
         // 'minimal' keeps the control photo but drops the three sub-bullets and
         // runs the countdown big instead (CSS keys off data-drink-img="minimal"),
         // so vs 'cigars' it isolates "bullets vs big countdown".
-        minimal: { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667, alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' }
+        minimal: { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667, alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
+        // 'video' swaps the photo for the 15s muted pour loop (poster = mid-pour
+        // frame). mp4 = h264 for Safari/iOS; webm = vp9 for browsers without h264.
+        video: { video: 'assets/hero-pour.mp4', videoWebm: 'assets/hero-pour.webm',
+                 poster: 'assets/hero-pour-poster.jpg', w: 360, h: 360,
+                 alt: 'Pouring Wilhelm Cold Brew into a glass, then a splash of cream' }
       };
       // Live arms come from the server (window.__SPLIT_IMG_ARMS, toggled in admin);
       // fall back to all three if not injected. ?img= can still force ANY arm for preview.
@@ -127,10 +132,14 @@
       window.__DRINK_IMG_W = cfg.w;
       window.__DRINK_IMG_H = cfg.h;
       window.__DRINK_IMG_PAIR = cfg.pair;
-      // Preload only the chosen arm's image(s) — it's the LCP element.
+      window.__DRINK_IMG_VIDEO = cfg.video ? cfg : null;
+      // Preload only the chosen arm's image(s) — it's the LCP element. For the
+      // video arm that's the poster (the movie itself streams in behind it).
       try {
         (cfg.pair || [cfg]).forEach(function (c) {
-          var l = document.createElement('link'); l.rel = 'preload'; l.as = 'image'; l.href = c.src; document.head.appendChild(l);
+          var href = c.video ? c.poster : c.src;
+          if (!href) return;
+          var l = document.createElement('link'); l.rel = 'preload'; l.as = 'image'; l.href = href; document.head.appendChild(l);
         });
       } catch (e) {}
 
@@ -222,6 +231,9 @@
           <img id="rev-img-0" alt="" width="720" height="1086"/>
           <img id="rev-img-1" alt="" width="720" height="1086"/>
         </div>
+        <!-- 'video' arm: the muted pour loop in place of the photo. src/poster are
+             set synchronously below only when that arm is chosen. -->
+        <video id="hero-video" muted loop playsinline preload="auto" width="360" height="360"></video>
         <script>
           (function () {
             var im = document.getElementById('hero-img');
@@ -235,6 +247,21 @@
               if (!el) return;
               el.width = c.w; el.height = c.h; el.alt = c.alt; el.src = c.src;
             });
+            var vc = window.__DRINK_IMG_VIDEO;
+            var vid = document.getElementById('hero-video');
+            if (vc && vid) {
+              vid.width = vc.w; vid.height = vc.h;
+              vid.setAttribute('aria-label', vc.alt);
+              vid.poster = vc.poster;
+              // h264 mp4 where supported (Safari/iOS + most), else vp9 webm.
+              var mp4 = vid.canPlayType('video/mp4; codecs="avc1.42E01E"');
+              vid.src = mp4 ? vc.video : vc.videoWebm;
+              // Autoplay unless the visitor asks for reduced motion (they keep the poster).
+              if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+                vid.autoplay = true;
+                vid.play && vid.play().catch(function () {});
+              }
+            }
           })();
         </script>
         <noscript><img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/></noscript>

@@ -29,6 +29,7 @@ const SPLIT_TESTS = [
     { key: 'bottles', label: 'Real bottles photo' },
     { key: 'reviews', label: 'Review screenshots (two-up)' },
     { key: 'minimal', label: 'No bullets — big countdown' },
+    { key: 'video', label: 'Pour video (muted loop)' },
   ] },
   { id: 'background', name: 'Background', sub: 'above the fold — light vs dark (live)', param: 'v', base: '/drink/', source: 'byBg', arms: [
     { key: 'dark', label: 'Dark (current default)' },

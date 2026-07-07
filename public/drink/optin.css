@@ -96,7 +96,8 @@ body::before {
   /* Cap the height on desktop, but keep BOTH dimensions auto so the photo scales
      proportionally. The extra specificity beats the later base rule (.optin-image
      img { width:100% }); without it, width:100% + max-height squishes the image. */
-  .optin-hero .optin-image img { width: auto; height: auto; max-height: 40vh; max-width: 100%; margin-inline: auto; }
+  .optin-hero .optin-image img,
+  .optin-hero .optin-image video { width: auto; height: auto; max-height: 40vh; max-width: 100%; margin-inline: auto; }
   .sub-bullets { margin-bottom: clamp(12px, 2vh, 20px); }
 }
 
@@ -253,7 +254,8 @@ html[data-drink-bg="light"] .optin-hero .hero-proof .hp-c .hp-avatars i { border
 
 /* image (variant) — height-capped so it never blows the fold */
 .optin-image { display: block; width: 100%; max-width: 420px; margin: clamp(20px, 3.4vh, 38px) auto clamp(20px, 3.4vh, 38px); position: relative; }
-.optin-image img { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.35); border-radius: 5px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+.optin-image img,
+.optin-image video { width: 100%; height: auto; display: block; border: 1px solid rgba(232,194,74,0.35); border-radius: 5px; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
 .card[data-variant="image"] .optin-image,
 .card[data-variant="bullets"] .optin-image { display: block; }
 
@@ -279,6 +281,13 @@ html[data-drink-img="reviews"] .optin-image {
   /* beat the generic 40vh desktop cap so the pair reads at a glance */
   html[data-drink-img="reviews"] .optin-hero .optin-image img { max-height: 52vh; }
 }
+/* Hero image arm "video" — the pour loop (muted, autoplaying) in place of the
+   product photo. Hidden on every other arm; src/poster are only set when this
+   arm is chosen, so nothing extra loads. */
+.optin-image #hero-video { display: none; }
+html[data-drink-img="video"] .optin-image #hero-img { display: none; }
+html[data-drink-img="video"] .optin-image #hero-video { display: block; }
+
 /* Hero image arm "minimal" — the control photo, but the three sub-bullets come
    off and the compact countdown steps up (label over a big mono value, like the
    final CTA's) to carry the urgency on its own. */

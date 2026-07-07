@@ -1,6 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { q } from './db.js';
+import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed } from './mailchimp.js';
@@ -732,11 +733,46 @@ export function mountAdmin(app) {
       if (!keys.length) return res.status(400).json({ error: 'no arms provided' });
       if (!keys.some((k) => enabled[k])) return res.status(400).json({ error: 'keep at least one version live' });
       for (const k of keys) {
-        await q(`UPDATE split_arms SET enabled=$1 WHERE test_id=$2 AND arm_key=$3`,
+        // Manually (re-)enabling an arm clears any autopilot pause and stamps
+        // revived_at: the kill rule only counts evidence gathered after that,
+        // so a revived arm gets a genuine fresh shot instead of instantly
+        // re-dying on its old losing history.
+        await q(`UPDATE split_arms SET
+                        auto_paused_at = CASE WHEN $1 THEN NULL ELSE auto_paused_at END,
+                        auto_reason    = CASE WHEN $1 THEN NULL ELSE auto_reason END,
+                        revived_at     = CASE WHEN $1 AND NOT enabled THEN now() ELSE revived_at END,
+                        enabled        = $1
+                  WHERE test_id=$2 AND arm_key=$3`,
           [!!enabled[k], testId, String(k).slice(0, 40)]);
       }
+      bustBanditCache();
       res.json({ ok: true });
     } catch (e) { console.error('[split-config/save]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── split-test autopilot (bandit) ─────────
+  app.get('/api/admin/bandit', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { res.json(await getBanditReport()); }
+    catch (e) { console.error('[bandit]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/bandit/config', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const cur = (await q(`SELECT value FROM settings WHERE key = 'bandit_config'`)).rows[0]?.value || {};
+      const b = req.body || {};
+      const next = { ...BANDIT_DEFAULTS, ...cur };
+      if (typeof b.enabled === 'boolean') next.enabled = b.enabled;
+      if (typeof b.killEnabled === 'boolean') next.killEnabled = b.killEnabled;
+      const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, parseInt(v, 10)));
+      if (b.floorPct != null && !isNaN(parseInt(b.floorPct, 10))) next.floorPct = clampInt(b.floorPct, 0, 40);
+      if (b.halfLifeDays != null && !isNaN(parseInt(b.halfLifeDays, 10))) next.halfLifeDays = clampInt(b.halfLifeDays, 1, 30);
+      if (b.killMinSessions != null && !isNaN(parseInt(b.killMinSessions, 10))) next.killMinSessions = clampInt(b.killMinSessions, 50, 100000);
+      await q(`INSERT INTO settings (key, value, updated_at) VALUES ('bandit_config', $1, now())
+               ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [JSON.stringify(next)]);
+      bustBanditCache();
+      res.json({ ok: true, config: next });
+    } catch (e) { console.error('[bandit/config]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── email tab (compose + history; sending deferred) ─────────

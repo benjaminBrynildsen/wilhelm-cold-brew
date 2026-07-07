@@ -911,9 +911,10 @@ async function showFunnel() {
 async function showSplit() {
   loading();
   try {
-    const [d, cfg] = await Promise.all([
+    const [d, cfg, bandit] = await Promise.all([
       api('/api/admin/funnel' + funnelQuery('splitWin')),
       api('/api/admin/split-config'),
+      api('/api/admin/bandit').catch(() => null),
     ]);
     const w = d.windows[state.splitWin] || { byVariant: {} };
     const bv = w.byVariant || {};
@@ -1018,10 +1019,67 @@ async function showSplit() {
           <tbody>${rows}</tbody></table>`;
     }
 
+    // ── Autopilot panel: live traffic weights per test + the daily decision log ──
+    let autopilot = '';
+    if (bandit && bandit.tests) {
+      const bc = bandit.config || {};
+      const armLabel = (testId, key) => {
+        const t = SPLIT_TESTS.find((x) => x.id === testId);
+        const a = t && t.arms.find((x) => x.key === key);
+        return a ? a.label : (testId === 'proof' ? { off: 'No proof (control)', a: 'Quote', b: 'Stat strip', c: 'Avatars' }[key] || key : key);
+      };
+      const days = [...new Set((bandit.log || []).map((r) => r.day))].sort().slice(-7);
+      const logBy = {};
+      (bandit.log || []).forEach((r) => { logBy[r.test_id + ':' + r.arm_key + ':' + r.day] = r; });
+      const dayHdr = days.map((dy) => `<th class="num" title="${dy}">${+dy.slice(5, 7)}/${+dy.slice(8)}</th>`).join('');
+
+      const testBlocks = Object.entries(bandit.tests).map(([testId, t]) => {
+        if (!t.arms || t.arms.length < 2) return '';
+        const tName = (SPLIT_TESTS.find((x) => x.id === testId) || { name: testId === 'proof' ? 'Social proof' : testId }).name;
+        const rows = t.arms.map((a) => {
+          const wPct = a.enabled ? Math.round((a.weight || 0) * 100) : 0;
+          const conv = a.landed ? ((a.joined / a.landed) * 100).toFixed(1) + '%' : '—';
+          const status = a.enabled
+            ? (a.revived_at ? '<span class="chip warn" title="Recently re-enabled — the kill rule only counts evidence from here on">live · fresh trial</span>' : '<span class="chip good">live</span>')
+            : (a.auto_paused_at ? `<span class="chip bad" title="${esc(a.auto_reason || '')}">auto-paused ⓘ</span>` : '<span class="chip na">paused</span>');
+          const cells = days.map((dy) => {
+            const r = logBy[testId + ':' + a.key + ':' + dy];
+            if (!r || !r.landed) return '<td class="num note">—</td>';
+            return `<td class="num" title="that day: ${r.joined} joined / ${r.landed} landed · weight ${Math.round((r.weight || 0) * 100)}%">${((r.joined / r.landed) * 100).toFixed(0)}%<small class="note"> ${r.joined}/${r.landed}</small></td>`;
+          }).join('');
+          return `<tr${a.enabled ? '' : ' style="opacity:.55"'}>
+            <td>${esc(armLabel(testId, a.key))}</td>
+            <td style="min-width:110px"><div class="bar" style="height:14px"><div class="fill" style="width:${wPct}%"></div></div></td>
+            <td class="num"><b>${wPct}%</b></td>
+            <td class="num">${num(a.landed)}</td><td class="num">${num(a.joined)}</td><td class="num">${conv}</td>
+            ${cells}<td>${status}</td></tr>`;
+        }).join('');
+        return `<h3 style="margin:16px 0 4px;font-size:17px">${esc(tName)}</h3>
+          <table><thead><tr><th>Version</th><th>Traffic share</th><th class="num">%</th>
+            <th class="num">Landed ${bc.lookbackDays || 28}d</th><th class="num">Joined</th><th class="num">Conv.</th>${dayHdr}<th>Status</th></tr></thead>
+            <tbody>${rows}</tbody></table>`;
+      }).join('');
+
+      autopilot = `<div style="border:1px solid var(--gold-deep);background:var(--panel);padding:14px 18px;margin:0 0 26px">
+        <h3 style="margin:0 0 6px">Autopilot <span class="note">— pushes new visitors toward what's converting; re-assessed all day, logged daily</span></h3>
+        <div class="row-actions" style="margin:10px 0 2px">
+          <label style="cursor:pointer"><input type="checkbox" id="bp-on" ${bc.enabled ? 'checked' : ''}/> <b>Autopilot on</b></label>
+          <label class="note" style="cursor:pointer"><input type="checkbox" id="bp-kill" ${bc.killEnabled ? 'checked' : ''}/> auto-pause proven losers</label>
+          <span class="note">every version keeps ≥ <input id="bp-floor" type="number" min="0" max="40" value="${bc.floorPct ?? 10}" style="width:52px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/>% of traffic</span>
+          <span class="note">recency half-life <input id="bp-hl" type="number" min="1" max="30" value="${bc.halfLifeDays ?? 3}" style="width:52px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/> days</span>
+          <span class="note">pause needs <input id="bp-kill-min" type="number" min="50" max="100000" value="${bc.killMinSessions ?? 300}" style="width:72px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/> sessions of proof</span>
+          <button class="btn" id="bp-save">Save</button><span class="note" id="bp-msg"></span>
+        </div>
+        <div class="note" style="margin-bottom:2px">Today's traffic counts full; older days fade by the half-life — so the split adjusts daily but still respects the overall record. Wide-open uncertainty = near-even split; a clear winner soaks up traffic; a loser is only <b>turned off completely</b> once it has real volume and is losing with 95% confidence (revive it any time below). Daily columns show that day's conversion (joined/landed); hover for the traffic weight it was given.</div>
+        ${bc.enabled ? testBlocks : '<div class="note" style="margin-top:10px">Autopilot is off — live versions split evenly. Flip it on and Save.</div>'}
+      </div>`;
+    }
+
     content().innerHTML = winbar('splitWin') + `
       <div class="note" style="margin:6px 0 14px">Signup conversion by split-test version for the selected date range.
         <b>Landed</b> = sessions that saw it · <b>Joined</b> = signed up · <b>Conv.</b> = Joined ÷ Landed.
         Open a <b>Preview</b> link to view that version (it pins your browser to that arm).</div>
+      ${autopilot}
       ${sections}
       <h3>Reviews <span class="note">— social proof below the fold</span></h3>
       <table><thead><tr><th>Visitor</th><th class="num">Sessions</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead>
@@ -1033,6 +1091,25 @@ async function showSplit() {
       ${comboBlock}
       ${other}`;
     wireWinbar(showSplit, 'splitWin');
+
+    const bpSave = document.getElementById('bp-save');
+    if (bpSave) bpSave.addEventListener('click', async () => {
+      const msg = document.getElementById('bp-msg');
+      msg.textContent = 'Saving…';
+      try {
+        await api('/api/admin/bandit/config', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            enabled: document.getElementById('bp-on').checked,
+            killEnabled: document.getElementById('bp-kill').checked,
+            floorPct: document.getElementById('bp-floor').value,
+            halfLifeDays: document.getElementById('bp-hl').value,
+            killMinSessions: document.getElementById('bp-kill-min').value,
+          }),
+        });
+        showSplit();
+      } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
+    });
 
     const msgFor = (testId) => document.querySelector(`.arms-msg[data-test="${testId}"]`);
     const saveArms = async (testId, enabled) => {

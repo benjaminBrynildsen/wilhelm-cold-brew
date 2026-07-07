@@ -260,7 +260,8 @@ html[data-drink-bg="light"] .optin-hero .hero-proof .hp-c .hp-avatars i { border
 /* Hero image arm "reviews" — the two real review screenshots (Finley on X, Kaleb
    on Instagram) side by side in place of the product photo. Hidden on every other
    arm; their srcs are only set when this arm is chosen, so nothing extra loads.
-   Tops aligned, no cropping (Kaleb's quote sits at the bottom of his shot). */
+   The -hero.jpg files are cropped of app chrome and to the same 720x1086, so the
+   pair renders at exactly equal heights. */
 .optin-image .optin-reviews { display: none; }
 html[data-drink-img="reviews"] .optin-image #hero-img { display: none; }
 html[data-drink-img="reviews"] .optin-image .optin-reviews {

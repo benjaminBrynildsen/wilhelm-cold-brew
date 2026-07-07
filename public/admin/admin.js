@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', adfitWin: 'd30', adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -191,7 +191,7 @@ async function registerFaceId() {
 }
 
 function renderTabs() {
-  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
+  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
   document.getElementById('tabs').innerHTML = tabs.map(
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('');
   document.querySelectorAll('.tab').forEach((t) =>
@@ -334,10 +334,351 @@ function show(tab) {
   if (tab === 'overview') return showOverview();
   if (tab === 'funnel') return showFunnel();
   if (tab === 'split') return showSplit();
+  if (tab === 'adfit') return showAdFit();
   if (tab === 'traffic') return showTraffic();
   if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
   if (tab === 'orders') return showOrders();
   if (tab === 'email') return showEmail();
+}
+
+// ───────── Ad Fit ─────────
+// One ad + one landing look, side by side, graded against the knowledge checklist:
+// everything a person must know before joining, staged top/middle/bottom of funnel.
+// A point is "delivered" when the ad itself says it (assumed on arrival) or when
+// enough of that ad's real sessions scrolled to a section that teaches it.
+const ADFIT_STAGES = [
+  ['tofu', 'Top of funnel — Awareness', 'They stopped scrolling. Do they get what this even is?'],
+  ['mofu', 'Middle of funnel — Belief', 'They’re curious. Do they trust it and understand how it works?'],
+  ['bofu', 'Bottom of funnel — Action', 'They’re interested. Do they know the price, what to do, and why now?'],
+];
+// Reach thresholds: ≥50% of the ad's sessions saw the covering section → delivered;
+// 15–50% → at risk (it's on the page but most never get there); <15% → gap.
+const ADFIT_OK = 50, ADFIT_WARN = 15;
+
+async function showAdFit() {
+  loading();
+  try {
+    const [cfgRes, adsRes, an] = await Promise.all([
+      api('/api/admin/adfit/config'),
+      api('/api/admin/adfit/ads'),
+      api('/api/admin/adfit/analysis' + funnelQuery('adfitWin')),
+    ]);
+    const cfg = cfgRes.config;
+    const registered = adsRes.ads || [];
+    const traffic = an.ads || [];
+    const trafficBy = Object.fromEntries(traffic.map((t) => [t.ad, t]));
+
+    // Every ad we can show: registered creatives first, then traffic-only names.
+    const names = [...registered.map((a) => a.name)];
+    traffic.forEach((t) => { if (!names.includes(t.ad)) names.push(t.ad); });
+    if (!names.length) names.push('(direct / untagged)');
+    if (!names.includes(state.adfitAd)) state.adfitAd = names[0];
+    const sel = state.adfitAd;
+    const reg = registered.find((a) => a.name === sel) || null;
+    const stats = trafficBy[sel] || null;
+
+    const sectionsById = Object.fromEntries(cfg.sections.map((s) => [s.id, s]));
+    const reach = (sid) => {
+      const s = sectionsById[sid];
+      if (s && s.always) return 100;
+      if (!stats || !stats.landed) return null;
+      return Math.round(((stats.sections[sid] || {}).n || 0) / stats.landed * 100);
+    };
+    // Joined-vs-bounced reach across ALL traffic → which sections converters saw.
+    const oc = an.outcome || { joined: { landed: 0, sections: {} }, bounced: { landed: 0, sections: {} } };
+    const ocReach = (side, sid) => (oc[side].landed ? Math.round((oc[side].sections[sid] || 0) / oc[side].landed * 100) : null);
+    const lift = (sid) => {
+      const j = ocReach('joined', sid), b = ocReach('bounced', sid);
+      return (j == null || !b) ? null : j / b;
+    };
+
+    // Grade one point for the selected ad.
+    const grade = (p) => {
+      const adSays = !!(reg && (reg.covers || []).includes(p.key));
+      const covering = cfg.sections.filter((s) => (s.covers || []).includes(p.key));
+      let best = null; // covering section the most sessions actually saw
+      covering.forEach((s) => {
+        const r = reach(s.id);
+        if (!best || (r != null && (best.r == null || r > best.r))) best = { s, r };
+      });
+      let status; // good | warn | bad | nodata
+      if (adSays || (best && best.r != null && best.r >= ADFIT_OK)) status = 'good';
+      else if (best && best.r == null) status = 'nodata';
+      else if (best && best.r >= ADFIT_WARN) status = 'warn';
+      else status = 'bad';
+      return { p, adSays, covering, best, status };
+    };
+    const grades = cfg.points.map(grade);
+    const delivered = grades.filter((g) => g.status === 'good').length;
+
+    // ── ad picker pills ──
+    const pills = names.map((n) => {
+      const t = trafficBy[n];
+      const isReg = registered.some((a) => a.name === n);
+      return `<div class="win adpill ${sel === n ? 'active' : ''}" data-ad="${esc(n)}">${esc(n)}${
+        t ? ` <small>${num(t.landed)} · ${pct(t.joined, t.landed)}</small>` : ''}${isReg ? '' : ' <small class="note">no creative</small>'}</div>`;
+    }).join('');
+
+    // ── the ad creative card (X-post styled) ──
+    const adCard = reg
+      ? `<div class="adcard">
+           <div class="adcard-head"><span class="adcard-avatar"><img src="/apple-touch-icon.png" alt=""/></span>
+             <span><b>Wilhelm Cold Brew</b><br/><small class="note">promoted · X</small></span></div>
+           ${reg.post_text ? `<div class="adcard-text">${esc(reg.post_text)}</div>` : '<div class="adcard-text note">No post text saved yet — edit this ad below.</div>'}
+           ${reg.image_data ? `<img class="adcard-img" src="${reg.image_data}" alt="Ad creative"/>` : '<div class="adcard-noimg note">No creative image yet</div>'}
+           <div class="adcard-cta">wilhelmcoldbrew.com/drink — Join the List</div>
+         </div>`
+      : `<div class="adcard adcard-empty">
+           <div class="note" style="padding:30px 20px;text-align:center">Traffic is arriving tagged <b>${esc(sel)}</b> but no creative is saved for it.<br/><br/>Add the post text + image below so you can judge the full journey.</div>
+         </div>`;
+
+    // ── arrow with real journey numbers ──
+    const convAll = traffic.reduce((s, t) => s + t.joined, 0) / Math.max(1, traffic.reduce((s, t) => s + t.landed, 0));
+    const arrow = stats
+      ? `<div class="fit-arrow"><div class="fa-line">→</div>
+           <div class="fa-stats"><b>${num(stats.landed)}</b> landed<br/><b>${num(stats.joined)}</b> joined<br/>
+           <span class="${stats.landed && stats.joined / stats.landed >= convAll ? 'gd' : 'bd'}">${pct(stats.joined, stats.landed)}</span> <small class="note">site avg ${(convAll * 100).toFixed(1)}%</small></div></div>`
+      : `<div class="fit-arrow"><div class="fa-line">→</div><div class="fa-stats note">No tagged traffic in this window.<br/>Tag the ad URL:<br/><code>?utm_source=x&utm_content=${encodeURIComponent(sel)}</code></div></div>`;
+
+    // ── live landing preview (render-only: ?preview=1 records nothing) ──
+    const pv = state.adfitPrev;
+    const prevQs = `?preview=1&img=${encodeURIComponent(pv.img)}&v=${encodeURIComponent(pv.v)}&h=${encodeURIComponent(pv.h)}&proof=${encodeURIComponent(pv.proof)}`;
+    const opt = (list, cur) => list.map(([k, l]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${l}</option>`).join('');
+    const prevCtl = `<div class="prevctl">
+        <select id="pv-img">${opt(SPLIT_TESTS[0].arms.map((a) => [a.key, 'Image: ' + a.label]), pv.img)}</select>
+        <select id="pv-v">${opt([['dark', 'BG: dark'], ['light', 'BG: light']], pv.v)}</select>
+        <select id="pv-h">${opt(SPLIT_TESTS[2].arms.map((a) => [a.key, 'Headline: ' + a.label]), pv.h)}</select>
+        <select id="pv-proof">${opt([['off', 'Proof: off'], ['a', 'Proof: quote'], ['b', 'Proof: stats'], ['c', 'Proof: avatars']], pv.proof)}</select>
+      </div>`;
+    const phone = `<div class="phone-wrap">${prevCtl}
+        <div class="phone"><iframe src="/drink/${prevQs}" title="Landing page preview" loading="lazy"></iframe></div>
+        <div class="note" style="text-align:center;margin-top:6px">Live page, scrollable — exactly what this click lands on. <a href="/drink/${prevQs}" target="_blank">Open full size ↗</a></div>
+      </div>`;
+
+    // ── the checklist, staged TOFU → BOFU ──
+    const chip = (g) => {
+      if (g.status === 'good' && g.adSays) return '<span class="chip good">✓ ad covers it — assumed on arrival</span>';
+      if (g.status === 'good') return `<span class="chip good">✓ seen by ${g.best.r}% — “${esc(g.best.s.label)}”</span>`;
+      if (g.status === 'nodata') return `<span class="chip na">on page (“${esc(g.best.s.label)}”) — no traffic data yet</span>`;
+      if (g.status === 'warn') return `<span class="chip warn">⚠ on page but only ${g.best.r}% get to “${esc(g.best.s.label)}”</span>`;
+      return g.covering.length
+        ? `<span class="chip bad">✗ gap — “${esc(g.covering[0].label)}” covers it but ~${g.best && g.best.r != null ? g.best.r : 0}% see it</span>`
+        : '<span class="chip bad">✗ gap — nothing in the journey covers this</span>';
+    };
+    const liftTag = (g) => {
+      const ls = g.covering.map((s) => lift(s.id)).filter((x) => x != null);
+      if (!ls.length) return '';
+      const mx = Math.max(...ls);
+      return mx >= 1.3 ? `<span class="chip lift" title="Across all traffic, sessions that joined reached the covering section ${mx.toFixed(1)}× more often than sessions that bounced">joiners saw it ${mx.toFixed(1)}× more</span>` : '';
+    };
+    const checklist = ADFIT_STAGES.map(([key, title, sub]) => {
+      const rows = grades.filter((g) => g.p.stage === key).map((g) =>
+        `<div class="pt ${g.status}">
+           <span class="pt-dot"></span>
+           <span class="pt-label">${esc(g.p.label)}</span>
+           <span class="pt-chips">${chip(g)}${liftTag(g)}</span>
+         </div>`).join('');
+      return `<div class="stage"><div class="stage-h">${title}<small>${sub}</small></div>${rows}</div>`;
+    }).join('');
+
+    // ── missing pieces — the actionable read for THIS ad ──
+    const fixes = grades.filter((g) => g.status === 'warn' || g.status === 'bad').map((g) => {
+      const l = g.covering.map((s) => lift(s.id)).filter((x) => x != null);
+      const loadBearing = l.length && Math.max(...l) >= 1.3;
+      let fix;
+      if (!g.covering.length) fix = 'Nothing covers it — add it to the ad copy or a landing section.';
+      else if (g.p.key === 'social-proof') fix = `Move proof above the fold for this ad — the ?proof=a/b/c arms are built; preview them here, then flip one live in Split test.`;
+      else if (g.status === 'warn' || g.status === 'bad') fix = `Say it in the ad copy (free real estate) or move it above the fold — most of this ad's visitors never scroll to “${esc(g.best.s.label)}”.`;
+      return `<li><b>${esc(g.p.label.split(' — ')[0])}</b>${loadBearing ? ' <span class="chip lift">load-bearing for conversion</span>' : ''} — ${fix}</li>`;
+    }).join('');
+
+    // ── which sections converters actually saw (all traffic, this window) ──
+    const secRows = cfg.sections.filter((s) => !s.always).map((s) => {
+      const j = ocReach('joined', s.id), b = ocReach('bounced', s.id), lf = lift(s.id);
+      return `<tr><td>${esc(s.label)}</td><td class="num">${j == null ? '—' : j + '%'}</td><td class="num">${b == null ? '—' : b + '%'}</td>
+        <td class="num">${lf == null ? '—' : '<b class="' + (lf >= 1.3 ? 'gd' : '') + '">' + lf.toFixed(1) + '×</b>'}</td>
+        <td class="note">${(s.covers || []).map((k) => { const p = cfg.points.find((x) => x.key === k); return p ? p.label.split(' — ')[0] : k; }).join(', ')}</td></tr>`;
+    }).join('');
+
+    // ── ranked ads: conversion + how much of the checklist each journey delivers ──
+    const scoreAd = (adName) => {
+      const r2 = registered.find((a) => a.name === adName) || null;
+      const t2 = trafficBy[adName] || null;
+      const reach2 = (sid) => { const s = sectionsById[sid]; if (s && s.always) return 100; if (!t2 || !t2.landed) return null; return Math.round(((t2.sections[sid] || {}).n || 0) / t2.landed * 100); };
+      let good = 0, known = 0;
+      cfg.points.forEach((p) => {
+        const adSays = !!(r2 && (r2.covers || []).includes(p.key));
+        const rs = cfg.sections.filter((s) => (s.covers || []).includes(p.key)).map((s) => reach2(s.id));
+        const bestR = rs.length ? Math.max(...rs.map((x) => (x == null ? -1 : x))) : -1;
+        if (bestR >= 0 || adSays || !t2) known++;
+        if (adSays || bestR >= ADFIT_OK) good++;
+      });
+      return known ? Math.round(good / cfg.points.length * 100) : null;
+    };
+    const rankRows = traffic.map((t) => {
+      const sc = scoreAd(t.ad);
+      return `<tr data-ad="${esc(t.ad)}" class="rowlink"><td>${esc(t.ad)}</td><td class="num">${num(t.landed)}</td><td class="num">${num(t.joined)}</td>
+        <td class="num"><b>${pct(t.joined, t.landed)}</b></td><td class="num">${sc == null ? '—' : sc + '%'}</td></tr>`;
+    }).join('');
+
+    // ── ad editor ──
+    const covered = new Set((reg && reg.covers) || []);
+    const editBoxes = ADFIT_STAGES.map(([key, title]) =>
+      `<div class="ed-stage"><div class="note" style="letter-spacing:1px;text-transform:uppercase;font-size:11px;margin:8px 0 4px">${title.split(' — ')[0]}</div>` +
+      cfg.points.filter((p) => p.stage === key).map((p) =>
+        `<label class="ed-pt"><input type="checkbox" name="covers" value="${esc(p.key)}" ${covered.has(p.key) ? 'checked' : ''}/> ${esc(p.label)}</label>`).join('') + '</div>').join('');
+    const editor = `<details class="adedit" ${reg ? '' : 'open'}><summary>${reg ? 'Edit this ad' : 'Add creative for “' + esc(sel) + '”'}</summary>
+        <div class="grid2" style="margin-top:12px">
+          <div>
+            <label class="note">Ad name — must match the ad URL's <code>utm_content</code></label>
+            <input class="fld" id="ed-name" list="ed-contents" value="${esc(reg ? reg.name : (sel.startsWith('(') ? '' : sel))}" placeholder="e.g. barrel-dusk-v2"/>
+            <datalist id="ed-contents">${(an.contents || []).map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+            <label class="note">Post text — the exact copy on the ad</label>
+            <textarea id="ed-text" rows="5" placeholder="Paste the ad's text…">${esc(reg ? reg.post_text || '' : '')}</textarea>
+            <label class="note">Creative image (downscaled locally before upload)</label>
+            <input class="fld" id="ed-img" type="file" accept="image/*"/>
+            <div class="row-actions" style="margin-top:10px">
+              <button class="btn" id="ed-save">Save ad</button>
+              ${reg ? `<button class="btn ghost" id="ed-del">Delete</button>` : ''}
+              <span class="note" id="ed-msg"></span>
+            </div>
+          </div>
+          <div>
+            <div class="note" style="margin-bottom:2px">What does the AD ITSELF communicate? (These count as “assumed on arrival”.)</div>
+            <button class="win" id="ed-suggest" type="button" style="margin:6px 0">Suggest from post text</button>
+            ${editBoxes}
+          </div>
+        </div></details>`;
+
+    // ── knowledge checklist editor (advanced) ──
+    const cfgEditor = `<details class="adedit"><summary>Edit the knowledge checklist &amp; section mapping (advanced)</summary>
+        <div class="note" style="margin:10px 0 6px">points: what must be known (stage: tofu/mofu/bofu). sections: landing sections (ids match the page's section ids) → the point keys they teach. “always: true” = above the fold, everyone sees it.</div>
+        <textarea id="cfg-json" rows="16" style="font-family:'DM Mono',monospace;font-size:12px">${esc(JSON.stringify(cfg, null, 2))}</textarea>
+        <div class="row-actions"><button class="btn" id="cfg-save">Save checklist</button><span class="note" id="cfg-msg"></span></div></details>`;
+
+    content().innerHTML = `
+      ${winbar('adfitWin')}
+      <div class="note" style="margin:-8px 0 14px">One ad, one landing look, one verdict: does the combined journey teach everything a person needs to know before joining? Points the <b>ad</b> covers arrive as assumed knowledge; the rest is on the <b>page</b> — and only counts if this ad's visitors actually scroll to it.</div>
+      <div class="winbar" style="row-gap:6px">${pills}</div>
+      <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="card"><div class="k">Checklist delivered</div><div class="v">${delivered}<small>/${cfg.points.length}</small></div></div>
+        <div class="card"><div class="k">Landed (this ad)</div><div class="v">${stats ? num(stats.landed) : '—'}</div></div>
+        <div class="card"><div class="k">Joined</div><div class="v">${stats ? num(stats.joined) : '—'}</div></div>
+        <div class="card"><div class="k">Conversion</div><div class="v">${stats ? pct(stats.joined, stats.landed) : '—'}</div></div>
+      </div>
+      <div class="fitboard">
+        ${adCard}
+        ${arrow}
+        ${phone}
+      </div>
+      <h3>The knowledge journey — ${esc(sel)}</h3>
+      ${checklist}
+      ${fixes ? `<h3>Missing pieces for this ad</h3><ul class="fixlist">${fixes}</ul>` : '<div class="note" style="margin:10px 0">No gaps — this ad + page combination covers the full checklist. 🎯</div>'}
+      ${editor}
+      <h3>What the journeys that converted actually saw</h3>
+      <div class="note" style="margin-bottom:6px">All traffic in this window, joiners vs non-joiners. A big “lift” means converters disproportionately reached that section — the knowledge it carries is probably load-bearing, so make sure every ad's journey delivers it.</div>
+      <table><thead><tr><th>Section</th><th class="num">Joiners who saw it</th><th class="num">Non-joiners</th><th class="num">Lift</th><th>Teaches</th></tr></thead>
+        <tbody>${secRows || '<tr><td class="note" colspan="5">No journey data in this window.</td></tr>'}</tbody></table>
+      <h3>All ads, ranked</h3>
+      <table><thead><tr><th>Ad (utm_content)</th><th class="num">Landed</th><th class="num">Joined</th><th class="num">Conv.</th><th class="num">Checklist score</th></tr></thead>
+        <tbody>${rankRows || '<tr><td class="note" colspan="5">No attributed traffic in this window.</td></tr>'}</tbody></table>
+      ${cfgEditor}`;
+
+    // ── wiring ──
+    wireWinbar(showAdFit, 'adfitWin');
+    document.querySelectorAll('.adpill').forEach((p) =>
+      p.addEventListener('click', () => { state.adfitAd = p.dataset.ad; showAdFit(); }));
+    document.querySelectorAll('tr.rowlink').forEach((r) =>
+      r.addEventListener('click', () => { state.adfitAd = r.dataset.ad; showAdFit(); window.scrollTo({ top: 0, behavior: 'smooth' }); }));
+    ['img', 'v', 'h', 'proof'].forEach((k) => {
+      const el = document.getElementById('pv-' + k);
+      if (el) el.addEventListener('change', () => { state.adfitPrev[k] = el.value; showAdFit(); });
+    });
+
+    // save ad (image downscaled to fit the server's json limit)
+    let pendingImage;
+    const edImg = document.getElementById('ed-img');
+    if (edImg) edImg.addEventListener('change', async () => {
+      if (edImg.files && edImg.files[0]) pendingImage = await shrinkImage(edImg.files[0]);
+    });
+    const edSave = document.getElementById('ed-save');
+    if (edSave) edSave.addEventListener('click', async () => {
+      const msg = document.getElementById('ed-msg');
+      const name = document.getElementById('ed-name').value.trim();
+      if (!name) { msg.textContent = 'Name is required (use the utm_content of the ad URL).'; return; }
+      const covers = [...document.querySelectorAll('input[name="covers"]:checked')].map((c) => c.value);
+      const body = { name, post_text: document.getElementById('ed-text').value, covers };
+      if (pendingImage !== undefined) body.image_data = pendingImage;
+      msg.textContent = 'Saving…';
+      try {
+        await api('/api/admin/adfit/ads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        state.adfitAd = name; showAdFit();
+      } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
+    });
+    const edDel = document.getElementById('ed-del');
+    if (edDel) edDel.addEventListener('click', async () => {
+      if (!confirm('Delete this ad creative? (Traffic data is untouched.)')) return;
+      await api('/api/admin/adfit/ads/' + reg.id, { method: 'DELETE' });
+      state.adfitAd = null; showAdFit();
+    });
+    const edSug = document.getElementById('ed-suggest');
+    if (edSug) edSug.addEventListener('click', () => {
+      const text = document.getElementById('ed-text').value;
+      const hits = suggestCovers(text);
+      document.querySelectorAll('input[name="covers"]').forEach((c) => { if (hits.has(c.value)) c.checked = true; });
+    });
+    const cfgSave = document.getElementById('cfg-save');
+    if (cfgSave) cfgSave.addEventListener('click', async () => {
+      const msg = document.getElementById('cfg-msg');
+      try {
+        const parsed = JSON.parse(document.getElementById('cfg-json').value);
+        await api('/api/admin/adfit/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: parsed }) });
+        showAdFit();
+      } catch (e) { msg.textContent = 'Invalid JSON or save failed: ' + e.message; }
+    });
+  } catch (e) {
+    content().innerHTML = `<div class="err">Failed to load Ad Fit: ${esc(e.message)}</div>`;
+  }
+}
+
+// Downscale an ad image to a small JPEG data URL so it fits the API's body limit.
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, 900 / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      let quality = 0.85;
+      let out = c.toDataURL('image/jpeg', quality);
+      while (out.length > 180000 && quality > 0.4) { quality -= 0.1; out = c.toDataURL('image/jpeg', quality); }
+      resolve(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('could not read image')); };
+    img.src = url;
+  });
+}
+
+// Crude keyword → knowledge-point matcher for "Suggest from post text".
+function suggestCovers(text) {
+  const t = (text || '').toLowerCase();
+  const rules = [
+    ['what-it-is', /cold brew|coffee|barrel[- ]aged|bourbon/],
+    ['brand-world', /1897|heritage|wilhelm|old[- ]world|craft/],
+    ['why-special', /90 (nights|days)|single[- ]origin|small[- ]batch|barrel/],
+    ['social-proof', /review|best coffee|people are saying|★|5[- ]star/],
+    ['maker-cred', /131,?400|gallons/],
+    ['drop-mechanic', /friday|drop|100 bottles|sold out|sells out|minutes/],
+    ['price', /\$\d+/],
+    ['list-gate', /list|waitlist|sign ?up|join/],
+    ['whats-next', /email|no spam|9 ?am/],
+    ['urgency', /countdown|don.t miss|limited|gone|last/],
+  ];
+  return new Set(rules.filter(([, re]) => re.test(t)).map(([k]) => k));
 }
 
 // ───────── Journey ─────────

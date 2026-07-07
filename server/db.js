@@ -130,11 +130,6 @@ export async function ensureSchema() {
     ALTER TABLE journey_events ADD COLUMN IF NOT EXISTS country TEXT;
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_content TEXT;
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_term    TEXT;
-    ALTER TABLE drops ADD COLUMN IF NOT EXISTS tasting_notes TEXT;
-    ALTER TABLE drops ADD COLUMN IF NOT EXISTS origin    TEXT;
-    ALTER TABLE drops ADD COLUMN IF NOT EXISTS varietal  TEXT;
-    ALTER TABLE drops ADD COLUMN IF NOT EXISTS elevation TEXT;
-    ALTER TABLE drops ADD COLUMN IF NOT EXISTS roast     TEXT;
     -- First-party ad attribution on signups (which ad/campaign drove each subscriber).
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS twclid       TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_source   TEXT;
@@ -142,15 +137,6 @@ export async function ensureSchema() {
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_content  TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_term     TEXT;
-    -- Fulfillment: set when an order's label has been pulled into Pirate Ship, so
-    -- the export only ever shows what still needs to ship.
-    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;
-    -- Tracking, imported from Pirate Ship. ship_notified_at guards against re-sending
-    -- the "your order shipped" email when the same export is uploaded twice.
-    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number  TEXT;
-    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;
-    ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_notified_at TIMESTAMPTZ;
-
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,
@@ -183,6 +169,12 @@ export async function ensureSchema() {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS drops_status_idx ON drops (status);
+    -- Post-launch drop columns (kept AFTER the CREATE so a fresh DB bootstraps clean).
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS tasting_notes TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS origin    TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS varietal  TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS elevation TEXT;
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS roast     TEXT;
 
     -- Orders against a drop. status: pending (checkout created) | paid | failed | refunded.
     CREATE TABLE IF NOT EXISTS orders (
@@ -204,6 +196,27 @@ export async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS orders_drop_idx   ON orders (drop_id);
     CREATE INDEX IF NOT EXISTS orders_status_idx ON orders (status);
+    -- Fulfillment: set when an order's label has been pulled into Pirate Ship, so
+    -- the export only ever shows what still needs to ship.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;
+    -- Tracking, imported from Pirate Ship. ship_notified_at guards against re-sending
+    -- the "your order shipped" email when the same export is uploaded twice.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number  TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_notified_at TIMESTAMPTZ;
+
+    -- Ad creative registry for the admin "Ad Fit" tab. name matches the ad URL's
+    -- utm_content, so traffic/conversion data joins to the creative. covers is the
+    -- list of knowledge-point keys the ad itself communicates (see adfit config).
+    CREATE TABLE IF NOT EXISTS ads (
+      id         BIGSERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      post_text  TEXT,
+      image_data TEXT,                        -- data: URL of a downscaled creative
+      covers     JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
 
     -- Editable app settings (key → JSON). Used for the shipping-email template.
     CREATE TABLE IF NOT EXISTS settings (

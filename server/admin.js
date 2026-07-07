@@ -1060,6 +1060,175 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[journey-detail]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ───────── Ad Fit: creative registry + knowledge checklist + per-ad journey fit ─────────
+  // The Ad Fit tab pairs one ad creative with the landing page it points at and
+  // grades whether the combined journey teaches everything a person must know
+  // before joining. Knowledge points are staged TOFU/MOFU/BOFU; each landing
+  // section is mapped to the points it teaches. Defaults below mirror the live
+  // /drink page copy; the admin can edit and the result persists in settings.
+  const ADFIT_DEFAULT = {
+    points: [
+      { key: 'what-it-is',    stage: 'tofu', label: 'What it is — bourbon-barrel-aged cold brew coffee (not alcohol)' },
+      { key: 'brand-world',   stage: 'tofu', label: 'The brand world — heritage, old-world craft, premium feel' },
+      { key: 'why-special',   stage: 'mofu', label: 'Why it’s different — 90 nights in bourbon barrels, single-origin, small batch' },
+      { key: 'social-proof',  stage: 'mofu', label: 'Other people love it — real reviews from real customers' },
+      { key: 'maker-cred',    stage: 'mofu', label: 'Who makes it — 131,400 gallons of experience behind every batch' },
+      { key: 'drop-mechanic', stage: 'mofu', label: 'How the Friday Drop works — under 100 bottles, Fridays 9AM, gone in minutes' },
+      { key: 'price',         stage: 'bofu', label: 'The price — $49 / 750ml bottle' },
+      { key: 'list-gate',     stage: 'bofu', label: 'To buy you must be on the list — signup is access, not payment' },
+      { key: 'whats-next',    stage: 'bofu', label: 'What happens after signup — one email, Friday 9AM CT, no spam' },
+      { key: 'urgency',       stage: 'bofu', label: 'Why join right now — countdown to the next drop, limited bottles' },
+    ],
+    // Landing sections → points they teach. ids match the page's <section id>s
+    // (what journey.js reports as section_reached). 'hero' has no tracked event —
+    // everyone who lands sees it, so it counts as 100% reach.
+    sections: [
+      { id: 'hero',    label: 'Hero (above the fold)', always: true, covers: ['what-it-is', 'price', 'drop-mechanic', 'list-gate', 'urgency'] },
+      { id: 'family',  label: 'Wilhelm story (1897)',  covers: ['brand-world', 'why-special'] },
+      { id: 'reviews', label: 'Reviews',               covers: ['social-proof'] },
+      { id: 'proof',   label: '131,400 gallons',       covers: ['maker-cred'] },
+      { id: 'bottles', label: 'The bottle gallery',    covers: ['what-it-is', 'why-special'] },
+      { id: 'join',    label: 'Final CTA',             covers: ['whats-next', 'urgency'] },
+    ],
+  };
+
+  app.get('/api/admin/adfit/config', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const row = (await q(`SELECT value FROM settings WHERE key = 'adfit_config'`)).rows[0];
+      res.json({ config: row?.value || ADFIT_DEFAULT, isDefault: !row });
+    } catch (e) { console.error('[adfit/config]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.put('/api/admin/adfit/config', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const c = req.body?.config;
+      if (!c || !Array.isArray(c.points) || !Array.isArray(c.sections)) {
+        return res.status(400).json({ error: 'config needs points[] and sections[]' });
+      }
+      await q(`INSERT INTO settings (key, value, updated_at) VALUES ('adfit_config', $1, now())
+               ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [JSON.stringify(c)]);
+      res.json({ ok: true });
+    } catch (e) { console.error('[adfit/config]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/admin/adfit/ads', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(`SELECT id, name, post_text, image_data, covers, updated_at FROM ads ORDER BY name`)).rows;
+      res.json({ ads: rows });
+    } catch (e) { console.error('[adfit/ads]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Upsert by name (= the ad URL's utm_content), so re-saving an ad updates it.
+  app.post('/api/admin/adfit/ads', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const name = String(req.body?.name || '').trim().slice(0, 200);
+      if (!name) return res.status(400).json({ error: 'name required (should match the ad URL\'s utm_content)' });
+      const postText = req.body?.post_text ? String(req.body.post_text).slice(0, 5000) : null;
+      const covers = Array.isArray(req.body?.covers) ? req.body.covers.map((k) => String(k).slice(0, 60)).slice(0, 50) : [];
+      // Only accept small inline images (the admin downscales before upload).
+      let image = req.body?.image_data != null ? String(req.body.image_data) : undefined;
+      if (image !== undefined && image !== '' && !/^data:image\/(jpeg|png|webp|gif);base64,/.test(image)) {
+        return res.status(400).json({ error: 'image must be a data: URL' });
+      }
+      const row = (await q(
+        `INSERT INTO ads (name, post_text, image_data, covers, updated_at)
+         VALUES ($1,$2,$3,$4,now())
+         ON CONFLICT (name) DO UPDATE SET
+           post_text = EXCLUDED.post_text,
+           image_data = CASE WHEN $5 THEN EXCLUDED.image_data ELSE ads.image_data END,
+           covers = EXCLUDED.covers, updated_at = now()
+         RETURNING id`,
+        [name, postText, image || null, JSON.stringify(covers), image !== undefined]
+      )).rows[0];
+      res.json({ ok: true, id: row.id });
+    } catch (e) { console.error('[adfit/ads]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete('/api/admin/adfit/ads/:id', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      await q(`DELETE FROM ads WHERE id = $1`, [parseInt(req.params.id, 10) || 0]);
+      res.json({ ok: true });
+    } catch (e) { console.error('[adfit/ads]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Per-ad journey outcomes on /drink: sessions attributed to each utm_content
+  // (same ip_hash + time-window join the Journey tab uses), with how far into the
+  // page each ad's sessions actually got (section_reached) and who joined. Also
+  // returns the joined-vs-bounced section reach across ALL traffic, which is what
+  // "what did the best journeys see" is computed from.
+  app.get('/api/admin/adfit/analysis', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const wins = windows(req);
+      const wkey = String(req.query?.win || 'd30');
+      const w = wins.find((x) => x.key === wkey) || wins.find((x) => x.key === 'd30');
+      // One row per (ad, section-or-'__landed'): '__landed' is appended to every
+      // session's section list so per-ad landed/joined totals fall out of the
+      // same aggregation as per-section reach.
+      const rows = (await q(
+        `WITH s AS (
+           SELECT session_id, MIN(created_at) started_at, MAX(created_at) ended_at,
+                  BOOL_OR(event = 'subscribed') joined, MAX(ip_hash) ip_hash,
+                  ARRAY_REMOVE(ARRAY_AGG(DISTINCT CASE WHEN event = 'section_reached' THEN data->>'section' END), NULL) sections
+             FROM journey_events
+            WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}
+            GROUP BY session_id
+         ), attr AS (
+           SELECT s.joined, s.sections,
+                  COALESCE(a.utm_content,
+                           CASE WHEN a.utm_source IS NOT NULL THEN '(' || a.utm_source || ', untagged)'
+                                ELSE '(direct / untagged)' END) AS ad
+             FROM s
+             LEFT JOIN LATERAL (
+               SELECT utm_content, utm_source
+                 FROM page_views pv
+                WHERE pv.ip_hash = s.ip_hash
+                  AND pv.created_at BETWEEN s.started_at - INTERVAL '2 minutes'
+                                        AND s.ended_at + INTERVAL '2 minutes'
+                ORDER BY (pv.utm_content IS NOT NULL) DESC, (pv.utm_source IS NOT NULL) DESC, pv.created_at ASC
+                LIMIT 1
+             ) a ON true
+         )
+         SELECT ad, sec AS section, COUNT(*)::int n, COUNT(*) FILTER (WHERE joined)::int n_joined
+           FROM attr, UNNEST(sections || ARRAY['__landed']) sec
+          GROUP BY ad, sec`,
+        [w.from, w.to, DRINK_PAGES]
+      )).rows;
+
+      const byAd = {};
+      const outcome = { joined: { landed: 0, sections: {} }, bounced: { landed: 0, sections: {} } };
+      for (const r of rows) {
+        const a = (byAd[r.ad] = byAd[r.ad] || { ad: r.ad, landed: 0, joined: 0, sections: {} });
+        if (r.section === '__landed') {
+          a.landed = r.n; a.joined = r.n_joined;
+          outcome.joined.landed += r.n_joined;
+          outcome.bounced.landed += r.n - r.n_joined;
+        } else {
+          a.sections[r.section] = { n: r.n, joined: r.n_joined };
+          outcome.joined.sections[r.section] = (outcome.joined.sections[r.section] || 0) + r.n_joined;
+          outcome.bounced.sections[r.section] = (outcome.bounced.sections[r.section] || 0) + (r.n - r.n_joined);
+        }
+      }
+      const ads = Object.values(byAd).sort((x, y) => y.landed - x.landed);
+
+      // Every utm_content seen in the window (even with zero /drink journeys) so
+      // the tab can offer real ad names when registering a creative.
+      const contents = (await q(
+        `SELECT DISTINCT utm_content FROM page_views
+          WHERE utm_content IS NOT NULL AND utm_content NOT LIKE '%{{%'
+            AND created_at >= $1 AND created_at < $2 ${EXCL_PV}
+          ORDER BY utm_content`, [w.from, w.to]
+      )).rows.map((r) => r.utm_content);
+
+      res.json({ window: w.key, ads, outcome, contents });
+    } catch (e) { console.error('[adfit/analysis]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // ───────── orders (real money — no internal-IP exclusion) ─────────
   app.get('/api/admin/orders', async (req, res) => {
     if (!requireAdmin(req, res)) return;

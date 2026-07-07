@@ -2,6 +2,9 @@
 // Exposes window.wilhelmTrack(event, data) for explicit funnel events.
 (function () {
   'use strict';
+  // ?preview=1 → render-only view (the admin Ad Fit tab embeds the page); record
+  // nothing and set no flags, so previews never show up as real sessions.
+  try { if (new URLSearchParams(location.search).get('preview') === '1') return; } catch (e) {}
   var ENDPOINT = '/api/journey';
   var SESSION_ID = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   var PAGE = location.pathname;

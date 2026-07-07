@@ -38,6 +38,9 @@ app.use((req, _res, next) => {
     const ua = (req.headers['user-agent'] || '').toString();
     if (!ua || BOT_RE.test(ua)) return next();
 
+    // ?preview=1 → admin Ad Fit render-only embed; never counts as a view.
+    if (req.query && req.query.preview === '1') return next();
+
     // ?internal=1 → remember this device's IP hash as internal, and don't log it.
     if (req.query && req.query.internal === '1') {
       const ih = hashIp(getClientIp(req));

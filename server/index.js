@@ -33,7 +33,10 @@ app.use((req, _res, next) => {
   try {
     if (req.method !== 'GET') return next();
     const p = req.path || '/';
-    if (p !== '/' && p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
+    // Root redirects to /drink/ (see the route below) — the visit is counted there,
+    // so don't also log the bounce at / (it would double-count every homepage visit).
+    if (p === '/') return next();
+    if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
     const ua = (req.headers['user-agent'] || '').toString();
@@ -129,6 +132,14 @@ async function handleUnsub(req, res) {
 }
 app.get('/api/unsubscribe', handleUnsub);
 app.post('/api/unsubscribe', handleUnsub);
+
+// The drink page IS the landing page — send the bare domain there (keep query so
+// ad UTMs survive the hop). 302 so the browser doesn't cache it permanently if the
+// root ever grows its own page again.
+app.get('/', (req, res) => {
+  const i = req.originalUrl.indexOf('?');
+  res.redirect(302, '/drink/' + (i >= 0 ? req.originalUrl.slice(i) : ''));
+});
 
 // Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).
 app.get(['/drop', '/drop/'], (req, res) => {

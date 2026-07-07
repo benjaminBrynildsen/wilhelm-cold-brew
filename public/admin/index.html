@@ -58,6 +58,9 @@
     th,td{text-align:left;padding:10px 12px;border-bottom:1px solid rgba(232,194,74,.14);font-size:15px}
     th{color:var(--muted);font-size:12px;letter-spacing:1px;text-transform:uppercase}
     td.num,th.num{text-align:right}
+    /* Phones: a wide table scrolls sideways inside its own box instead of spilling
+       past panel borders and forcing the whole page to zoom out / pan. */
+    @media(max-width:760px){table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
     h3{font-family:'Bodoni Moda',Georgia,serif;color:var(--gold);margin:24px 0 6px;font-weight:600;font-size:21px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
     @media(max-width:760px){.grid2{grid-template-columns:1fr}}

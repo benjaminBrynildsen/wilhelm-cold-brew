@@ -38,6 +38,7 @@ const SPLIT_TESTS = [
   { id: 'headline', name: 'Headline', sub: 'hero headline (live)', param: 'h', base: '/drink/', source: 'byHl', arms: [
     { key: 'on-the-list', label: '"…on the list." (control)' },
     { key: 'sold-out-13', label: '"…sold out in 13 minutes."' },
+    { key: 'sold-out-5', label: '"…sold out in 5 minutes."' },
     { key: 'sold-out-list', label: '"…sold out to our list in 13 minutes."' },
   ] },
 ];
@@ -1060,7 +1061,7 @@ async function showSplit() {
             <tbody>${rows}</tbody></table>`;
       }).join('');
 
-      autopilot = `<div style="border:1px solid var(--gold-deep);background:var(--panel);padding:14px 18px;margin:0 0 26px">
+      autopilot = `<div style="border:1px solid var(--gold-deep);background:var(--panel);padding:14px 18px;margin:0 0 26px;overflow-x:auto">
         <h3 style="margin:0 0 6px">Autopilot <span class="note">— pushes new visitors toward what's converting; re-assessed all day, logged daily</span></h3>
         <div class="row-actions" style="margin:10px 0 2px">
           <label style="cursor:pointer"><input type="checkbox" id="bp-on" ${bc.enabled ? 'checked' : ''}/> <b>Autopilot on</b></label>

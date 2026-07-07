@@ -65,8 +65,8 @@
       // Headline A/B test — live 50/50 between the control and the new
       // "sold out in 13 minutes" line. ?h= forces ANY known headline (incl. the
       // retired sells-out arm) for preview; sticky per visitor otherwise.
-      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13', 'sold-out-list'];   // all known headlines (incl retired)
-      var HL_KNOWN = ['on-the-list', 'sold-out-13', 'sold-out-list'];              // arms admin can toggle
+      var HL_ALL = ['on-the-list', 'sells-out', 'sold-out-13', 'sold-out-5', 'sold-out-list'];   // all known headlines (incl retired)
+      var HL_KNOWN = ['on-the-list', 'sold-out-13', 'sold-out-5', 'sold-out-list'];              // arms admin can toggle
       var HL_LIVE = ((window.__SPLIT_ARMS && window.__SPLIT_ARMS.headline) || HL_KNOWN).filter(function (k) { return HL_KNOWN.indexOf(k) >= 0; });
       if (!HL_LIVE.length) HL_LIVE = HL_KNOWN;                    // never leave nothing to show
       var forcedH = p.get('h');
@@ -100,8 +100,8 @@
       window.__DRINK_PROOF = proof;
 
       // Hero image A/B test. Sticky per visitor (localStorage), ?img= forces an arm.
-      // 'reviews' swaps the product photo for a two-up of the real review screenshots
-      // (the same uncropped posts as #reviews) — pair arms render both images.
+      // 'reviews' swaps the product photo for a two-up of the real review
+      // screenshots (Finley on X, Kaleb on IG) — pair arms render both images.
       var IMG = {
         cigars:  { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667,  alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
         barrel:  { src: 'assets/hero-barrel.jpg',   w: 1024, h: 1024, alt: 'A bottle of Wilhelm Cold Brew on a whiskey barrel at dusk' },
@@ -203,6 +203,7 @@
           if (!__h1) return;
           if (window.__DRINK_HL === 'sells-out') __h1.innerHTML = 'Why does a $49 cold brew <em>sell out in minutes?</em>';
           else if (window.__DRINK_HL === 'sold-out-13') __h1.innerHTML = 'Last Friday, we sold out in <em>13 minutes.</em> Seriously.';
+          else if (window.__DRINK_HL === 'sold-out-5') __h1.innerHTML = 'Last Friday, we sold out in <em>5 minutes.</em> Seriously.';
           else if (window.__DRINK_HL === 'sold-out-list') __h1.innerHTML = 'Last Friday, we sold out to our list in <em>13 minutes.</em>';
         })();
       </script>
@@ -235,8 +236,8 @@
         <!-- Hero image arm chosen before paint (see the variant script in <head>).
              src is set synchronously below so only the chosen image is fetched. -->
         <img id="hero-img" alt="Wilhelm Cold Brew" width="1000" height="667"/>
-        <!-- 'reviews' arm: the two real review screenshots (same posts as #reviews,
-             but cropped of app chrome and to matching 720x1086 so the pair sits
+        <!-- 'reviews' arm: the two real review screenshots (Finley on X, Kaleb on
+             IG — cropped of app chrome and to matching 720x1086 so the pair sits
              flush), side by side in place of the product photo. srcs are set
              synchronously below so other arms never fetch them; CSS shows/hides
              per data-drink-img. -->
@@ -342,28 +343,6 @@
         <img src="assets/wilhelm-family.jpg" alt="The Wilhelm family, gathered before the crossing — Wilhelm marked" loading="lazy"/>
         <figcaption>Many years on — the whole family, all eight sons. <span>Wilhelm, marked.</span></figcaption>
       </figure>
-    </div>
-  </section>
-
-  <!-- REVIEWS — social proof, below the story. Real, uncropped post screenshots
-       so it's clearly real people. To add another: drop the full screenshot into
-       assets/ and copy a <figure class="review"> block. -->
-  <section class="sec reviews" id="reviews">
-    <div class="reviews-inner">
-      <div class="eyebrow">✦&nbsp;&nbsp;WORD IS GETTING OUT&nbsp;&nbsp;✦</div>
-      <h2>What people are <em>saying.</em></h2>
-      <div class="reviews-grid">
-        <figure class="review">
-          <span class="review-shot"><img src="assets/review-finley-full-2.jpg" alt="James Finley (@thefinley) on X: This is a fantastic sipping coffee. Great with a small splash of milk or black." loading="lazy" width="720" height="1280"/></span>
-          <blockquote>“This is a fantastic sipping coffee. Great with a small splash of milk, or black.”</blockquote>
-          <figcaption>James Finley<span class="review-handle">@thefinley · X</span></figcaption>
-        </figure>
-        <figure class="review">
-          <span class="review-shot"><img src="assets/review-kaleb-full.jpg" alt="@kalebspangler on Instagram: Some of the best coffee I've ever had!" loading="lazy" width="720" height="1203"/></span>
-          <blockquote>“Some of the best coffee I’ve ever had!”</blockquote>
-          <figcaption>Kaleb Spangler<span class="review-handle">@kalebspangler · Instagram</span></figcaption>
-        </figure>
-      </div>
     </div>
   </section>
 

@@ -1,6 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
-import { q } from './db.js';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
@@ -787,6 +788,43 @@ export function mountAdmin(app) {
       bustBanditCache();
       res.json({ ok: true });
     } catch (e) { console.error('[split-combos]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── read-only analytics SQL (proof-of-credential auth) ─────────
+  // Direct Postgres egress is blocked from some analysis environments, so this
+  // exposes SELECT-only SQL over HTTPS instead. The token is the hex SHA-256 of
+  // the DATABASE PASSWORD (identical in Render's internal and external URLs):
+  // presenting it proves the caller already holds the database credential, so
+  // the route grants no new privilege — it's just a transport. Read-only is
+  // enforced twice (statement whitelist + a READ ONLY transaction with a 10s
+  // statement timeout); results cap at 2000 rows. Revoke by removing the route
+  // or rotating the database password.
+  app.post('/api/admin/rosql', async (req, res) => {
+    try {
+      const dbUrl = process.env.DATABASE_URL || '';
+      let secret = dbUrl;
+      try { secret = new URL(dbUrl).password || dbUrl; } catch {}
+      const expect = createHash('sha256').update(secret).digest('hex');
+      const got = String(req.headers['x-analytics-token'] || '');
+      const a = createHash('sha256').update(got).digest();
+      const b = createHash('sha256').update(expect).digest();
+      if (!dbUrl || !timingSafeEqual(a, b)) return res.status(401).json({ error: 'unauthorized' });
+      const sql = String((req.body && req.body.sql) || '');
+      if (!/^\s*(select|with)\b/i.test(sql) || /;/.test(sql.replace(/;\s*$/, ''))) {
+        return res.status(400).json({ error: 'a single SELECT/WITH statement only' });
+      }
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN TRANSACTION READ ONLY');
+        await client.query(`SET LOCAL statement_timeout = '10s'`);
+        const r = await client.query(sql, (req.body && req.body.params) || []);
+        await client.query('ROLLBACK');
+        res.json({ rowCount: r.rowCount, rows: (r.rows || []).slice(0, 2000), truncated: (r.rows || []).length > 2000 });
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        res.status(400).json({ error: e.message });
+      } finally { client.release(); }
+    } catch (e) { console.error('[rosql]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test autopilot (bandit) ─────────

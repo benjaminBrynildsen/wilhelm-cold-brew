@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'd30', splitWin: 'today', adfitWin: 'd30', adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'd30', splitWin: 'today', adfitWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -1220,8 +1220,28 @@ async function showSplit() {
 async function showTraffic() {
   loading();
   try {
-    const d = await api('/api/admin/traffic');
+    const tr = state.trafficRange;
+    const d = await api('/api/admin/traffic' + (tr ? `?from=${tr.from}&to=${tr.to}` : ''));
     const v = d.views, vis = d.visitors;
+    // Day/range picker — when set, every table (and the spark) covers exactly
+    // that span; "Default" restores the usual 30d/14d/all-time windows.
+    const isDay = tr && tr.from === tr.to;
+    const rangeBar = `
+      <div class="winbar">
+        <div class="win ${!tr ? 'active' : ''}" id="tr-reset">Default</div>
+        <span class="winlabel">DAY</span>
+        <button class="daystep" id="tdprev" aria-label="Previous day">‹</button>
+        <input type="date" id="tday" class="dateinput${isDay ? ' active' : ''}" value="${esc(isDay ? tr.from : todayStr())}" max="${todayStr()}"/>
+        <button class="daystep" id="tdnext" aria-label="Next day">›</button>
+      </div>
+      <div class="winbar">
+        <span class="winlabel">RANGE</span>
+        <input type="date" id="tfrom" class="dateinput" value="${esc(tr ? tr.from : '')}"/>
+        <span class="winlabel" style="min-width:0">to</span>
+        <input type="date" id="tto" class="dateinput" value="${esc(tr ? tr.to : '')}"/>
+        <button class="win${tr && !isDay ? ' active' : ''}" id="tapply">Apply</button>
+      </div>`;
+    const rlab = tr ? (isDay ? tr.from : `${tr.from} → ${tr.to}`) : null;
     const maxDaily = Math.max(1, ...d.daily.map((x) => x.views));
     const spark = d.daily.map((x) =>
       `<div class="b" title="${esc(x.day)}: ${x.views} views / ${x.visitors} visitors" style="height:${Math.round((x.views / maxDaily) * 100)}%"></div>`).join('');
@@ -1233,24 +1253,47 @@ async function showTraffic() {
     const juTotalRow = ju.length
       ? `<tr style="font-weight:700;border-bottom:2px solid var(--gold)"><td>All channels</td><td class="num">${num(juLanded)}</td><td class="num">${num(juJoined)}</td><td class="num"><b>${juLanded ? pct(juJoined, juLanded) : '—'}</b></td></tr>`
       : '';
-    content().innerHTML = `
+    const w = (dflt) => rlab || dflt;   // table-title window label
+    content().innerHTML = rangeBar + `
       <div class="cards">
+        ${d.range ? `<div class="card" style="border-color:var(--gold)"><div class="k">Views (${esc(rlab)})</div><div class="v">${num(d.range.views)}</div></div>
+        <div class="card" style="border-color:var(--gold)"><div class="k">Visitors (${esc(rlab)})</div><div class="v">${num(d.range.visitors)}</div></div>` : ''}
         <div class="card"><div class="k">Views (24h)</div><div class="v">${num(v.last24h)}</div></div>
         <div class="card"><div class="k">Views (7d)</div><div class="v">${num(v.last7d)}</div></div>
         <div class="card"><div class="k">Views (30d)</div><div class="v">${num(v.last30d)}</div></div>
         <div class="card"><div class="k">Visitors (30d)</div><div class="v">${num(vis.last30d)}</div></div>
         <div class="card"><div class="k">Views (total)</div><div class="v">${num(v.total)}</div></div>
       </div>
-      <h3>Last 14 days</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>
+      <h3>${rlab ? esc(rlab) : 'Last 14 days'}</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>
       <div class="grid2">
-        <div>${tbl('Top paths (30d)', d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl('Top referrers (30d)', d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl('Top countries (30d)', d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl('UTM campaigns (30d views)', d.topCampaigns.map((r) => `<tr><td>${esc(r.source)} / ${esc(r.campaign)}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
-        <div style="grid-column:1/-1">${tbl('Conversion by channel — landed → joined (all-time)', juTotalRow + ((d.joinersByUtm || []).map((r) => `<tr><td>${esc(r.channel)}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>'), [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
-          ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view.</div>` : ''}</div>
-        <div>${tbl('Top cities (30d)', (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
+        <div>${tbl(`Top paths (${esc(w('30d'))})`, d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl(`Top referrers (${esc(w('30d'))})`, d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl(`Top countries (${esc(w('30d'))})`, d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
+        <div>${tbl(`UTM campaigns (${esc(w('30d'))} views)`, d.topCampaigns.map((r) => `<tr><td>${esc(r.source)} / ${esc(r.campaign)}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
+        <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juTotalRow + ((d.joinersByUtm || []).map((r) => `<tr><td>${esc(r.channel)}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>'), [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
+          ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view${rlab ? ' · entries limited to the selected dates; "joined" = ever subscribed' : ''}.</div>` : ''}</div>
+        <div>${tbl(`Top cities (${esc(w('30d'))})`, (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
       </div>`;
+
+    // wire the picker
+    const setRange = (from, to) => { state.trafficRange = from && to ? { from, to } : null; showTraffic(); };
+    document.getElementById('tr-reset').addEventListener('click', () => setRange(null));
+    const tday = document.getElementById('tday');
+    const stepDay = (delta) => {
+      const base = (tday && tday.value) || todayStr();
+      const dd = new Date(base + 'T12:00:00Z');
+      dd.setUTCDate(dd.getUTCDate() + delta);
+      const next = dd.toISOString().slice(0, 10);
+      if (next > todayStr()) return;
+      setRange(next, next);
+    };
+    document.getElementById('tdprev').addEventListener('click', () => stepDay(-1));
+    document.getElementById('tdnext').addEventListener('click', () => stepDay(1));
+    if (tday) tday.addEventListener('change', () => setRange(tday.value, tday.value));
+    document.getElementById('tapply').addEventListener('click', () => {
+      const f = document.getElementById('tfrom').value, t = document.getElementById('tto').value;
+      if (f && t) setRange(f <= t ? f : t, f <= t ? t : f);
+    });
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 

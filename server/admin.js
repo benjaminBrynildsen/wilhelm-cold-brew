@@ -759,6 +759,36 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[split-config/save]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ───────── pinned split-test combinations (full recipes) ─────────
+  // Upsert with pinPct 1..100, or clear with pinPct null/0. Total pinned share
+  // is capped at 100% of new-visitor traffic across all pins.
+  app.post('/api/admin/split-combos', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const b = req.body || {};
+      const image = String(b.image || '').slice(0, 40);
+      const bg = String(b.bg || '').slice(0, 40);
+      const hl = String(b.hl || '').slice(0, 40);
+      if (!image || !bg || !hl) return res.status(400).json({ error: 'image, bg and hl are required' });
+      const pct = parseInt(b.pinPct, 10);
+      if (!pct || pct <= 0) {
+        await q(`DELETE FROM split_combos WHERE image=$1 AND bg=$2 AND hl=$3`, [image, bg, hl]);
+      } else {
+        const pinPct = Math.max(1, Math.min(100, pct));
+        const others = (await q(
+          `SELECT COALESCE(SUM(pin_pct),0)::int total FROM split_combos WHERE NOT (image=$1 AND bg=$2 AND hl=$3)`,
+          [image, bg, hl])).rows[0].total;
+        if (others + pinPct > 100) {
+          return res.status(400).json({ error: `pins already claim ${others}% — ${pinPct}% more would pass 100%` });
+        }
+        await q(`INSERT INTO split_combos (image, bg, hl, pin_pct) VALUES ($1,$2,$3,$4)
+                 ON CONFLICT (image, bg, hl) DO UPDATE SET pin_pct=$4`, [image, bg, hl, pinPct]);
+      }
+      bustBanditCache();
+      res.json({ ok: true });
+    } catch (e) { console.error('[split-combos]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // ───────── split-test autopilot (bandit) ─────────
   app.get('/api/admin/bandit', async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -777,6 +807,10 @@ export function mountAdmin(app) {
       if (b.floorPct != null && !isNaN(parseInt(b.floorPct, 10))) next.floorPct = clampInt(b.floorPct, 0, 40);
       if (b.halfLifeDays != null && !isNaN(parseInt(b.halfLifeDays, 10))) next.halfLifeDays = clampInt(b.halfLifeDays, 1, 30);
       if (b.killMinSessions != null && !isNaN(parseInt(b.killMinSessions, 10))) next.killMinSessions = clampInt(b.killMinSessions, 50, 100000);
+      if (typeof b.comboEnabled === 'boolean') next.comboEnabled = b.comboEnabled;
+      if (b.comboPct != null && !isNaN(parseInt(b.comboPct, 10))) next.comboPct = clampInt(b.comboPct, 5, 80);
+      if (b.comboMinSessions != null && !isNaN(parseInt(b.comboMinSessions, 10))) next.comboMinSessions = clampInt(b.comboMinSessions, 25, 100000);
+      if (b.comboMax != null && !isNaN(parseInt(b.comboMax, 10))) next.comboMax = clampInt(b.comboMax, 1, 12);
       await q(`INSERT INTO settings (key, value, updated_at) VALUES ('bandit_config', $1, now())
                ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [JSON.stringify(next)]);
       bustBanditCache();

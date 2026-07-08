@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureSchema, q } from './db.js';
 import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE } from './util.js';
 import { receiveJourney, subscribe } from './ingest.js';
-import { getBanditWeights } from './bandit.js';
+import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin } from './admin.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
@@ -203,8 +203,10 @@ app.get(['/drink', '/drink/'], async (req, res, next) => {
     if (!byTest.image || !byTest.image.length) return next();   // image is the original guard; keep the static fallback if it's somehow empty
     // Autopilot traffic weights (null when off/erroring → page splits evenly).
     const bw = await getBanditWeights();
+    // Pinned + champion-pool recipes served as a unit (null → per-dimension only).
+    const combos = await getComboServe();
     // __SPLIT_ARMS drives all three; __SPLIT_IMG_ARMS kept for backward-compat with any cached page.
-    const inject = `<script>window.__SPLIT_ARMS=${JSON.stringify(byTest)};window.__SPLIT_IMG_ARMS=${JSON.stringify(byTest.image)};${bw ? `window.__SPLIT_WEIGHTS=${JSON.stringify(bw)};` : ''}</script>`;
+    const inject = `<script>window.__SPLIT_ARMS=${JSON.stringify(byTest)};window.__SPLIT_IMG_ARMS=${JSON.stringify(byTest.image)};${bw ? `window.__SPLIT_WEIGHTS=${JSON.stringify(bw)};` : ''}${combos ? `window.__SPLIT_COMBOS=${JSON.stringify(combos)};` : ''}</script>`;
     const html = DRINK_HTML.replace('<!--SPLIT_CONFIG-->', inject);
     res.set('Cache-Control', 'no-store');
     res.type('html').send(html);

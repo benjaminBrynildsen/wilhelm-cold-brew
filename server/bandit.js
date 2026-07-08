@@ -38,6 +38,14 @@ export const BANDIT_DEFAULTS = {
   lookbackDays: 28,      // how far back the bandit looks at all
   killEnabled: true,
   killMinSessions: 300,  // raw sessions before an arm may be auto-paused
+  // Champion pool: a slice of new-visitor traffic reserved for PROVEN full
+  // recipes (image × background × headline served as a unit), Thompson-sampled
+  // against each other. Catches interactions the per-dimension bandits can't
+  // (a headline that only works next to a particular photo).
+  comboEnabled: true,
+  comboPct: 25,          // % of new-visitor traffic the pool may use
+  comboMinSessions: 150, // raw sessions a combo needs before it can enter the pool
+  comboMax: 4,           // pool size cap — keeps each champion's traffic meaningful
 };
 
 const TTL_MS = 5 * 60 * 1000;
@@ -109,6 +117,100 @@ async function dailyCounts(testId, lookbackDays) {
     a.landed += r.landed; a.joined += r.joined;
   }
   return byArm;
+}
+
+// Per-combo (image × background × headline), per-Central-day landed/joined.
+// Sessions missing any of the three tags don't count toward any combo.
+async function comboDailyCounts(lookbackDays) {
+  const rows = (await q(
+    `WITH s AS (
+       SELECT session_id, MAX(variant) img, MAX(data->>'bg') bg, MAX(data->>'hl') hl,
+              MIN(created_at) started, BOOL_OR(event = 'subscribed') joined
+         FROM journey_events
+        WHERE page = ANY($1) AND created_at >= now() - ($2 || ' days')::interval ${EXCL}
+        GROUP BY session_id
+     )
+     SELECT img, bg, hl, TO_CHAR(started AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD') AS day,
+            COUNT(*)::int landed, COUNT(*) FILTER (WHERE joined)::int joined
+       FROM s WHERE img IS NOT NULL AND bg IS NOT NULL AND hl IS NOT NULL
+      GROUP BY img, bg, hl, day`,
+    [DRINK_PAGES, String(lookbackDays)]
+  )).rows;
+  const byCombo = {};
+  for (const r of rows) {
+    const key = `${r.img}|${r.bg}|${r.hl}`;
+    const c = (byCombo[key] = byCombo[key] || { image: r.img, bg: r.bg, hl: r.hl, days: {}, landed: 0, joined: 0 });
+    c.days[r.day] = { landed: r.landed, joined: r.joined };
+    c.landed += r.landed; c.joined += r.joined;
+  }
+  return byCombo;
+}
+
+// Combo layer: manual pins + the autopilot's champion pool. Returns the slice
+// of new-visitor traffic that gets a FULL recipe instead of independent picks.
+// Pins are explicit admin intent, so they serve even with the autopilot off.
+async function computeCombos(cfg, armRows, today) {
+  const pins = (await q(`SELECT image, bg, hl, pin_pct FROM split_combos ORDER BY pin_pct DESC, image, bg, hl`)
+    .catch(() => ({ rows: [] }))).rows;
+  const counts = await comboDailyCounts(cfg.lookbackDays).catch(() => ({}));
+  const liveArm = new Set(armRows.filter((r) => r.enabled).map((r) => `${r.test_id}:${r.arm_key}`));
+
+  const decay = (days) => {
+    let dl = 0, dj = 0;
+    for (const [day, v] of Object.entries(days)) {
+      const daysAgo = Math.max(0, (Date.parse(today) - Date.parse(day)) / 86400000);
+      const w = Math.pow(0.5, daysAgo / Math.max(0.5, cfg.halfLifeDays));
+      dl += v.landed * w; dj += v.joined * w;
+    }
+    return { dl, dj };
+  };
+  const entry = (image, bg, hl, source) => {
+    const c = counts[`${image}|${bg}|${hl}`] || { days: {}, landed: 0, joined: 0 };
+    const { dl, dj } = decay(c.days);
+    return { image, bg, hl, source, weight: 0, landed: c.landed, joined: c.joined,
+             decayedLanded: dl, decayedJoined: dj, days: c.days };
+  };
+
+  // Manual pins first. Scale down proportionally if they somehow sum past 100%
+  // (the save endpoint also guards this) so the recipe roll stays a probability.
+  const entries = pins.map((p) => ({ ...entry(p.image, p.bg, p.hl, 'pin'), pinPct: p.pin_pct }));
+  let pinTotal = entries.reduce((s, e) => s + Math.max(0, Math.min(100, e.pinPct)) / 100, 0);
+  const pinScale = pinTotal > 1 ? 1 / pinTotal : 1;
+  entries.forEach((e) => { e.weight = Math.round(Math.max(0, Math.min(100, e.pinPct)) / 100 * pinScale * 1000) / 1000; });
+  pinTotal = Math.min(1, pinTotal);
+
+  // Champion pool: proven combos (enough raw sessions, every arm still live,
+  // not already pinned) Thompson-sampled against each other for the pool share.
+  const poolShare = cfg.enabled && cfg.comboEnabled
+    ? Math.max(0, Math.min(cfg.comboPct / 100, 1 - pinTotal)) : 0;
+  if (poolShare > 0) {
+    const pinned = new Set(pins.map((p) => `${p.image}|${p.bg}|${p.hl}`));
+    const pool = Object.entries(counts)
+      .filter(([key, c]) => !pinned.has(key)
+        && c.landed >= cfg.comboMinSessions
+        && liveArm.has(`image:${c.image}`) && liveArm.has(`background:${c.bg}`) && liveArm.has(`headline:${c.hl}`))
+      .map(([, c]) => entry(c.image, c.bg, c.hl, 'pool'))
+      .sort((a, b) => (b.decayedJoined / Math.max(1, b.decayedLanded)) - (a.decayedJoined / Math.max(1, a.decayedLanded)))
+      .slice(0, Math.max(1, cfg.comboMax));
+    if (pool.length === 1) {
+      pool[0].weight = Math.round(poolShare * 1000) / 1000;
+    } else if (pool.length > 1) {
+      const DRAWS = 3000;
+      const wins = new Array(pool.length).fill(0);
+      for (let i = 0; i < DRAWS; i++) {
+        let bi = 0, bv = -1;
+        for (let j = 0; j < pool.length; j++) {
+          const v = betaSample(1 + pool[j].decayedJoined, 1 + Math.max(0, pool[j].decayedLanded - pool[j].decayedJoined));
+          if (v > bv) { bv = v; bi = j; }
+        }
+        wins[bi]++;
+      }
+      pool.forEach((e, j) => { e.weight = Math.round(poolShare * (wins[j] / DRAWS) * 1000) / 1000; });
+    }
+    entries.push(...pool.filter((e) => e.weight > 0));
+  }
+
+  return { pinTotal: Math.round(pinTotal * 1000) / 1000, poolShare: Math.round(poolShare * 1000) / 1000, entries };
 }
 
 // Full recompute: weights per test + auto-pause pass + daily snapshot.
@@ -209,6 +311,23 @@ async function compute() {
         .catch((e) => console.warn('[bandit] log failed:', e?.message || e));
     }
   }
+
+  // Combo layer (pins + champion pool). Fails soft: any error → no combo slice,
+  // per-dimension serving continues untouched.
+  try {
+    state.combos = await computeCombos(cfg, armRows, today);
+    for (const e of state.combos.entries) {
+      const t = e.days[today] || { landed: 0, joined: 0 };
+      q(`INSERT INTO bandit_log (day, test_id, arm_key, weight, landed, joined)
+         VALUES ($1,'combo',$2,$3,$4,$5)
+         ON CONFLICT (day, test_id, arm_key) DO UPDATE SET weight=$3, landed=$4, joined=$5, updated_at=now()`,
+        [today, `${e.image}|${e.bg}|${e.hl}`, e.weight, t.landed, t.joined])
+        .catch((err) => console.warn('[bandit] combo log failed:', err?.message || err));
+    }
+  } catch (e) {
+    console.warn('[bandit] combo layer failed (per-dimension serving unaffected):', e?.message || e);
+    state.combos = { pinTotal: 0, poolShare: 0, entries: [] };
+  }
   return state;
 }
 
@@ -233,6 +352,23 @@ export async function getBanditWeights() {
     return Object.keys(out).length ? out : null;
   } catch (e) {
     console.warn('[bandit] weights failed (falling back to even split):', e?.message || e);
+    return null;
+  }
+}
+
+// For the /drink page: [{image, bg, hl, w}, …] — the recipes (pinned + champion
+// pool) that get served as a unit to that share of new visitors — or null when
+// there are none. Pins serve even with the autopilot off; only the pool gates
+// on it (see computeCombos).
+export async function getComboServe() {
+  try {
+    const s = await getState();
+    const out = ((s.combos && s.combos.entries) || [])
+      .filter((e) => e.weight > 0)
+      .map((e) => ({ image: e.image, bg: e.bg, hl: e.hl, w: e.weight }));
+    return out.length ? out : null;
+  } catch (e) {
+    console.warn('[bandit] combo serve failed (falling back to per-dimension):', e?.message || e);
     return null;
   }
 }

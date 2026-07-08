@@ -228,6 +228,18 @@ export async function ensureSchema() {
       PRIMARY KEY (day, test_id, arm_key)
     );
 
+    -- Manually pinned split-test combinations: a full recipe (image × background
+    -- × headline) served as a unit to pin_pct % of new visitors. Set from the
+    -- admin's Best combinations table; the autopilot's champion pool works on top.
+    CREATE TABLE IF NOT EXISTS split_combos (
+      image      TEXT NOT NULL,
+      bg         TEXT NOT NULL,
+      hl         TEXT NOT NULL,
+      pin_pct    INTEGER NOT NULL,          -- 1..100, share of NEW-visitor traffic
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (image, bg, hl)
+    );
+
     -- Ad creative registry for the admin "Ad Fit" tab. name matches the ad URL's
     -- utm_content, so traffic/conversion data joins to the creative. covers is the
     -- list of knowledge-point keys the ad itself communicates (see adfit config).

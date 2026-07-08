@@ -985,23 +985,40 @@ async function showSplit() {
       })
       .sort((a, b) => (b.rate - a.rate) || (b.ld - a.ld));
     const bestCombo = combos.find((c) => c.ld >= MIN_COMBO);
+    // Pin/pool serving state per recipe, from the autopilot report.
+    const comboState = {};
+    ((bandit && bandit.combos && bandit.combos.entries) || []).forEach((e) => {
+      comboState[`${e.image}|${e.bg}|${e.hl}`] = e;
+    });
     let comboBlock = '';
     if (combos.length) {
       const rows = combos.map((c) => {
         const winner = bestCombo && c === bestCombo;
         const low = c.ld < MIN_COMBO;
+        const full = c.variant != null && c.bg != null && c.hl != null;
+        const st = full ? comboState[`${c.variant}|${c.bg}|${c.hl}`] : null;
+        const pinned = st && st.source === 'pin';
+        const chip = pinned ? `<span class="chip good">pinned ${Math.round(st.weight * 100)}%</span>`
+          : st ? `<span class="chip warn">pool ${Math.round(st.weight * 100)}%</span>` : '';
+        const dataAttrs = full ? `data-image="${esc(c.variant)}" data-bg="${esc(c.bg)}" data-hl="${esc(c.hl)}"` : '';
+        const ctl = full ? `<td style="white-space:nowrap">${chip}
+            <input class="combo-pct" type="number" min="1" max="100" placeholder="%" value="${pinned ? Math.round(st.weight * 100) : ''}" style="width:56px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/>
+            <button class="btn ghost combo-pin" ${dataAttrs} style="padding:2px 8px">Pin</button>
+            ${pinned ? `<button class="btn ghost combo-clear" ${dataAttrs} style="padding:2px 8px">Unpin</button>` : ''}</td>`
+          : '<td class="note">—</td>';
         return `<tr${winner ? ' style="color:var(--good);font-weight:700"' : low ? ' style="opacity:.6"' : ''}>
           <td>${labelFor('byVariant', c.variant)}</td>
           <td>${labelFor('byBg', c.bg)}</td>
           <td>${labelFor('byHl', c.hl)}</td>
           <td class="num">${num(c.ld)}</td><td class="num">${num(c.su)}</td>
-          <td class="num">${pct(c.su, c.ld)}${winner ? ' ★' : ''}${low ? ' <span class="note">(low)</span>' : ''}</td></tr>`;
+          <td class="num">${pct(c.su, c.ld)}${winner ? ' ★' : ''}${low ? ' <span class="note">(low)</span>' : ''}</td>${ctl}</tr>`;
       }).join('');
-      comboBlock = `<h3>Best combinations <span class="note">— image × background × headline together</span></h3>
+      comboBlock = `<h3>Best combinations <span class="note">— image × background × headline together</span> <span class="note" id="combo-msg"></span></h3>
         <table><thead><tr><th>Image</th><th>Background</th><th>Headline</th>
-          <th class="num">Landed</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead>
+          <th class="num">Landed</th><th class="num">Joined</th><th class="num">Conv.</th><th>Serve</th></tr></thead>
           <tbody>${rows}</tbody></table>
-        <div class="note">Every session is bucketed into one recipe of all three tests; this ranks the full recipes by signup rate (Joined ÷ Landed). ★ = best recipe with at least ${MIN_COMBO} sessions. Dim rows are still low-sample — treat as early signal. "any" means that dimension wasn't recorded for that session (older traffic).</div>`;
+        <div class="note">Every session is bucketed into one recipe of all three tests; this ranks the full recipes by signup rate (Joined ÷ Landed). ★ = best recipe with at least ${MIN_COMBO} sessions. Dim rows are still low-sample — treat as early signal. "any" means that dimension wasn't recorded for that session (older traffic).
+          <b>Pin</b> a recipe to serve it as a unit to exactly that % of new visitors (100% = everyone); the autopilot's champion pool handles the rest automatically.</div>`;
     }
 
     // Any variants seen in the data that aren't part of a known test.
@@ -1061,6 +1078,35 @@ async function showSplit() {
             <tbody>${rows}</tbody></table>`;
       }).join('');
 
+      // ── Recipes: pinned combos + the champion pool, served as full combinations ──
+      const cEntries = (bandit.combos && bandit.combos.entries) || [];
+      const comboRows = cEntries.map((e) => {
+        const wPct = Math.round((e.weight || 0) * 100);
+        const conv = e.landed ? ((e.joined / e.landed) * 100).toFixed(1) + '%' : '—';
+        const dataAttrs = `data-image="${esc(e.image)}" data-bg="${esc(e.bg)}" data-hl="${esc(e.hl)}"`;
+        return `<tr>
+          <td>${esc(armLabel('image', e.image))}</td><td>${esc(armLabel('background', e.bg))}</td><td>${esc(armLabel('headline', e.hl))}</td>
+          <td style="white-space:nowrap">${e.source === 'pin'
+            ? `<span class="chip good">pinned</span> <button class="btn ghost combo-clear" ${dataAttrs} style="padding:2px 8px">Unpin</button>`
+            : '<span class="chip warn">pool</span>'}</td>
+          <td style="min-width:90px"><div class="bar" style="height:14px"><div class="fill" style="width:${wPct}%"></div></div></td>
+          <td class="num"><b>${wPct}%</b></td>
+          <td class="num">${num(e.landed)}</td><td class="num">${num(e.joined)}</td><td class="num">${conv}</td></tr>`;
+      }).join('');
+      const comboPanel = `
+        <h3 style="margin:16px 0 4px;font-size:17px">Recipes <span class="note">— full combinations served as a unit (image + background + headline together)</span></h3>
+        <div class="row-actions" style="margin:6px 0 2px">
+          <label class="note" style="cursor:pointer"><input type="checkbox" id="bp-combo" ${bc.comboEnabled ? 'checked' : ''}/> <b>champion pool on</b></label>
+          <span class="note">pool gets <input id="bp-combo-pct" type="number" min="5" max="80" value="${bc.comboPct ?? 25}" style="width:52px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/>% of new visitors</span>
+          <span class="note">a recipe qualifies at <input id="bp-combo-min" type="number" min="25" max="100000" value="${bc.comboMinSessions ?? 150}" style="width:64px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/> sessions</span>
+          <span class="note">pool size ≤ <input id="bp-combo-max" type="number" min="1" max="12" value="${bc.comboMax ?? 4}" style="width:44px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/></span>
+        </div>
+        ${cEntries.length
+          ? `<table><thead><tr><th>Image</th><th>Background</th><th>Headline</th><th>How</th><th>Traffic share</th><th class="num">%</th>
+              <th class="num">Landed ${bc.lookbackDays || 28}d</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead><tbody>${comboRows}</tbody></table>`
+          : '<div class="note" style="margin:8px 0">No recipes serving yet — pin one from Best combinations below, or the pool will pick up combinations automatically once they clear the session bar.</div>'}
+        <div class="note">Pinned recipes serve at exactly their share even with Autopilot off. The champion pool Thompson-samples the best <b>proven</b> recipes (enough sessions, every arm still live) against each other for its share — it catches pairings that only work together, which the per-test splits above can't see. All remaining traffic flows through the per-test splits. Settings save with the Save button above.</div>`;
+
       autopilot = `<div style="border:1px solid var(--gold-deep);background:var(--panel);padding:14px 18px;margin:0 0 26px;overflow-x:auto">
         <h3 style="margin:0 0 6px">Autopilot <span class="note">— pushes new visitors toward what's converting; re-assessed all day, logged daily</span></h3>
         <div class="row-actions" style="margin:10px 0 2px">
@@ -1073,6 +1119,7 @@ async function showSplit() {
         </div>
         <div class="note" style="margin-bottom:2px">Today's traffic counts full; older days fade by the half-life — so the split adjusts daily but still respects the overall record. Wide-open uncertainty = near-even split; a clear winner soaks up traffic; a loser is only <b>turned off completely</b> once it has real volume and is losing with 95% confidence (revive it any time below). Daily columns show that day's conversion (joined/landed); hover for the traffic weight it was given.</div>
         ${bc.enabled ? testBlocks : '<div class="note" style="margin-top:10px">Autopilot is off — live versions split evenly. Flip it on and Save.</div>'}
+        ${comboPanel}
       </div>`;
     }
 
@@ -1106,6 +1153,10 @@ async function showSplit() {
             floorPct: document.getElementById('bp-floor').value,
             halfLifeDays: document.getElementById('bp-hl').value,
             killMinSessions: document.getElementById('bp-kill-min').value,
+            comboEnabled: document.getElementById('bp-combo').checked,
+            comboPct: document.getElementById('bp-combo-pct').value,
+            comboMinSessions: document.getElementById('bp-combo-min').value,
+            comboMax: document.getElementById('bp-combo-max').value,
           }),
         });
         showSplit();
@@ -1142,6 +1193,26 @@ async function showSplit() {
       document.querySelectorAll(`.arm-active[data-test="${testId}"]`).forEach((c) => { enabled[c.dataset.arm] = (c.dataset.arm === b.dataset.arm); });
       saveArms(testId, enabled);
     }));
+
+    // Recipe pins (Best combinations table + the Recipes panel's Unpin buttons).
+    const comboMsg = (t) => { const m = document.getElementById('combo-msg'); if (m) m.textContent = t; };
+    const saveComboPin = async (btn, pinPct) => {
+      comboMsg('Saving…');
+      try {
+        await api('/api/admin/split-combos', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: btn.dataset.image, bg: btn.dataset.bg, hl: btn.dataset.hl, pinPct }),
+        });
+        showSplit();
+      } catch (e) { comboMsg('Failed: ' + e.message); }
+    };
+    document.querySelectorAll('.combo-pin').forEach((b) => b.addEventListener('click', () => {
+      const inp = b.parentElement.querySelector('.combo-pct');
+      const v = parseInt(inp && inp.value, 10);
+      if (!v || v < 1) return comboMsg('Enter a % share first (100 = every new visitor).');
+      saveComboPin(b, Math.min(100, v));
+    }));
+    document.querySelectorAll('.combo-clear').forEach((b) => b.addEventListener('click', () => saveComboPin(b, 0)));
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 

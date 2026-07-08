@@ -46,6 +46,30 @@
         for (i = 0; i < arms.length; i++) { r -= wts[i]; if (r <= 0) return arms[i]; }
         return arms[arms.length - 1];
       }
+      // Recipe roll — pinned combos + the autopilot's champion pool (injected as
+      // window.__SPLIT_COMBOS, each {image, bg, hl, w}). A hit fixes all three
+      // dimensions TOGETHER, so a proven pairing is served exactly instead of
+      // re-rolled part by part. Only genuinely NEW visitors roll: any sticky arm
+      // or any ?img/?v/?h preview bypasses. A miss (weights sum < 1) falls through
+      // to the normal per-dimension picks below. Each dimension still validates
+      // its recipe key before use, so a stale cached page fails open.
+      var __COMBO = null;
+      try {
+        var __CS = window.__SPLIT_COMBOS;
+        if (__CS && __CS.length && !p.get('img') && !p.get('v') && !p.get('h')) {
+          var __sticky = null;
+          try {
+            __sticky = localStorage.getItem('wilhelm_drink_img') || localStorage.getItem('wilhelm_drink_bg') || localStorage.getItem('wilhelm_drink_hl');
+          } catch (e) {}
+          if (!__sticky) {
+            var __r = Math.random();
+            for (var __ci = 0; __ci < __CS.length; __ci++) {
+              __r -= (+__CS[__ci].w || 0);
+              if (__r <= 0) { __COMBO = __CS[__ci]; break; }
+            }
+          }
+        }
+      } catch (e) { __COMBO = null; }
       // Background A/B test — light vs dark above the fold. Live arms come from the
       // server (window.__SPLIT_ARMS.background, toggled in admin); even split among
       // them, sticky per visitor. ?v=light / ?v=dark forces ANY known arm for preview.
@@ -56,6 +80,8 @@
       var bg;
       if (BG_KNOWN.indexOf(forcedV) >= 0) {
         bg = forcedV;                                       // explicit preview — honor any known arm, even paused
+      } else if (__COMBO && BG_KNOWN.indexOf(__COMBO.bg) >= 0) {
+        bg = __COMBO.bg;                                    // recipe roll — sticky below like any pick
       } else {
         try { bg = localStorage.getItem('wilhelm_drink_bg'); } catch (e) {}
         if (BG_LIVE.indexOf(bg) < 0) { bg = wpick(BG_LIVE, 'background'); }   // new/unknown/paused → live arm (autopilot-weighted)
@@ -73,6 +99,8 @@
       var hl;
       if (HL_ALL.indexOf(forcedH) >= 0) {
         hl = forcedH;                                       // explicit preview — honor any known headline, even retired
+      } else if (__COMBO && HL_ALL.indexOf(__COMBO.hl) >= 0) {
+        hl = __COMBO.hl;                                    // recipe roll — a pin may deliberately use a retired arm
       } else {
         try { hl = localStorage.getItem('wilhelm_drink_hl'); } catch (e) {}
         if (HL_LIVE.indexOf(hl) < 0) { hl = wpick(HL_LIVE, 'headline'); }   // new/unknown/retired → live arm (autopilot-weighted)
@@ -130,6 +158,8 @@
       var arm;
       if (IMG[forcedI]) {
         arm = forcedI;                                   // explicit preview — honor any arm, even a paused one
+      } else if (__COMBO && IMG[__COMBO.image]) {
+        arm = __COMBO.image;                             // recipe roll — sticky below like any pick
       } else {
         try { arm = localStorage.getItem('wilhelm_drink_img'); } catch (e) {}
         if (!arm || !IMG[arm] || ORDER.indexOf(arm) < 0) {  // new, unknown, or paused arm → (re)bucket into a live one (autopilot-weighted)

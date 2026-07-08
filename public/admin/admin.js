@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'h1', journeyWin: 'd30', splitWin: 'd30', adfitWin: 'd30', adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'd30', splitWin: 'today', adfitWin: 'd30', adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.

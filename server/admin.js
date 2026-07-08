@@ -492,6 +492,12 @@ export function mountAdmin(app) {
       const day = new Date(Date.now() - 86400000);
       const week = new Date(Date.now() - 7 * 86400000);
       const month = new Date(Date.now() - 30 * 86400000);
+      // Optional day/range picker (?from&to as Central-day bounds, via windows()).
+      // When set, every table below covers exactly that span instead of its
+      // default window; the summary cards keep their fixed windows regardless.
+      const custom = windows(req).find((x) => x.key === 'custom') || null;
+      const rF = custom ? custom.from : month;
+      const rT = custom ? custom.to : new Date();
       const cnt = async (since) => (await q(
         since ? `SELECT COUNT(*)::int n FROM page_views WHERE created_at > $1 ${EXCL_PV}`
               : `SELECT COUNT(*)::int n FROM page_views WHERE TRUE ${EXCL_PV}`, since ? [since] : [])).rows[0].n;
@@ -501,18 +507,21 @@ export function mountAdmin(app) {
 
       const [total, l24, l7, l30] = [await cnt(), await cnt(day), await cnt(week), await cnt(month)];
       const [ut, u24, u7, u30] = [await uniq(), await uniq(day), await uniq(week), await uniq(month)];
+      const range = custom ? (await q(
+        `SELECT COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
+           FROM page_views WHERE created_at >= $1 AND created_at <= $2 ${EXCL_PV}`, [rF, rT])).rows[0] : null;
 
       const top = async (col) => (await q(
         `SELECT ${col} k, COUNT(*)::int n FROM page_views
-          WHERE created_at > $1 AND ${col} IS NOT NULL ${EXCL_PV}
-          GROUP BY ${col} ORDER BY n DESC LIMIT 10`, [month])).rows;
+          WHERE created_at >= $1 AND created_at <= $2 AND ${col} IS NOT NULL ${EXCL_PV}
+          GROUP BY ${col} ORDER BY n DESC LIMIT 10`, [rF, rT])).rows;
       const referrers = await top('referrer_host');
       const countries = await top('country');
       const paths = await top('path');
       const campaigns = (await q(
         `SELECT utm_source source, utm_medium medium, utm_campaign campaign, utm_content content, COUNT(*)::int n
-           FROM page_views WHERE created_at > $1 AND utm_source IS NOT NULL ${EXCL_PV}
-          GROUP BY utm_source, utm_medium, utm_campaign, utm_content ORDER BY n DESC LIMIT 15`, [month])).rows;
+           FROM page_views WHERE created_at >= $1 AND created_at <= $2 AND utm_source IS NOT NULL ${EXCL_PV}
+          GROUP BY utm_source, utm_medium, utm_campaign, utm_content ORDER BY n DESC LIMIT 15`, [rF, rT])).rows;
 
       // Conversion by channel: classify each visitor by their ENTRY (first page
       // view) into a tagged ad (source/campaign/ad), or a bucket when there's no
@@ -528,6 +537,7 @@ export function mountAdmin(app) {
              FROM page_views
             WHERE ip_hash NOT IN (SELECT ip_hash FROM internal_ips)
               AND referrer_host IS DISTINCT FROM 'wilhelmcoldbrew.com'
+              AND created_at >= $1 AND created_at <= $2
             ORDER BY ip_hash, created_at ASC
          ),
          classified AS (
@@ -548,27 +558,34 @@ export function mountAdmin(app) {
            FROM classified c LEFT JOIN joined_ips ji ON ji.ip_hash = c.ip_hash
           GROUP BY c.channel
           ORDER BY joined DESC, landed DESC
-          LIMIT 30`)).rows;
+          LIMIT 30`, [custom ? rF : new Date(0), rT])).rows;
       const joinersTotalRow = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
       const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.joined, 0);
       const directJoined = (joinersByUtm.find((r) => r.channel === 'direct') || {}).joined || 0;
       const daily = (await q(
-        `SELECT to_char(date_trunc('day', created_at AT TIME ZONE '${REPORT_TZ}'), 'YYYY-MM-DD') AS day,
-                COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
-           FROM page_views WHERE created_at > NOW() - INTERVAL '14 days' ${EXCL_PV}
-          GROUP BY 1 ORDER BY 1 ASC`)).rows;
+        custom
+          ? `SELECT to_char(date_trunc('day', created_at AT TIME ZONE '${REPORT_TZ}'), 'YYYY-MM-DD') AS day,
+                    COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
+               FROM page_views WHERE created_at >= $1 AND created_at <= $2 ${EXCL_PV}
+              GROUP BY 1 ORDER BY 1 ASC`
+          : `SELECT to_char(date_trunc('day', created_at AT TIME ZONE '${REPORT_TZ}'), 'YYYY-MM-DD') AS day,
+                    COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
+               FROM page_views WHERE created_at > NOW() - INTERVAL '14 days' ${EXCL_PV}
+              GROUP BY 1 ORDER BY 1 ASC`,
+        custom ? [rF, rT] : [])).rows;
 
       // Top cities (from client-side geo on journey_events).
       const cities = (await q(
         `SELECT city, region, country, COUNT(DISTINCT session_id)::int n
            FROM journey_events
-          WHERE created_at > $1 AND city IS NOT NULL ${EXCL_JE}
-          GROUP BY city, region, country ORDER BY n DESC LIMIT 12`, [month])).rows;
+          WHERE created_at >= $1 AND created_at <= $2 AND city IS NOT NULL ${EXCL_JE}
+          GROUP BY city, region, country ORDER BY n DESC LIMIT 12`, [rF, rT])).rows;
 
       res.json({
         views: { total, last24h: l24, last7d: l7, last30d: l30 },
         visitors: { total: ut, last24h: u24, last7d: u7, last30d: u30 },
+        range: range ? { from: req.query.from, to: req.query.to, views: range.views, visitors: range.visitors } : null,
         topReferrers: referrers.map((r) => ({ host: r.k || 'direct', count: r.n })),
         topCountries: countries.map((r) => ({ country: r.k || '??', count: r.n })),
         topPaths: paths.map((r) => ({ path: r.k, count: r.n })),

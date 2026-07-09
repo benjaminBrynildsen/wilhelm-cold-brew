@@ -139,7 +139,7 @@ function renderApp() {
   // shrink until the text fits. Re-runs on every tab render and on resize.
   const fitCards = () => document.querySelectorAll('.card .v').forEach((v) => {
     const card = v.closest('.card'); if (!card || !card.clientWidth) return;
-    let size = Math.round(card.clientWidth * 0.52);
+    let size = Math.round(card.clientWidth * 0.36);
     const max = card.clientWidth - 32;
     v.style.fontSize = size + 'px';
     while (size > 24 && v.scrollWidth > max) { size -= 2; v.style.fontSize = size + 'px'; }

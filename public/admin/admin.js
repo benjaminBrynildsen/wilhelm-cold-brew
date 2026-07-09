@@ -229,7 +229,7 @@ async function registerFaceId() {
   }
 }
 
-const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
+const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email'], ['thankyou', 'Thank you']];
 // Phone bottom bar: Journey · Split test · [logo → Overview] · Orders · More.
 // Everything else lives behind More; when a More tab is active, the More slot
 // shows its name in gold.
@@ -249,6 +249,7 @@ const ICON = (() => {
     journey: svg('<circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 6h7a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h7" transform="translate(0,-2)"/>'),
     orders: svg('<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'),
     email: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
+    thankyou: svg('<path d="M12 20.5C6.5 16.5 3.5 13.4 3.5 9.9 3.5 7.4 5.4 5.5 7.8 5.5c1.6 0 3.1.8 4.2 2.3 1.1-1.5 2.6-2.3 4.2-2.3 2.4 0 4.3 1.9 4.3 4.4 0 3.5-3 6.6-8.5 10.6z"/>'),
     more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
   };
 })();
@@ -471,6 +472,75 @@ function show(tab) {
   if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
   if (tab === 'orders') return showOrders();
   if (tab === 'email') return showEmail();
+  if (tab === 'thankyou') return showThankyou();
+}
+
+// ───────── Thank-you cards ─────────
+// One card per paid order, matched by email to the customer's conversation —
+// their replies (favorite coffees, first-coffee memories) sit right next to the
+// name and address you're writing the card to.
+async function showThankyou() {
+  loading();
+  try {
+    const d = await api('/api/admin/thankyou');
+    const conv = d.conversations || {};
+    const fmtD = (t) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const cards = (d.orders || []).map((o) => {
+      const em = (o.email || '').toLowerCase();
+      const msgs = conv[em] || [];
+      const addr = o.shipping_address || {};
+      const place = [addr.city, addr.state].filter(Boolean).join(', ');
+      const facts = [
+        `${o.quantity || 1}× bottle`, money(o.amount_total_cents),
+        fmtD(o.paid_at || o.created_at),
+        place,
+        d.subscribedAt[em] ? `on the list since ${fmtD(d.subscribedAt[em])}` : '',
+      ].filter(Boolean).join(' · ');
+      const thread = msgs.length
+        ? msgs.map((m) => `
+          <div class="msg ${m.direction}">
+            <div class="msg-meta">${m.direction === 'in' ? esc(o.shipping_name || em) : 'You'} · ${fmtD(m.sent_at)}${m.subject ? ' · ' + esc(m.subject) : ''}</div>
+            <div class="msg-body">${esc((m.body || '').slice(0, 1500))}</div>
+          </div>`).join('')
+        : '<div class="note" style="margin:8px 0 2px">No emails with this customer yet.</div>';
+      return `<div class="panel ty-card${o.written_at ? ' done' : ''}">
+        <div class="ty-head">
+          <div>
+            <b>${esc(o.shipping_name || em)}</b> <span class="note">${esc(em)}</span>
+            <div class="note">${facts}</div>
+          </div>
+          <button class="btn ${o.written_at ? 'ghost' : ''} sm ty-toggle" data-id="${o.id}" data-written="${o.written_at ? 1 : 0}">${o.written_at ? 'Card written ✓' : 'Mark card written'}</button>
+        </div>
+        ${thread}
+      </div>`;
+    }).join('');
+    const syncNote = d.sync.configured
+      ? (d.sync.lastSyncAt ? `Inbox synced ${ago(new Date(d.sync.lastSyncAt).toISOString())}` : 'Inbox not synced yet — tap Sync.')
+      : 'Inbox not connected — set IMAP_USER / IMAP_PASS on the server (your Gmail address + app password; the SMTP ones work).';
+    content().innerHTML = `
+      <div class="row-actions" style="margin:6px 0 10px">
+        <button class="btn ghost sm" id="ty-sync" ${d.sync.configured ? '' : 'disabled'}>Sync inbox</button>
+        <span class="note" id="ty-msg">${syncNote}</span>
+      </div>
+      <div class="note" style="margin-bottom:16px">One card per paid order. Their emails — favorite coffees, first-coffee memories — sit next to the name you're writing to. Mark each card as you finish it.</div>
+      ${cards || '<div class="note">No paid orders yet — cards appear here as orders come in.</div>'}`;
+    const sync = document.getElementById('ty-sync');
+    if (sync) sync.addEventListener('click', async () => {
+      const m = document.getElementById('ty-msg');
+      m.textContent = 'Syncing…';
+      try {
+        const r = await api('/api/admin/thankyou/sync', { method: 'POST' });
+        if (r.ok) { showThankyou(); } else { m.textContent = 'Sync failed: ' + (r.error || 'unknown'); }
+      } catch (e) { m.textContent = 'Sync failed: ' + e.message; }
+    });
+    document.querySelectorAll('.ty-toggle').forEach((b) => b.addEventListener('click', async () => {
+      await api('/api/admin/thankyou/card', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: +b.dataset.id, written: b.dataset.written !== '1' }),
+      }).catch(() => {});
+      showThankyou();
+    }));
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 
 // ───────── Ad Fit ─────────

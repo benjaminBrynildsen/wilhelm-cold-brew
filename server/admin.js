@@ -3,6 +3,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
+import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed } from './mailchimp.js';
@@ -892,6 +893,52 @@ export function mountAdmin(app) {
         res.status(400).json({ error: e.message });
       } finally { client.release(); }
     } catch (e) { console.error('[rosql]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── thank-you cards: orders matched to email conversations ─────────
+  app.get('/api/admin/thankyou', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      // Refresh the inbox in the background when stale; answer with what we have.
+      const st = inboxSyncState();
+      if (st.configured && !st.syncing && Date.now() - st.lastSyncAt > 15 * 60000) void syncInbox();
+      const orders = (await q(`
+        SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.shipping_name,
+               o.shipping_address, o.paid_at, o.created_at, t.written_at
+          FROM orders o LEFT JOIN thankyou_cards t ON t.order_id = o.id
+         WHERE o.paid_at IS NOT NULL OR o.status = 'paid'
+         ORDER BY COALESCE(o.paid_at, o.created_at) DESC
+         LIMIT 200`)).rows;
+      const emails = [...new Set(orders.map((o) => (o.email || '').toLowerCase()).filter(Boolean))];
+      const conversations = {};
+      let subscribedAt = {};
+      if (emails.length) {
+        (await q(`SELECT customer_email, direction, subject, body, sent_at
+                    FROM email_messages WHERE customer_email = ANY($1) ORDER BY sent_at`, [emails]))
+          .rows.forEach((m) => { (conversations[m.customer_email] = conversations[m.customer_email] || []).push(m); });
+        subscribedAt = Object.fromEntries(
+          (await q(`SELECT LOWER(email) e, MIN(created_at) c FROM subscribers WHERE LOWER(email) = ANY($1) GROUP BY 1`, [emails]))
+            .rows.map((s) => [s.e, s.c]));
+      }
+      res.json({ orders, conversations, subscribedAt, sync: inboxSyncState() });
+    } catch (e) { console.error('[thankyou]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/thankyou/sync', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    res.json(await syncInbox());
+  });
+  app.post('/api/admin/thankyou/card', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const orderId = parseInt(req.body?.orderId, 10);
+      if (!orderId) return res.status(400).json({ error: 'orderId required' });
+      if (req.body?.written) {
+        await q(`INSERT INTO thankyou_cards (order_id) VALUES ($1) ON CONFLICT (order_id) DO NOTHING`, [orderId]);
+      } else {
+        await q(`DELETE FROM thankyou_cards WHERE order_id = $1`, [orderId]);
+      }
+      res.json({ ok: true });
+    } catch (e) { console.error('[thankyou/card]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test autopilot (bandit) ─────────

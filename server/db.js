@@ -243,6 +243,27 @@ export async function ensureSchema() {
       PRIMARY KEY (image, bg, hl)
     );
 
+    -- Customer email conversations, synced from the mailbox over IMAP (see
+    -- server/inbox.js). One row per message, keyed to the customer's address;
+    -- the Thank-you tab renders these as per-customer conversation cards.
+    CREATE TABLE IF NOT EXISTS email_messages (
+      id             BIGSERIAL PRIMARY KEY,
+      message_id     TEXT UNIQUE,             -- RFC Message-ID (dedupe across syncs)
+      customer_email TEXT NOT NULL,           -- counterpart address, lowercased
+      direction      TEXT NOT NULL,           -- 'in' (from customer) | 'out' (our reply)
+      subject        TEXT,
+      body           TEXT,
+      sent_at        TIMESTAMPTZ,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS em_customer_idx ON email_messages (customer_email, sent_at);
+
+    -- Which orders already got a handwritten thank-you card.
+    CREATE TABLE IF NOT EXISTS thankyou_cards (
+      order_id   BIGINT PRIMARY KEY,
+      written_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     -- Ad creative registry for the admin "Ad Fit" tab. name matches the ad URL's
     -- utm_content, so traffic/conversion data joins to the creative. covers is the
     -- list of knowledge-point keys the ad itself communicates (see adfit config).

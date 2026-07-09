@@ -124,6 +124,7 @@ async function faceIdLogin() {
 
 function renderApp() {
   app.innerHTML = `
+    <div class="pagebar"><span id="pagetitle"></span></div>
     <div class="signups-badge" id="signups-badge" title="Signups today (Central)">
       <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k">signups</span>
     </div>
@@ -268,6 +269,10 @@ function renderTabs() {
     t.addEventListener('click', () => switchTab(t.dataset.tab)));
   wireActions(document.getElementById('tabs'));
 
+  // Phone top bar: the current tab's name, centered.
+  const pt = document.getElementById('pagetitle');
+  if (pt) pt.textContent = (TAB_LIST.find((t) => t[0] === state.tab) || [, ''])[1];
+
   const bn = document.getElementById('bottomnav');
   if (!bn) return;
   const label = (k) => (k === 'split' ? 'Split' : (TAB_LIST.find((t) => t[0] === k) || [, k])[1]);   // short bar labels
@@ -376,7 +381,21 @@ function wireWinbar(reload, key = 'win') {
 }
 
 const content = () => document.getElementById('content');
-const loading = () => { content().innerHTML = '<div class="loadwrap"><img class="loadbottle" src="/admin/bottle.png" alt="Loading" width="152" height="560"/></div>'; };
+// Loading state: a wooden barrel (inline SVG, brand gold line work) spinning.
+const loading = () => {
+  content().innerHTML = `<div class="loadwrap" aria-label="Loading">
+    <svg class="loadbarrel" viewBox="0 0 120 150" width="120" height="150" fill="none" stroke-linecap="round" aria-hidden="true">
+      <path d="M22 14 Q60 6 98 14 Q112 75 98 136 Q60 144 22 136 Q8 75 22 14 Z" fill="#201709" stroke="#b8922f" stroke-width="4"/>
+      <path d="M22 14 Q60 22 98 14" stroke="#b8922f" stroke-width="2.5" opacity=".8"/>
+      <path d="M42 11 Q39 75 42 139" stroke="#b8922f" stroke-width="2.2" opacity=".45"/>
+      <path d="M60 9 L60 141" stroke="#b8922f" stroke-width="2.2" opacity=".45"/>
+      <path d="M78 11 Q81 75 78 139" stroke="#b8922f" stroke-width="2.2" opacity=".45"/>
+      <path d="M15 36 Q60 46 105 36" stroke="#e8c24a" stroke-width="4.5"/>
+      <path d="M11 68 Q60 78 109 68" stroke="#e8c24a" stroke-width="4.5"/>
+      <path d="M14 104 Q60 114 106 104" stroke="#e8c24a" stroke-width="4.5"/>
+    </svg>
+  </div>`;
+};
 
 // ───────── Click-to-sort for every admin table ─────────
 // Delegated on document so it covers every current + future table without

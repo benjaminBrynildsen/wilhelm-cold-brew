@@ -8,9 +8,11 @@
   <link rel="icon" href="/favicon.ico" sizes="any"/>
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
   <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600;700;800&family=Cinzel:wght@700;800&family=DM+Mono:wght@400;500&display=swap"/>
   <style>
     :root{
-      --gold:#e8c24a; --gold-deep:#b8922f; --ink:#0c0a08; --ink-2:#15100b;
+      --gold:#e8c24a; --gold-deep:#b8922f; --ink:#2b2b2b; --ink-2:#15100b;
       --panel:#1a140d; --line:rgba(232,194,74,0.22); --line-soft:rgba(232,194,74,0.10);
       --parch:#f1e6c8; --muted:rgba(241,230,200,0.78); --dim:rgba(241,230,200,0.55);
       --good:#86e09a; --bad:#f0805a;
@@ -69,10 +71,10 @@
       /* app-style top bar: centered page title, badge on its right; the bar
          reserves the height so the badge can't cover the pickers below */
       .pagebar{display:flex;align-items:center;justify-content:center;min-height:76px;margin-bottom:6px}
-      #pagetitle{font-family:var(--display);font-weight:600;color:var(--gold);font-size:22px;letter-spacing:2.5px;text-transform:uppercase}
+      #pagetitle{font-family:'Cinzel',var(--display);font-weight:800;color:var(--gold);font-size:21px;letter-spacing:3px;text-transform:uppercase}
       .signups-badge{top:10px;right:16px}
       .wrap{padding-bottom:96px}
-      .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:rgba(12,10,8,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
+      .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:rgba(43,43,43,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
       .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;padding:9px 2px 7px;overflow:hidden}
       .bn-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .bn-item.active{color:var(--gold);border-top-color:var(--gold)}

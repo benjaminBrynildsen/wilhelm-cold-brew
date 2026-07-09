@@ -134,7 +134,11 @@ function renderApp() {
     </div>
     <div id="faceid-panel" style="display:none"></div>
     <div class="tabs" id="tabs"></div>
-    <div id="content"></div>`;
+    <div id="content"></div>
+    <nav class="bottomnav" id="bottomnav" aria-label="Sections"></nav>
+    <div class="more-sheet" id="more-sheet" hidden><div class="ms-panel"></div></div>`;
+  const moreSheet = document.getElementById('more-sheet');
+  moreSheet.addEventListener('click', (e) => { if (e.target === moreSheet) moreSheet.hidden = true; });
   // Stat tiles: size each value to fill its square — start near the tile width,
   // shrink until the text fits. Re-runs on every tab render and on resize.
   const fitCards = () => document.querySelectorAll('.card .v').forEach((v) => {
@@ -203,12 +207,41 @@ async function registerFaceId() {
   }
 }
 
+const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
+// Phone bottom bar: the three everyday tabs stay one thumb away; the rest live
+// behind More. When a More tab is active, the More slot shows its name in gold.
+const BN_MAIN = ['overview', 'split', 'journey'];
+
+function switchTab(k) {
+  state.tab = k;
+  const ms = document.getElementById('more-sheet');
+  if (ms) ms.hidden = true;
+  renderTabs();
+  show(k);
+  window.scrollTo({ top: 0 });
+}
+
 function renderTabs() {
-  const tabs = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
-  document.getElementById('tabs').innerHTML = tabs.map(
+  document.getElementById('tabs').innerHTML = TAB_LIST.map(
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('');
   document.querySelectorAll('.tab').forEach((t) =>
-    t.addEventListener('click', () => { state.tab = t.dataset.tab; renderTabs(); show(state.tab); }));
+    t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+  const bn = document.getElementById('bottomnav');
+  if (!bn) return;
+  const label = (k) => (TAB_LIST.find((t) => t[0] === k) || [, k])[1];
+  const inMore = !BN_MAIN.includes(state.tab);
+  bn.innerHTML = BN_MAIN.map((k) =>
+    `<button class="bn-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${esc(label(k))}</button>`).join('')
+    + `<button class="bn-item ${inMore ? 'active' : ''}" id="bn-more">${inMore ? esc(label(state.tab)) : 'More'}</button>`;
+  bn.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  bn.querySelector('#bn-more').addEventListener('click', () => {
+    const ms = document.getElementById('more-sheet');
+    ms.querySelector('.ms-panel').innerHTML = TAB_LIST.filter(([k]) => !BN_MAIN.includes(k)).map(
+      ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('');
+    ms.hidden = false;
+    ms.querySelectorAll('.ms-item').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  });
 }
 
 // "Today" per Central time (the report timezone), so the day picker + its max

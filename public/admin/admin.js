@@ -129,7 +129,6 @@ function renderApp() {
     </div>
     <div class="masthead">
       <img class="mark" src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="96" height="96"/>
-      <div class="sub">Funnel &amp; analytics</div>
     </div>
     <div id="faceid-panel" style="display:none"></div>
     <div class="tabs" id="tabs"></div>
@@ -226,9 +225,12 @@ async function registerFaceId() {
 }
 
 const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email']];
-// Phone bottom bar: the three everyday tabs stay one thumb away; the rest live
-// behind More. When a More tab is active, the More slot shows its name in gold.
-const BN_MAIN = ['overview', 'split', 'journey'];
+// Phone bottom bar: Journey · Split test · [logo → Overview] · Orders · More.
+// Everything else lives behind More; when a More tab is active, the More slot
+// shows its name in gold.
+const BN_LEFT = ['journey', 'split'];
+const BN_RIGHT = ['orders'];
+const BN_DIRECT = [...BN_LEFT, 'overview', ...BN_RIGHT];
 
 // Line icons (inline SVG, stroke follows text color) so the bar reads like an app.
 const ICON = (() => {
@@ -269,14 +271,18 @@ function renderTabs() {
   const bn = document.getElementById('bottomnav');
   if (!bn) return;
   const label = (k) => (TAB_LIST.find((t) => t[0] === k) || [, k])[1];
-  const inMore = !BN_MAIN.includes(state.tab);
-  bn.innerHTML = BN_MAIN.map((k) =>
-    `<button class="bn-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${esc(label(k))}</span></button>`).join('')
+  const item = (k) =>
+    `<button class="bn-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${esc(label(k))}</span></button>`;
+  const inMore = !BN_DIRECT.includes(state.tab);
+  bn.innerHTML = BN_LEFT.map(item).join('')
+    + `<button class="bn-item bn-logo ${state.tab === 'overview' ? 'active' : ''}" data-tab="overview" aria-label="Overview">
+        <img src="/drink/assets/wilhelm-circle.png" alt=""/></button>`
+    + BN_RIGHT.map(item).join('')
     + `<button class="bn-item ${inMore ? 'active' : ''}" id="bn-more">${inMore ? (ICON[state.tab] || ICON.more) : ICON.more}<span>${inMore ? esc(label(state.tab)) : 'More'}</span></button>`;
   bn.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   bn.querySelector('#bn-more').addEventListener('click', () => {
     const ms = document.getElementById('more-sheet');
-    ms.querySelector('.ms-panel').innerHTML = TAB_LIST.filter(([k]) => !BN_MAIN.includes(k)).map(
+    ms.querySelector('.ms-panel').innerHTML = TAB_LIST.filter(([k]) => !BN_DIRECT.includes(k)).map(
       ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${l}</span></button>`).join('')
       + `<div class="ms-actions">
           <button class="btn ghost act-faceid">Face ID</button>

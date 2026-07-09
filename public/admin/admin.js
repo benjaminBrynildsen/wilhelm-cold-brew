@@ -299,7 +299,7 @@ function renderTabs() {
 function todayStr() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 // True when the active window is a single calendar day (from === to).
 function isSingleDay(key = 'win') { return state[key] === 'custom' && state.customFrom && state.customFrom === state.customTo; }
-function winbar(key = 'win') {
+function winbar(key = 'win', opts = {}) {
   const sel = state[key];
   const btns = WINS.map(([k, l]) =>
     `<div class="win ${sel === k ? 'active' : ''}" data-win="${k}">${l}</div>`).join('');
@@ -307,19 +307,27 @@ function winbar(key = 'win') {
   const day = isSingleDay(key) ? state.customFrom : (state.customFrom || todayStr());
   const dayActive = isSingleDay(key) ? ' active' : '';
   const rangeActive = (sel === 'custom' && !isSingleDay(key)) ? ' active' : '';
+  // Range (and any tab extras, e.g. the overview's hour slice) fold behind one
+  // Filters button — gold when a hidden filter is shaping the numbers.
+  const filtersOn = !!rangeActive || !!opts.extraActive;
+  const open = !!state.winMore;
   return `<div class="winbar">${btns}</div>
     <div class="winbar">
       <span class="winlabel">DAY</span>
       <button class="daystep" id="dprev" aria-label="Previous day">‹</button>
       <input type="date" id="cday" class="dateinput${dayActive}" value="${esc(day)}" max="${todayStr()}"/>
       <button class="daystep" id="dnext" aria-label="Next day">›</button>
+      <button class="win${filtersOn ? ' active' : ''}" id="winmore-toggle">Filters ${open ? '▴' : '▾'}</button>
     </div>
+    <div id="winmore"${open ? '' : ' hidden'}>
     <div class="winbar">
       <span class="winlabel">RANGE</span>
       <input type="date" id="cfrom" class="dateinput" value="${esc(state.customFrom)}"/>
       <span class="winlabel" style="min-width:0">to</span>
       <input type="date" id="cto" class="dateinput" value="${esc(state.customTo)}"/>
       <button class="win${rangeActive}" id="capply">Apply</button>
+    </div>
+    ${opts.extra || ''}
     </div>`;
 }
 function winQuery(key = 'win') {
@@ -337,6 +345,14 @@ function funnelQuery(key = 'win') {
 function wireWinbar(reload, key = 'win') {
   document.querySelectorAll('.win[data-win]').forEach((w) =>
     w.addEventListener('click', () => { state[key] = w.dataset.win; reload(); }));
+  // Filters fold: toggle in place (no rerender) so open state survives typing.
+  const wt = document.getElementById('winmore-toggle');
+  if (wt) wt.addEventListener('click', () => {
+    state.winMore = !state.winMore;
+    const m = document.getElementById('winmore');
+    if (m) m.hidden = !state.winMore;
+    wt.innerHTML = wt.innerHTML.replace(state.winMore ? '▾' : '▴', state.winMore ? '▴' : '▾');
+  });
   // Day navigator: jump to / step a single day. from === to → server covers the
   // whole UTC day (00:00:00–23:59:59), so one tap shows exactly that day.
   const setDay = (d) => { if (!d) return; state.customFrom = d; state.customTo = d; state[key] = 'custom'; reload(); };
@@ -914,7 +930,7 @@ async function showOverview() {
         <th class="num">Signups</th><th class="num">Conv.</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
 
-    content().innerHTML = winbar() + hoursBar + `
+    content().innerHTML = winbar('win', { extra: hoursBar, extraActive: !!state.ovHours }) + `
       <div class="cards">
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
         <div class="card"><div class="k">Drink-page sessions</div><div class="v">${num(w.drinkSessions)}</div></div>

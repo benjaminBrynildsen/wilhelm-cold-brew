@@ -26,19 +26,12 @@
     /* centered brand masthead */
     .masthead{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px;text-align:center}
     .masthead .mark{width:96px;height:96px;border-radius:50%;display:block}
-    /* today's-signups badge, pinned top right — same live glow + light sweep
-       as the buy page's bottle count box */
+    /* today's-signups badge, pinned top right — solid gold, like a button */
     .wrap{position:relative}
-    .signups-badge{position:absolute;top:14px;right:clamp(16px,4vw,40px);z-index:5;min-width:74px;text-align:center;overflow:hidden;
-      border:1.5px solid var(--gold);border-radius:9px;background:rgba(232,194,74,.06);padding:8px 14px 7px;animation:sbGlow 2.6s ease-in-out infinite}
-    .signups-badge::after{content:'';position:absolute;top:0;left:-70%;width:55%;height:100%;
-      background:linear-gradient(100deg,transparent,rgba(255,246,214,.55),transparent);
-      transform:skewX(-18deg);animation:sbShimmer 3.4s ease-in-out infinite;pointer-events:none}
-    @keyframes sbGlow{0%,100%{box-shadow:0 4px 18px rgba(0,0,0,.4),0 0 0 0 rgba(232,194,74,0)}50%{box-shadow:0 4px 18px rgba(0,0,0,.4),0 0 16px 1px rgba(232,194,74,.55)}}
-    @keyframes sbShimmer{0%{left:-70%}55%,100%{left:130%}}
-    @media(prefers-reduced-motion:reduce){.signups-badge{animation:none}.signups-badge::after{display:none}}
-    .signups-badge .sb-k{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:1.6px;color:var(--dim);text-transform:uppercase}
-    .signups-badge .sb-v{display:block;font-family:var(--display);font-weight:700;font-size:24px;line-height:1.15;color:var(--gold)}
+    .signups-badge{position:absolute;top:14px;right:clamp(16px,4vw,40px);z-index:5;min-width:74px;text-align:center;
+      border-radius:9px;background:var(--gold);padding:8px 14px 7px;box-shadow:0 4px 16px rgba(0,0,0,.45)}
+    .signups-badge .sb-k{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:1.6px;color:rgba(12,10,8,.7);text-transform:uppercase}
+    .signups-badge .sb-v{display:block;font-family:var(--display);font-weight:700;font-size:24px;line-height:1.15;color:var(--ink)}
     /* Face ID / Log out at the right end of the desktop tab bar */
     .tab-actions{margin-left:auto;display:flex;gap:8px;align-items:center;padding-bottom:6px}
     .btn.sm{height:32px;padding:0 12px;font-size:12.5px}
@@ -71,14 +64,15 @@
     .tab.active{color:var(--gold);border-bottom-color:var(--gold)}
     @media(max-width:760px){
       .tabs{display:none}
+      .masthead{display:none}   /* the bottom-bar logo carries the brand on phones */
       .wrap{padding-bottom:96px}
       .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:rgba(12,10,8,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
       .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;padding:9px 2px 7px;overflow:hidden}
       .bn-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .bn-item.active{color:var(--gold);border-top-color:var(--gold)}
       /* the logo floats like a badge: bigger than the bar, top ~20% above it */
-      .bn-logo{flex:0 0 74px;justify-content:flex-start;padding:0 2px;overflow:visible;margin-top:-17px;border-top:none}
-      .bn-logo img{width:58px;height:58px;border-radius:50%;display:block;background:var(--ink);
+      .bn-logo{flex:0 0 86px;justify-content:flex-start;padding:0 2px;overflow:visible;margin-top:-20px;border-top:none}
+      .bn-logo img{width:70px;height:70px;border-radius:50%;display:block;background:var(--ink);
         border:1.5px solid var(--gold-deep);box-shadow:0 4px 14px rgba(0,0,0,.6)}
       .bn-logo.active img{border-color:var(--gold);box-shadow:0 4px 14px rgba(0,0,0,.6),0 0 12px rgba(232,194,74,.55)}
     }

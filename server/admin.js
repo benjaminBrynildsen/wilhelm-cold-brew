@@ -340,6 +340,9 @@ export function mountAdmin(app) {
     catch (e) { console.error('[webauthn/delete]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Since-launch day-by-day rollup cache (see the overview route).
+  let overviewDailyCache = { key: '', at: 0, daily: null };
+
   // Today's signup count (Central day) — feeds the always-visible header badge.
   app.get('/api/admin/signups-today', async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -359,15 +362,20 @@ export function mountAdmin(app) {
       // constant and the hours are validated ints, so this is not injectable.
       const hourFrag = hourOfDayFrag(req.query?.hours);
       const out = {};
-      for (const w of windows(req)) {
+      // Compute ONLY the requested window (?win=…) — the tab shows one at a
+      // time and the all-time window is the expensive one. No ?win → every
+      // window (back-compat). All counts for a window run concurrently.
+      const allWins = windows(req);
+      const requested = req.query?.win;
+      const winList = requested ? allWins.filter((w) => w.key === requested) : allWins;
+      const winJobs = (winList.length ? winList : allWins).map(async (w) => {
         const p = [w.from, w.to];
-        const sessions = await q(
-          `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p);
-        const drinkSessions = await q(
-          `SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
-          [w.from, w.to, DRINK_PAGES]);
-        const signups = await q(
-          `SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p);
+        const [sessions, drinkSessions, signups] = await Promise.all([
+          q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
+          q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
+            [w.from, w.to, DRINK_PAGES]),
+          q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
+        ]);
         const ds = drinkSessions.rows[0].n, su = signups.rows[0].n;
         out[w.key] = {
           sessions: sessions.rows[0].n,
@@ -375,26 +383,40 @@ export function mountAdmin(app) {
           signups: su,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
         };
-      }
-      const totalSubs = await q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}`);
+      });
 
       // Per-Central-day snapshot since launch — the overview stats as one row per
       // day. Honors the same internal-traffic exclusions and hour slice as the
-      // cards. Merged in JS: three cheap GROUP BYs beat one three-way FULL JOIN.
-      const dayExpr = `TO_CHAR(created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
-      const byDay = {};
-      const fold = (rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
-      fold((await q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE TRUE ${EXCL_JE}${hourFrag} GROUP BY 1`)).rows, 'sessions');
-      fold((await q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($1) ${EXCL_JE}${hourFrag} GROUP BY 1`, [DRINK_PAGES])).rows, 'drinkSessions');
-      fold((await q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}${hourFrag} GROUP BY 1`)).rows, 'signups');
-      const daily = Object.entries(byDay)
-        .map(([day, v]) => {
-          const ds = v.drinkSessions || 0, su = v.signups || 0;
-          return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
-                   conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0 };
-        })
-        .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
+      // cards. These scans cover everything since launch, and only today's row
+      // can change between refreshes, so the result is cached briefly.
+      const dailyJob = (async () => {
+        const cached = overviewDailyCache;
+        if (cached.key === hourFrag && Date.now() - cached.at < 60000) return cached.daily;
+        const dayExpr = `TO_CHAR(created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
+        const byDay = {};
+        const fold = (rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
+        const [s, d, j] = await Promise.all([
+          q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE TRUE ${EXCL_JE}${hourFrag} GROUP BY 1`),
+          q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($1) ${EXCL_JE}${hourFrag} GROUP BY 1`, [DRINK_PAGES]),
+          q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}${hourFrag} GROUP BY 1`),
+        ]);
+        fold(s.rows, 'sessions'); fold(d.rows, 'drinkSessions'); fold(j.rows, 'signups');
+        const daily = Object.entries(byDay)
+          .map(([day, v]) => {
+            const ds = v.drinkSessions || 0, su = v.signups || 0;
+            return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
+                     conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0 };
+          })
+          .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
+        overviewDailyCache = { key: hourFrag, at: Date.now(), daily };
+        return daily;
+      })();
 
+      const [totalSubs, daily] = await Promise.all([
+        q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}`),
+        dailyJob,
+        ...winJobs,
+      ]);
       res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });

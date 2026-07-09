@@ -65,6 +65,10 @@
     @media(max-width:760px){
       .tabs{display:none}
       .masthead{display:none}   /* the bottom-bar logo carries the brand on phones */
+      /* no masthead → nothing for an absolute badge to hang beside; put it in
+         the flow as a compact pill above the pickers so it can't cover them */
+      .signups-badge{position:static;width:max-content;margin:2px 0 12px auto;display:flex;align-items:baseline;gap:7px;padding:7px 12px 6px}
+      .signups-badge .sb-v{font-size:20px}
       .wrap{padding-bottom:96px}
       .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:rgba(12,10,8,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
       .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;padding:9px 2px 7px;overflow:hidden}

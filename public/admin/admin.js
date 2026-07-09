@@ -376,7 +376,7 @@ function wireWinbar(reload, key = 'win') {
 }
 
 const content = () => document.getElementById('content');
-const loading = () => { content().innerHTML = '<div class="note">Loading…</div>'; };
+const loading = () => { content().innerHTML = '<div class="loadwrap"><img class="loadbottle" src="/admin/bottle.png" alt="Loading" width="152" height="560"/></div>'; };
 
 // ───────── Click-to-sort for every admin table ─────────
 // Delegated on document so it covers every current + future table without
@@ -1210,7 +1210,9 @@ async function showSplit() {
       const cEntries = (bandit.combos && bandit.combos.entries) || [];
       const comboRows = cEntries.map((e) => {
         const wPct = Math.round((e.weight || 0) * 100);
-        const conv = e.landed ? ((e.joined / e.landed) * 100).toFixed(1) + '%' : '—';
+        // Show TODAY's numbers (like the daily columns above), not the lookback total.
+        const t = (e.days && e.days[bandit.today]) || { landed: 0, joined: 0 };
+        const conv = t.landed ? ((t.joined / t.landed) * 100).toFixed(1) + '%' : '—';
         const dataAttrs = `data-image="${esc(e.image)}" data-bg="${esc(e.bg)}" data-hl="${esc(e.hl)}"`;
         return `<tr>
           <td>${esc(armLabel('image', e.image))}</td><td>${esc(armLabel('background', e.bg))}</td><td>${esc(armLabel('headline', e.hl))}</td>
@@ -1219,7 +1221,7 @@ async function showSplit() {
             : '<span class="chip warn">pool</span>'}</td>
           <td style="min-width:90px"><div class="bar" style="height:14px"><div class="fill" style="width:${wPct}%"></div></div></td>
           <td class="num"><b>${wPct}%</b></td>
-          <td class="num">${num(e.landed)}</td><td class="num">${num(e.joined)}</td><td class="num">${conv}</td></tr>`;
+          <td class="num">${num(t.landed)}</td><td class="num">${num(t.joined)}</td><td class="num">${conv}</td></tr>`;
       }).join('');
       const comboPanel = `
         <h3 style="margin:16px 0 4px;font-size:17px">Recipes <span class="note">— full combinations served as a unit (image + background + headline together)</span></h3>
@@ -1231,7 +1233,7 @@ async function showSplit() {
         </div>
         ${cEntries.length
           ? `<table><thead><tr><th>Image</th><th>Background</th><th>Headline</th><th>How</th><th>Traffic share</th><th class="num">%</th>
-              <th class="num">Landed ${bc.lookbackDays || 28}d</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead><tbody>${comboRows}</tbody></table>`
+              <th class="num">Landed today</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead><tbody>${comboRows}</tbody></table>`
           : '<div class="note" style="margin:8px 0">No recipes serving yet — pin one from Best combinations below, or the pool will pick up combinations automatically once they clear the session bar.</div>'}
         <details class="how"><summary>How recipes are served</summary>
           <div class="note">Pinned recipes serve at exactly their share even with Autopilot off. The champion pool Thompson-samples the best <b>proven</b> recipes (enough sessions, every arm still live) against each other for its share — it catches pairings that only work together, which the per-test splits above can't see. All remaining traffic flows through the per-test splits. Settings save with the Save button above.</div>

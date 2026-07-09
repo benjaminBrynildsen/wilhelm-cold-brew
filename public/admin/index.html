@@ -76,10 +76,11 @@
       .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;padding:9px 2px 7px;overflow:hidden}
       .bn-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .bn-item.active{color:var(--gold);border-top-color:var(--gold)}
-      .bn-logo{flex:0 0 64px;justify-content:center;padding:4px 2px}
-      .bn-logo img{width:46px;height:46px;border-radius:50%;display:block;border:1.5px solid var(--gold-deep)}
-      .bn-logo.active{border-top-color:transparent}
-      .bn-logo.active img{border-color:var(--gold);box-shadow:0 0 12px rgba(232,194,74,.55)}
+      /* the logo floats like a badge: bigger than the bar, top ~20% above it */
+      .bn-logo{flex:0 0 74px;justify-content:flex-start;padding:0 2px;overflow:visible;margin-top:-17px;border-top:none}
+      .bn-logo img{width:58px;height:58px;border-radius:50%;display:block;background:var(--ink);
+        border:1.5px solid var(--gold-deep);box-shadow:0 4px 14px rgba(0,0,0,.6)}
+      .bn-logo.active img{border-color:var(--gold);box-shadow:0 4px 14px rgba(0,0,0,.6),0 0 12px rgba(232,194,74,.55)}
     }
     /* Window pickers — the .win runs read as one segmented control: inner borders
        collapse, only the run's outer corners round. A .win with a non-.win before

@@ -1121,9 +1121,11 @@ async function showSplit() {
           ? `<table><thead><tr><th>Image</th><th>Background</th><th>Headline</th><th>How</th><th>Traffic share</th><th class="num">%</th>
               <th class="num">Landed ${bc.lookbackDays || 28}d</th><th class="num">Joined</th><th class="num">Conv.</th></tr></thead><tbody>${comboRows}</tbody></table>`
           : '<div class="note" style="margin:8px 0">No recipes serving yet — pin one from Best combinations below, or the pool will pick up combinations automatically once they clear the session bar.</div>'}
-        <div class="note">Pinned recipes serve at exactly their share even with Autopilot off. The champion pool Thompson-samples the best <b>proven</b> recipes (enough sessions, every arm still live) against each other for its share — it catches pairings that only work together, which the per-test splits above can't see. All remaining traffic flows through the per-test splits. Settings save with the Save button above.</div>`;
+        <details class="how"><summary>How recipes are served</summary>
+          <div class="note">Pinned recipes serve at exactly their share even with Autopilot off. The champion pool Thompson-samples the best <b>proven</b> recipes (enough sessions, every arm still live) against each other for its share — it catches pairings that only work together, which the per-test splits above can't see. All remaining traffic flows through the per-test splits. Settings save with the Save button above.</div>
+        </details>`;
 
-      autopilot = `<div style="border:1px solid var(--gold-deep);background:var(--panel);padding:14px 18px;margin:0 0 26px;overflow-x:auto">
+      autopilot = `<div class="panel">
         <h3 style="margin:0 0 6px">Autopilot <span class="note">— pushes new visitors toward what's converting; re-assessed all day, logged daily</span></h3>
         <div class="row-actions" style="margin:10px 0 2px">
           <label style="cursor:pointer"><input type="checkbox" id="bp-on" ${bc.enabled ? 'checked' : ''}/> <b>Autopilot on</b></label>
@@ -1133,7 +1135,9 @@ async function showSplit() {
           <span class="note">pause needs <input id="bp-kill-min" type="number" min="50" max="100000" value="${bc.killMinSessions ?? 300}" style="width:72px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);padding:4px 6px"/> sessions of proof</span>
           <button class="btn" id="bp-save">Save</button><span class="note" id="bp-msg"></span>
         </div>
-        <div class="note" style="margin-bottom:2px">Today's traffic counts full; older days fade by the half-life — so the split adjusts daily but still respects the overall record. Wide-open uncertainty = near-even split; a clear winner soaks up traffic; a loser is only <b>turned off completely</b> once it has real volume and is losing with 95% confidence (revive it any time below). Daily columns show that day's conversion (joined/landed); hover for the traffic weight it was given.</div>
+        <details class="how"><summary>How the autopilot decides</summary>
+          <div class="note">Today's traffic counts full; older days fade by the half-life — so the split adjusts daily but still respects the overall record. Wide-open uncertainty = near-even split; a clear winner soaks up traffic; a loser is only <b>turned off completely</b> once it has real volume and is losing with 95% confidence (revive it any time below). Daily columns show that day's conversion (joined/landed); hover for the traffic weight it was given.</div>
+        </details>
         ${bc.enabled ? testBlocks : '<div class="note" style="margin-top:10px">Autopilot is off — live versions split evenly. Flip it on and Save.</div>'}
         ${comboPanel}
       </div>`;

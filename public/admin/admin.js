@@ -270,7 +270,7 @@ function renderTabs() {
 
   const bn = document.getElementById('bottomnav');
   if (!bn) return;
-  const label = (k) => (TAB_LIST.find((t) => t[0] === k) || [, k])[1];
+  const label = (k) => (k === 'split' ? 'Split' : (TAB_LIST.find((t) => t[0] === k) || [, k])[1]);   // short bar labels
   const item = (k) =>
     `<button class="bn-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${esc(label(k))}</span></button>`;
   const inMore = !BN_DIRECT.includes(state.tab);
@@ -904,7 +904,8 @@ const OV_HOURS = [['', 'All day'], ['16-24', '4pm–midnight'], ['0-12', 'Midnig
 async function showOverview() {
   loading();
   try {
-    let path = '/api/admin/overview' + winQuery();
+    // funnelQuery (not winQuery) so the server computes just the visible window.
+    let path = '/api/admin/overview' + funnelQuery();
     if (state.ovHours) path += (path.includes('?') ? '&' : '?') + 'hours=' + encodeURIComponent(state.ovHours);
     const d = await api(path);
     const w = d.windows[state.win] || {};

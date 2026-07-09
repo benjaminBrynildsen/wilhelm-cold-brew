@@ -38,6 +38,9 @@ export async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS je_page_created_idx ON journey_events (page, created_at);
     CREATE INDEX IF NOT EXISTS je_event_idx        ON journey_events (event);
     CREATE INDEX IF NOT EXISTS je_session_idx      ON journey_events (session_id);
+    -- Time-only scans (overview "sessions, all pages") can't use the
+    -- (page, created_at) index; give them a direct one.
+    CREATE INDEX IF NOT EXISTS je_created_idx      ON journey_events (created_at);
 
     CREATE TABLE IF NOT EXISTS page_views (
       id            BIGSERIAL PRIMARY KEY,

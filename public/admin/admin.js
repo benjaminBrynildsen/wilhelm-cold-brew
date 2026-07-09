@@ -124,9 +124,10 @@ async function faceIdLogin() {
 
 function renderApp() {
   app.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px">
-      <div><h1>Wilhelm Cold Brew</h1><div class="sub">Funnel &amp; analytics</div></div>
-      <div class="row-actions" style="gap:8px">
+    <div class="masthead">
+      <img class="mark" src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="96" height="96"/>
+      <div class="sub">Funnel &amp; analytics</div>
+      <div class="row-actions" style="gap:8px;margin-bottom:0;justify-content:center">
         <button class="btn ghost" id="faceid-manage">Face ID</button>
         <button class="btn ghost" id="logout">Log out</button>
       </div>

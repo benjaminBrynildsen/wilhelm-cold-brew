@@ -124,6 +124,7 @@ async function faceIdLogin() {
 
 function renderApp() {
   app.innerHTML = `
+    <div class="pagebar"><span id="pagetitle"></span></div>
     <div class="signups-badge" id="signups-badge" title="Signups today (Central)">
       <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k">signups</span>
     </div>
@@ -267,6 +268,10 @@ function renderTabs() {
   document.querySelectorAll('.tab').forEach((t) =>
     t.addEventListener('click', () => switchTab(t.dataset.tab)));
   wireActions(document.getElementById('tabs'));
+
+  // Phone top bar: the current tab's name, centered.
+  const pt = document.getElementById('pagetitle');
+  if (pt) pt.textContent = (TAB_LIST.find((t) => t[0] === state.tab) || [, ''])[1];
 
   const bn = document.getElementById('bottomnav');
   if (!bn) return;

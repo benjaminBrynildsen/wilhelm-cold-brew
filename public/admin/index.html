@@ -131,11 +131,12 @@
     .spark .b:hover{background:var(--gold)}
     textarea,input.fld{width:100%;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:10px;margin:6px 0}
     .note{color:var(--dim);font-size:12.5px;line-height:1.55}
-    /* loading state: a wooden barrel spinning */
-    .loadwrap{display:flex;justify-content:center;align-items:center;min-height:46vh}
-    .loadbarrel{height:clamp(130px,22vh,190px);width:auto;animation:barrelSpin 1.4s linear infinite;filter:drop-shadow(0 12px 26px rgba(0,0,0,.55))}
-    @keyframes barrelSpin{to{transform:rotate(360deg)}}
-    @media(prefers-reduced-motion:reduce){.loadbarrel{animation:none}}
+    /* loading: the brand logo spins in place; one gold pulse when data lands */
+    .navspin{animation:navSpin 1s linear infinite}
+    @keyframes navSpin{to{transform:rotate(360deg)}}
+    .navflash{animation:navFlash .8s ease}
+    @keyframes navFlash{0%{box-shadow:0 0 0 0 rgba(232,194,74,.75)}100%{box-shadow:0 0 0 16px rgba(232,194,74,0)}}
+    @media(prefers-reduced-motion:reduce){.navspin,.navflash{animation:none}}
     /* shared bordered panel (Autopilot etc.) */
     .panel{border:1px solid rgba(184,146,47,.5);background:linear-gradient(180deg,rgba(232,194,74,.04),rgba(232,194,74,0) 140px),var(--panel);border-radius:14px;padding:16px 20px;margin:0 0 28px;overflow-x:auto}
     .panel>h3:first-child{margin-top:2px}

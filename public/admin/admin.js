@@ -158,7 +158,11 @@ function renderApp() {
     v.style.fontSize = size + 'px';
     while (size > 24 && v.scrollWidth > max) { size -= 2; v.style.fontSize = size + 'px'; }
   });
-  new MutationObserver(fitCards).observe(document.getElementById('content'), { childList: true, subtree: true });
+  new MutationObserver((muts) => {
+    fitCards();
+    // new content arrived → the pending load is done
+    if (muts.some((m) => m.type === 'childList')) loadingDone();
+  }).observe(document.getElementById('content'), { childList: true, subtree: true });
   window.addEventListener('resize', fitCards);
   renderTabs();
   show(state.tab);
@@ -381,21 +385,18 @@ function wireWinbar(reload, key = 'win') {
 }
 
 const content = () => document.getElementById('content');
-// Loading state: a wooden barrel (inline SVG, brand gold line work) spinning.
-const loading = () => {
-  content().innerHTML = `<div class="loadwrap" aria-label="Loading">
-    <svg class="loadbarrel" viewBox="0 0 120 150" width="120" height="150" fill="none" stroke-linecap="round" aria-hidden="true">
-      <path d="M22 14 Q60 6 98 14 Q112 75 98 136 Q60 144 22 136 Q8 75 22 14 Z" fill="#201709" stroke="#b8922f" stroke-width="4"/>
-      <path d="M22 14 Q60 22 98 14" stroke="#b8922f" stroke-width="2.5" opacity=".8"/>
-      <path d="M42 11 Q39 75 42 139" stroke="#b8922f" stroke-width="2.2" opacity=".45"/>
-      <path d="M60 9 L60 141" stroke="#b8922f" stroke-width="2.2" opacity=".45"/>
-      <path d="M78 11 Q81 75 78 139" stroke="#b8922f" stroke-width="2.2" opacity=".45"/>
-      <path d="M15 36 Q60 46 105 36" stroke="#e8c24a" stroke-width="4.5"/>
-      <path d="M11 68 Q60 78 109 68" stroke="#e8c24a" stroke-width="4.5"/>
-      <path d="M14 104 Q60 114 106 104" stroke="#e8c24a" stroke-width="4.5"/>
-    </svg>
-  </div>`;
-};
+// Loading state: keep whatever's on screen and spin the brand logo (bottom-bar
+// circle on phones, masthead circle on desktop). When the fresh content lands
+// (the #content observer sees it), the spin stops and the logo pulses once —
+// the "it refreshed" tell. No blank screen between tabs.
+const spinners = () => document.querySelectorAll('.bn-logo img, .masthead .mark');
+const loading = () => spinners().forEach((el) => { el.classList.remove('navflash'); el.classList.add('navspin'); });
+const loadingDone = () => spinners().forEach((el) => {
+  if (!el.classList.contains('navspin')) return;
+  el.classList.remove('navspin');
+  el.classList.add('navflash');
+  setTimeout(() => el.classList.remove('navflash'), 800);
+});
 
 // ───────── Click-to-sort for every admin table ─────────
 // Delegated on document so it covers every current + future table without

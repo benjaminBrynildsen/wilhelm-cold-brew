@@ -367,7 +367,25 @@ export function mountAdmin(app) {
         };
       }
       const totalSubs = await q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}`);
-      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n });
+
+      // Per-Central-day snapshot since launch — the overview stats as one row per
+      // day. Honors the same internal-traffic exclusions and hour slice as the
+      // cards. Merged in JS: three cheap GROUP BYs beat one three-way FULL JOIN.
+      const dayExpr = `TO_CHAR(created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
+      const byDay = {};
+      const fold = (rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
+      fold((await q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE TRUE ${EXCL_JE}${hourFrag} GROUP BY 1`)).rows, 'sessions');
+      fold((await q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($1) ${EXCL_JE}${hourFrag} GROUP BY 1`, [DRINK_PAGES])).rows, 'drinkSessions');
+      fold((await q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}${hourFrag} GROUP BY 1`)).rows, 'signups');
+      const daily = Object.entries(byDay)
+        .map(([day, v]) => {
+          const ds = v.drinkSessions || 0, su = v.signups || 0;
+          return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
+                   conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0 };
+        })
+        .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
+
+      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 

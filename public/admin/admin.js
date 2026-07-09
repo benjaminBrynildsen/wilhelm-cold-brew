@@ -804,6 +804,21 @@ async function showOverview() {
     const hoursNote = state.ovHours
       ? ` Showing only ${esc((OV_HOURS.find((h) => h[0] === state.ovHours) || [, state.ovHours])[1])} (Central) within that window.`
       : '';
+    // Day-by-day snapshot since launch (same exclusions + hour slice as the cards).
+    // Click a header to sort; dates are ISO so the Day column sorts chronologically.
+    const wd = (day) => new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+    const dailyRows = (d.daily || []).map((r) => `<tr>
+        <td>${esc(r.day)} <span class="note">${wd(r.day)}</span></td>
+        <td class="num">${num(r.sessions)}</td>
+        <td class="num">${num(r.drinkSessions)}</td>
+        <td class="num">${num(r.signups)}</td>
+        <td class="num">${r.conversionPct}%</td></tr>`).join('');
+    const dailyTable = dailyRows ? `
+      <h3>Day by day <span class="note">— since launch; click a column to sort</span></h3>
+      <table><thead><tr><th>Day</th><th class="num">Sessions</th><th class="num">Drink visits</th>
+        <th class="num">Signups</th><th class="num">Conv.</th></tr></thead>
+        <tbody>${dailyRows}</tbody></table>` : '';
+
     content().innerHTML = winbar() + hoursBar + `
       <div class="cards">
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
@@ -812,7 +827,8 @@ async function showOverview() {
         <div class="card"><div class="k">Drink conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
       </div>
-      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.${hoursNote}</div>`;
+      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.${hoursNote}</div>
+      ${dailyTable}`;
     wireWinbar(showOverview);
     document.querySelectorAll('[data-hours]').forEach((el) =>
       el.addEventListener('click', () => { state.ovHours = el.dataset.hours; showOverview(); }));

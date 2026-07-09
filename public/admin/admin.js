@@ -135,6 +135,17 @@ function renderApp() {
     <div id="faceid-panel" style="display:none"></div>
     <div class="tabs" id="tabs"></div>
     <div id="content"></div>`;
+  // Stat tiles: size each value to fill its square — start near the tile width,
+  // shrink until the text fits. Re-runs on every tab render and on resize.
+  const fitCards = () => document.querySelectorAll('.card .v').forEach((v) => {
+    const card = v.closest('.card'); if (!card || !card.clientWidth) return;
+    let size = Math.round(card.clientWidth * 0.52);
+    const max = card.clientWidth - 32;
+    v.style.fontSize = size + 'px';
+    while (size > 24 && v.scrollWidth > max) { size -= 2; v.style.fontSize = size + 'px'; }
+  });
+  new MutationObserver(fitCards).observe(document.getElementById('content'), { childList: true, subtree: true });
+  window.addEventListener('resize', fitCards);
   document.getElementById('logout').addEventListener('click', async () => {
     await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
     state.authed = false; renderLogin();

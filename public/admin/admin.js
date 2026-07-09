@@ -124,13 +124,12 @@ async function faceIdLogin() {
 
 function renderApp() {
   app.innerHTML = `
+    <div class="signups-badge" id="signups-badge" title="Signups today (Central)">
+      <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k">signups</span>
+    </div>
     <div class="masthead">
       <img class="mark" src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="96" height="96"/>
       <div class="sub">Funnel &amp; analytics</div>
-      <div class="row-actions" style="gap:8px;margin-bottom:0;justify-content:center">
-        <button class="btn ghost" id="faceid-manage">Face ID</button>
-        <button class="btn ghost" id="logout">Log out</button>
-      </div>
     </div>
     <div id="faceid-panel" style="display:none"></div>
     <div class="tabs" id="tabs"></div>
@@ -139,6 +138,17 @@ function renderApp() {
     <div class="more-sheet" id="more-sheet" hidden><div class="ms-panel"></div></div>`;
   const moreSheet = document.getElementById('more-sheet');
   moreSheet.addEventListener('click', (e) => { if (e.target === moreSheet) moreSheet.hidden = true; });
+  // Live signups-today badge: refresh on load and every minute (cheap COUNT).
+  const refreshSignups = async () => {
+    try {
+      const d = await api('/api/admin/signups-today');
+      const el = document.querySelector('#signups-badge .sb-v');
+      if (el) el.textContent = num(d.signups);
+    } catch {}
+  };
+  refreshSignups();
+  if (window.__sbTimer) clearInterval(window.__sbTimer);
+  window.__sbTimer = setInterval(refreshSignups, 60000);
   // Stat tiles: size each value to fill its square — start near the tile width,
   // shrink until the text fits. Re-runs on every tab render and on resize.
   const fitCards = () => document.querySelectorAll('.card .v').forEach((v) => {
@@ -150,16 +160,24 @@ function renderApp() {
   });
   new MutationObserver(fitCards).observe(document.getElementById('content'), { childList: true, subtree: true });
   window.addEventListener('resize', fitCards);
-  document.getElementById('logout').addEventListener('click', async () => {
-    await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
-    state.authed = false; renderLogin();
-  });
-  document.getElementById('faceid-manage').addEventListener('click', () => {
-    const p = document.getElementById('faceid-panel');
-    if (p.style.display === 'none') { p.style.display = ''; renderFaceIdPanel(); } else { p.style.display = 'none'; }
-  });
   renderTabs();
   show(state.tab);
+}
+
+// Face ID / Log out live at the right end of the desktop tab bar and at the
+// bottom of the phone More sheet — same handlers, wired per render via classes.
+function wireActions(scope) {
+  scope.querySelectorAll('.act-logout').forEach((b) => b.addEventListener('click', async () => {
+    await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
+    state.authed = false; renderLogin();
+  }));
+  scope.querySelectorAll('.act-faceid').forEach((b) => b.addEventListener('click', () => {
+    const ms = document.getElementById('more-sheet');
+    if (ms) ms.hidden = true;
+    const p = document.getElementById('faceid-panel');
+    if (p.style.display === 'none') { p.style.display = ''; renderFaceIdPanel(); window.scrollTo({ top: 0 }); }
+    else { p.style.display = 'none'; }
+  }));
 }
 
 async function renderFaceIdPanel() {
@@ -212,6 +230,22 @@ const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Spl
 // behind More. When a More tab is active, the More slot shows its name in gold.
 const BN_MAIN = ['overview', 'split', 'journey'];
 
+// Line icons (inline SVG, stroke follows text color) so the bar reads like an app.
+const ICON = (() => {
+  const svg = (body) => `<svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  return {
+    overview: svg('<rect x="3" y="3" width="7.5" height="7.5"/><rect x="13.5" y="3" width="7.5" height="7.5"/><rect x="3" y="13.5" width="7.5" height="7.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5"/>'),
+    funnel: svg('<path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>'),
+    split: svg('<path d="M12 3v18"/><path d="M12 7c-2.5 0-3.5-2-7-2v9c3.5 0 4.5 2 7 2"/><path d="M12 7c2.5 0 3.5-2 7-2v9c-3.5 0-4.5 2-7 2"/>'),
+    adfit: svg('<path d="M3 11v2"/><path d="M7 9v6l10 4V5L7 9z"/><path d="M17 8a4 4 0 0 1 0 8"/>'),
+    traffic: svg('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'),
+    journey: svg('<circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 6h7a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h7" transform="translate(0,-2)"/>'),
+    orders: svg('<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'),
+    email: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
+    more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
+  };
+})();
+
 function switchTab(k) {
   state.tab = k;
   const ms = document.getElementById('more-sheet');
@@ -223,24 +257,34 @@ function switchTab(k) {
 
 function renderTabs() {
   document.getElementById('tabs').innerHTML = TAB_LIST.map(
-    ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('');
+    ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('')
+    + `<span class="tab-actions">
+        <button class="btn ghost sm act-faceid">Face ID</button>
+        <button class="btn ghost sm act-logout">Log out</button>
+      </span>`;
   document.querySelectorAll('.tab').forEach((t) =>
     t.addEventListener('click', () => switchTab(t.dataset.tab)));
+  wireActions(document.getElementById('tabs'));
 
   const bn = document.getElementById('bottomnav');
   if (!bn) return;
   const label = (k) => (TAB_LIST.find((t) => t[0] === k) || [, k])[1];
   const inMore = !BN_MAIN.includes(state.tab);
   bn.innerHTML = BN_MAIN.map((k) =>
-    `<button class="bn-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${esc(label(k))}</button>`).join('')
-    + `<button class="bn-item ${inMore ? 'active' : ''}" id="bn-more">${inMore ? esc(label(state.tab)) : 'More'}</button>`;
+    `<button class="bn-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${esc(label(k))}</span></button>`).join('')
+    + `<button class="bn-item ${inMore ? 'active' : ''}" id="bn-more">${inMore ? (ICON[state.tab] || ICON.more) : ICON.more}<span>${inMore ? esc(label(state.tab)) : 'More'}</span></button>`;
   bn.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   bn.querySelector('#bn-more').addEventListener('click', () => {
     const ms = document.getElementById('more-sheet');
     ms.querySelector('.ms-panel').innerHTML = TAB_LIST.filter(([k]) => !BN_MAIN.includes(k)).map(
-      ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('');
+      ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${l}</span></button>`).join('')
+      + `<div class="ms-actions">
+          <button class="btn ghost act-faceid">Face ID</button>
+          <button class="btn ghost act-logout">Log out</button>
+        </div>`;
     ms.hidden = false;
     ms.querySelectorAll('.ms-item').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    wireActions(ms);
   });
 }
 

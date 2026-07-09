@@ -26,6 +26,15 @@
     /* centered brand masthead */
     .masthead{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px;text-align:center}
     .masthead .mark{width:96px;height:96px;border-radius:50%;display:block}
+    /* today's-signups badge, pinned top right */
+    .wrap{position:relative}
+    .signups-badge{position:absolute;top:14px;right:clamp(16px,4vw,40px);border:1px solid var(--line);background:var(--panel);padding:7px 14px 6px;text-align:center;z-index:5;min-width:74px}
+    .signups-badge .sb-k{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:1.6px;color:var(--dim);text-transform:uppercase}
+    .signups-badge .sb-v{display:block;font-family:var(--display);font-weight:700;font-size:24px;line-height:1.15;color:var(--gold)}
+    /* Face ID / Log out at the right end of the desktop tab bar */
+    .tab-actions{margin-left:auto;display:flex;gap:8px;align-items:center;padding-bottom:6px}
+    .btn.sm{height:32px;padding:0 12px;font-size:12.5px}
+    @media(max-width:760px){.tab-actions{display:none}}
     /* login */
     .login{max-width:340px;margin:14vh auto;text-align:center}
     .login input{width:100%;height:46px;padding:0 14px;background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;text-align:center;margin:14px 0}
@@ -42,9 +51,12 @@
     .more-sheet{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55)}
     .more-sheet[hidden]{display:none}
     .more-sheet .ms-panel{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:12px 14px calc(18px + env(safe-area-inset-bottom))}
-    .ms-item{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line-soft);color:var(--parch);font-family:inherit;font-size:16px;padding:14px 8px;cursor:pointer}
+    .ms-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line-soft);color:var(--parch);font-family:inherit;font-size:16px;padding:14px 8px;cursor:pointer}
+    .ms-item .ico{color:var(--gold-deep);flex:none}
     .ms-item.active{color:var(--gold)}
-    .ms-item:last-child{border-bottom:none}
+    .ms-item.active .ico{color:var(--gold)}
+    .ms-actions{display:flex;gap:10px;margin-top:12px;padding-top:14px;border-top:1px solid var(--line-soft)}
+    .ms-actions .btn{flex:1}
     .tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:18px 0 22px}
     .tab{padding:10px 16px;cursor:pointer;color:var(--dim);border-bottom:2px solid transparent;letter-spacing:1.5px;text-transform:uppercase;font-size:13px;transition:color .15s}
     .tab:hover{color:var(--parch)}
@@ -53,7 +65,8 @@
       .tabs{display:none}
       .wrap{padding-bottom:96px}
       .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:rgba(12,10,8,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
-      .bn-item{flex:1;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:11px;letter-spacing:1.4px;text-transform:uppercase;cursor:pointer;padding:13px 2px 11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;padding:9px 2px 7px;overflow:hidden}
+      .bn-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .bn-item.active{color:var(--gold);border-top-color:var(--gold)}
     }
     /* Window pickers — the .win runs read as one segmented control: inner borders

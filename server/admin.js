@@ -340,6 +340,16 @@ export function mountAdmin(app) {
     catch (e) { console.error('[webauthn/delete]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Today's signup count (Central day) — feeds the always-visible header badge.
+  app.get('/api/admin/signups-today', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(`SELECT COUNT(*)::int n FROM subscribers
+        WHERE (created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date ${EXCL_PV}`);
+      res.json({ signups: r.rows[0].n });
+    } catch (e) { console.error('[signups-today]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // ───────── overview ─────────
   app.get('/api/admin/overview', async (req, res) => {
     if (!requireAdmin(req, res)) return;

@@ -33,9 +33,10 @@ app.use((req, _res, next) => {
   try {
     if (req.method !== 'GET') return next();
     const p = req.path || '/';
-    // Root redirects to /drink/ (see the route below) — the visit is counted there,
-    // so don't also log the bounce at / (it would double-count every homepage visit).
-    if (p === '/') return next();
+    // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
+    // below) — the visit is counted there, so don't also log the bounce here
+    // (it would double-count every one of those visits).
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/') return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -87,7 +88,7 @@ mountCheckout(app);
 // Case-insensitive redirect for the marketing routes. The static handler is
 // case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos
 // and bounce them to the real lowercase path so an ad link can't dead-end.
-const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you'];
+const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup'];
 app.get(/^\/([A-Za-z-]+)\/?$/, (req, res, next) => {
   const slug = req.params[0].toLowerCase();
   if (CASE_ROUTES.includes(slug) && req.params[0] !== slug) return res.redirect(301, '/' + slug);
@@ -139,6 +140,14 @@ app.post('/api/unsubscribe', handleUnsub);
 app.get('/', (req, res) => {
   const i = req.originalUrl.indexOf('?');
   res.redirect(302, '/drink/' + (i >= 0 ? req.originalUrl.slice(i) : ''));
+});
+
+// Vanity link for bios and saying out loud: /drinkup → the opt-in page, tagged
+// as its own source. The referrer still says which door (t.co = X bio,
+// instagram.com = IG bio, none = spoken/typed), so one link covers them all.
+// 302 so the tagging can change without fighting browser caches.
+app.get(['/drinkup', '/drinkup/'], (_req, res) => {
+  res.redirect(302, '/drink/?utm_source=drinkup&utm_medium=bio');
 });
 
 // Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).

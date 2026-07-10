@@ -1526,6 +1526,9 @@ export function mountAdmin(app) {
       const scope = String(req.query?.scope || 'unshipped');
       const dropId = parseInt(req.query?.dropId, 10);
       const lbsPerBottle = Math.max(0.1, parseFloat(req.query?.lbs) || 3);
+      // ?split=1 → one box per bottle: a 2-bottle order becomes two rows, each a
+      // 1-bottle label at 1-bottle weight (Ben ships doubles as two packages).
+      const split = req.query?.split === '1';
       const where = ["o.status = 'paid'"];
       const params = [];
       if (scope !== 'all') where.push('o.shipped_at IS NULL');
@@ -1552,11 +1555,15 @@ export function mountAdmin(app) {
         }
         addr = addr || {};
         const qty = r.quantity || 1;
-        const weight = (qty * lbsPerBottle).toFixed(2);
-        lines.push([
-          name, addr.line1, addr.line2, addr.city, addr.state, addr.postal_code, addr.country || 'US',
-          phone, r.email, weight, r.id, qty, r.drop_name,
-        ].map(esc).join(','));
+        const boxes = split ? qty : 1;
+        const perBox = split ? 1 : qty;
+        const weight = (perBox * lbsPerBottle).toFixed(2);
+        for (let b = 0; b < boxes; b++) {
+          lines.push([
+            name, addr.line1, addr.line2, addr.city, addr.state, addr.postal_code, addr.country || 'US',
+            phone, r.email, weight, r.id, perBox, r.drop_name,
+          ].map(esc).join(','));
+        }
       }
 
       res.setHeader('Content-Type', 'text/csv');

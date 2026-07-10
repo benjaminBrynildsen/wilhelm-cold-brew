@@ -45,6 +45,11 @@ const SPLIT_TESTS = [
 
 const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
+// Friendly display names for utm_source tags (the raw tag stays in the data;
+// only how it reads on the dashboard changes).
+const SOURCE_NAMES = { drinkup: 'Drink Up • X Profile link' };
+const srcName = (s) => SOURCE_NAMES[String(s || '').toLowerCase()] || s;
+
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}));
   if (r.status === 401) { state.authed = false; renderLogin(); throw new Error('unauthorized'); }
@@ -932,7 +937,7 @@ async function showJourney() {
       : `?win=${state.journeyWin}`;
     const d = await api('/api/admin/journeys' + wq);
     const utmCell = (s) => {
-      if (s.utm_source) return `${esc(s.utm_source)}${s.utm_campaign ? ' / ' + esc(s.utm_campaign) : ''}${s.utm_content ? ' / <b>' + esc(s.utm_content) + '</b>' : ''}`;
+      if (s.utm_source) return `${esc(srcName(s.utm_source))}${s.utm_campaign ? ' / ' + esc(s.utm_campaign) : ''}${s.utm_content ? ' / <b>' + esc(s.utm_content) + '</b>' : ''}`;
       if (s.referrer_host) return `<span class="note">${esc(s.referrer_host)}</span>`;
       return '<span class="note">direct</span>';
     };
@@ -1493,8 +1498,8 @@ async function showTraffic() {
         <div>${tbl(`Top paths (${esc(w('30d'))})`, d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl(`Top referrers (${esc(w('30d'))})`, d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl(`Top countries (${esc(w('30d'))})`, d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
-        <div>${tbl(`UTM campaigns (${esc(w('30d'))} views)`, d.topCampaigns.map((r) => `<tr><td>${esc(r.source)} / ${esc(r.campaign)}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
-        <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juTotalRow + ((d.joinersByUtm || []).map((r) => `<tr><td>${esc(r.channel)}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>'), [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
+        <div>${tbl(`UTM campaigns (${esc(w('30d'))} views)`, d.topCampaigns.map((r) => `<tr><td>${esc(srcName(r.source))}${r.campaign ? ' / ' + esc(r.campaign) : ''}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
+        <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juTotalRow + ((d.joinersByUtm || []).map((r) => { const ch = String(r.channel || '').split(' / '); ch[0] = srcName(ch[0]); return `<tr><td>${esc(ch.join(' / '))}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`; }).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>'), [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
           ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view${rlab ? ' · entries limited to the selected dates; "joined" = ever subscribed' : ''}.</div>` : ''}</div>
         <div>${tbl(`Top cities (${esc(w('30d'))})`, (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
       </div>`;
@@ -2117,7 +2122,7 @@ async function showEmail() {
     ]);
     const bvRows = subs.byVariant.map((r) => `<tr><td>${esc(r.variant)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
     const byAdRows = (subs.byAd || []).map((r) =>
-      `<tr><td>${esc(r.source)}</td><td>${esc(r.campaign)}</td><td>${esc(r.content)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
+      `<tr><td>${esc(srcName(r.source))}</td><td>${esc(r.campaign)}</td><td>${esc(r.content)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
     // Recent signups can run to 100 rows — collapse to a preview with a toggle so
     // the rest of the email tab isn't buried below a long list.
     const RECENT_PREVIEW = 10;

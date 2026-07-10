@@ -1620,12 +1620,13 @@ async function showOrders() {
 
       <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
-        <a class="btn" href="/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
+        <a class="btn" id="ps-export" href="/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
+        <label class="note" style="cursor:pointer;white-space:nowrap"><input type="checkbox" id="ps-split" ${state.shipSplit ? 'checked' : ''}/> one box per bottle (doubles get two labels)</label>
         <button class="btn ghost" id="markshipped">Mark ${scoped ? 'this batch' : 'all'} as shipped</button>
         <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship' + (scoped ? ' in this batch' : '') + '.' : (scoped ? 'This batch is fully shipped.' : 'All paid orders shipped.')}</span>
         <span class="note" id="shipmsg"></span>
       </div>
-      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'} as a Pirate Ship bulk-import CSV. Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
+      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'} as a Pirate Ship bulk-import CSV. Upload it at pirateship.com → Ship → Import a Spreadsheet. Set the real package weight in Pirate Ship if 3 lbs/bottle is off. With <b>one box per bottle</b> ticked, a 2-bottle order becomes two rows (two labels, 1-bottle weight each). (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
       ${(() => {
         const t = (shipTpl && shipTpl.tpl) || {};
@@ -1748,6 +1749,13 @@ async function showOrders() {
       });
     })();
 
+    // One-box-per-bottle toggle rewrites the export link in place (no reload).
+    const psSplit = document.getElementById('ps-split');
+    if (psSplit) psSplit.addEventListener('change', () => {
+      state.shipSplit = psSplit.checked;
+      const a = document.getElementById('ps-export');
+      if (a) a.href = `/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}`;
+    });
     const markShipped = document.getElementById('markshipped');
     if (markShipped) markShipped.addEventListener('click', async () => {
       if (!o.unshipped) { document.getElementById('shipmsg').textContent = 'Nothing to mark.'; return; }

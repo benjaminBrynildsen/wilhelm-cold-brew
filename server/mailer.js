@@ -288,15 +288,27 @@ export function trackingUrl(num, carrier) {
   return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(n);
 }
 
+// A shipment is one or more boxes. Split orders (one box per bottle) pass
+// meta.trackings = [{tracking, carrier}, …]; everything else keeps the single
+// tracking/carrier fields. This normalizes both shapes to a non-empty list.
+function shipBoxes(meta = {}) {
+  const list = Array.isArray(meta.trackings) && meta.trackings.length
+    ? meta.trackings
+    : [{ tracking: meta.tracking, carrier: meta.carrier }];
+  return list.filter((b) => b && b.tracking != null && String(b.tracking).trim() !== '');
+}
+
 // Token values from the order meta. first_name falls back to "there" so a
 // greeting always reads; drop includes its own " from …" so it can be dropped in.
-function shipTokens({ shippingName, tracking, carrier, dropName } = {}) {
+function shipTokens(meta = {}) {
+  const { shippingName, dropName } = meta;
+  const boxes = shipBoxes(meta);
   const first = shippingName ? String(shippingName).trim().split(/\s+/)[0] : '';
   return {
     first_name: first || 'there',
     drop: dropName ? ` from ${dropName}` : '',
-    tracking: tracking != null ? String(tracking) : '',
-    carrier: carrier ? String(carrier).toUpperCase() : '',
+    tracking: boxes.map((b) => String(b.tracking)).join(' · '),
+    carrier: boxes[0]?.carrier ? String(boxes[0].carrier).toUpperCase() : '',
   };
 }
 function fillTokens(text, tokens, esc) {
@@ -317,8 +329,19 @@ export async function getShipTemplate() {
 function shipHtml(meta, tpl) {
   const t = mergeShipTpl(tpl);
   const tokens = shipTokens(meta);
-  const url = trackingUrl(meta.tracking, meta.carrier);
-  const carrierLabel = tokens.carrier || 'the carrier';
+  const boxes = shipBoxes(meta);
+  // One button + tracking line per box; multi-box shipments label them Box 1/2.
+  const trackBlocks = boxes.map((b, i) => {
+    const url = trackingUrl(b.tracking, b.carrier);
+    const label = boxes.length > 1 ? `Track box ${i + 1} &rarr;` : 'Track your package &rarr;';
+    const carrierLabel = b.carrier ? String(b.carrier).toUpperCase() : 'the carrier';
+    return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px;"><tr><td style="border-radius:6px;background:#8a6914;">
+              <a href="${url}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">${label}</a>
+            </td></tr></table>
+            <p style="margin:0 0 18px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${boxes.length > 1 ? `Box ${i + 1} — ` : ''}${carrierLabel} tracking: <strong>${escHtml(String(b.tracking))}</strong></p>`;
+  }).join('');
+  const multiNote = boxes.length > 1
+    ? `<p style="margin:0 0 16px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">Your order ships as ${boxes.length} separate boxes — they may arrive a day apart.</p>` : '';
   const bodyHtml = String(t.body || '').split(/\n{2,}/).map((para) =>
     `<p style="margin:0 0 16px;">${fillTokens(para, tokens, true).replace(/\n/g, '<br/>')}</p>`).join('');
   const signoffHtml = fillTokens(t.signoff, tokens, true).replace(/\n/g, '<br/>');
@@ -336,11 +359,9 @@ function shipHtml(meta, tpl) {
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
             <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">${fillTokens(t.heading, tokens, true)}</p>
             ${bodyHtml}
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="border-radius:6px;background:#8a6914;">
-              <a href="${url}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">Track your package &rarr;</a>
-            </td></tr></table>
-            <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">${carrierLabel} tracking: <strong>${escHtml(tokens.tracking)}</strong></p>
-            <p style="margin:0;">${signoffHtml}</p>
+            ${multiNote}
+            ${trackBlocks}
+            <p style="margin:6px 0 0;">${signoffHtml}</p>
           </div>
         </td></tr>
       </table>
@@ -352,13 +373,18 @@ function shipHtml(meta, tpl) {
 function shipText(meta, tpl) {
   const t = mergeShipTpl(tpl);
   const tokens = shipTokens(meta);
+  const boxes = shipBoxes(meta);
+  const trackLines = boxes.flatMap((b, i) => [
+    `${boxes.length > 1 ? `Box ${i + 1} — ` : ''}${b.carrier ? String(b.carrier).toUpperCase() + ' ' : ''}tracking: ${b.tracking}`,
+    `Track it: ${trackingUrl(b.tracking, b.carrier)}`,
+  ]);
   return [
     fillTokens(t.heading, tokens, false),
     '',
     fillTokens(t.body, tokens, false),
+    ...(boxes.length > 1 ? ['', `Your order ships as ${boxes.length} separate boxes — they may arrive a day apart.`] : []),
     '',
-    `${tokens.carrier ? tokens.carrier + ' ' : ''}tracking: ${tokens.tracking}`,
-    `Track it: ${trackingUrl(meta.tracking, meta.carrier)}`,
+    ...trackLines,
     '',
     fillTokens(t.signoff, tokens, false),
   ].join('\n');

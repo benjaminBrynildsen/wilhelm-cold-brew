@@ -190,7 +190,7 @@ async function markUnsubscribed(emails, apply) {
 async function runShipNotices(list) {
   for (const m of list) {
     try {
-      await sendShippingNotice(m.email, { shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
+      await sendShippingNotice(m.email, { shippingName: m.name, trackings: m.trackings, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
       await q(`UPDATE orders SET ship_notified_at = now() WHERE id = $1`, [m.orderId]);
     } catch (e) { console.warn('[ship-notice] failed for', m.email, e?.message || e); }
   }
@@ -1647,8 +1647,11 @@ export function mountAdmin(app) {
       const byEmail = new Map();
       orders.forEach((o) => { const k = (o.email || '').toLowerCase(); if (k) { (byEmail.get(k) || byEmail.set(k, []).get(k)).push(o); } });
 
-      const matched = [], skipped = [], unmatched = [];
-      const used = new Set();
+      // A split order (one box per bottle) appears as several file rows with the
+      // same Order ID and different tracking numbers — accumulate ALL of them per
+      // order so the customer's email carries every box, then notify once.
+      const acc = new Map();   // orderId → { order, trackings: [{tracking, carrier}, …] }
+      const unmatched = [];
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         const tracking = (r[tcol] || '').trim();
@@ -1659,12 +1662,19 @@ export function mountAdmin(app) {
         let order = (oid && byId.get(oid)) || null;
         if (!order && email && byEmail.has(email)) {
           const cands = byEmail.get(email);
-          order = cands.find((o) => !used.has(o.id)) || cands[0];  // multi-order email: take the next unused
+          order = cands.find((o) => !acc.has(o.id)) || cands[0];   // multi-order email: take the next unmatched
         }
         if (!order) { unmatched.push({ tracking, orderId: oid || null, email: email || null }); continue; }
-        if (used.has(order.id)) continue;
-        used.add(order.id);
-        const row = { orderId: order.id, email: order.email, name: order.shipping_name, tracking, carrier, dropName: order.drop_name };
+        const e = acc.get(order.id) || acc.set(order.id, { order, trackings: [] }).get(order.id);
+        if (!e.trackings.some((t) => t.tracking === tracking)) e.trackings.push({ tracking, carrier });
+      }
+      const matched = [], skipped = [];
+      for (const { order, trackings } of acc.values()) {
+        const row = {
+          orderId: order.id, email: order.email, name: order.shipping_name,
+          tracking: trackings.map((t) => t.tracking).join(', '),   // display string
+          carrier: trackings[0]?.carrier || '', trackings, dropName: order.drop_name,
+        };
         (order.ship_notified_at ? skipped : matched).push(row);
       }
 
@@ -1673,17 +1683,18 @@ export function mountAdmin(app) {
         let sampleEmail = null;
         if (matched.length) {
           const m = matched[0];
-          const r = await renderShippingEmail({ shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName });
+          const r = await renderShippingEmail({ shippingName: m.name, trackings: m.trackings, dropName: m.dropName });
           sampleEmail = { to: m.email, name: m.name, subject: r.subject, html: r.html };
         }
         return res.json({ preview: true, willEmail: matched.length, matched, skipped, unmatched, sampleEmail });
       }
 
       // Record tracking for everyone we matched (incl. already-notified, so the
-      // number is on file), then email the not-yet-notified in the background.
+      // numbers are on file), then email the not-yet-notified in the background.
       for (const m of matched.concat(skipped)) {
-        await q(`UPDATE orders SET tracking_number=$1, tracking_carrier=$2, shipped_at=COALESCE(shipped_at, now()) WHERE id=$3`,
-          [m.tracking, m.carrier || null, m.orderId]).catch((e) => console.warn('[import-tracking] update failed:', e?.message));
+        await q(`UPDATE orders SET tracking_number=$1, tracking_carrier=$2, tracking_numbers=$3, shipped_at=COALESCE(shipped_at, now()) WHERE id=$4`,
+          [m.trackings[0].tracking, m.trackings[0].carrier || null, JSON.stringify(m.trackings), m.orderId])
+          .catch((e) => console.warn('[import-tracking] update failed:', e?.message));
       }
       runShipNotices(matched);   // fire-and-forget; sets ship_notified_at per success
       res.json({ ok: true, recorded: matched.length + skipped.length, emailing: matched.length, skipped: skipped.length, unmatched: unmatched.length });

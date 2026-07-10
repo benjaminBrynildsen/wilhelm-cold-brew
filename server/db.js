@@ -207,6 +207,10 @@ export async function ensureSchema() {
     -- the "your order shipped" email when the same export is uploaded twice.
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number  TEXT;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_carrier TEXT;
+    -- Split shipments (one box per bottle) carry several tracking numbers; the
+    -- full list lives here as [{tracking, carrier}, …] while tracking_number
+    -- keeps the first for anything that expects a single value.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_numbers JSONB;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_notified_at TIMESTAMPTZ;
 
     -- Autopilot bookkeeping on split arms: set when the bandit turns an arm off

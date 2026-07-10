@@ -45,8 +45,10 @@ const USER = process.env.SMTP_USER || '';
 const PASS = process.env.SMTP_PASS || '';
 const FROM = process.env.MAIL_FROM || 'Wilhelm Cold Brew <ben@wilhelmcoldbrew.com>';
 // Internal "new signup" alert recipient — pinged the moment someone joins.
-// Defaults to the sending account; override with SIGNUP_NOTIFY for a personal inbox.
-const SIGNUP_NOTIFY = process.env.SIGNUP_NOTIFY || USER;
+// Who gets the internal new-signup alerts. SIGNUP_NOTIFY (env) sets the primary
+// inbox (defaults to the sending account); Matt is always on the list too.
+const SIGNUP_NOTIFY = [process.env.SIGNUP_NOTIFY || USER, 'mattbrynildsen@gmail.com']
+  .filter(Boolean).join(', ');
 
 let transporter = null;
 if (USER && PASS) {

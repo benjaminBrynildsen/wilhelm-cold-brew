@@ -268,6 +268,22 @@ export async function ensureSchema() {
       written_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Customer portal ("The Cellar"): single-use magic-link login tokens.
+    CREATE TABLE IF NOT EXISTS portal_tokens (
+      token      TEXT PRIMARY KEY,
+      email      TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at    TIMESTAMPTZ
+    );
+    -- One shareable referral code per member. Signups it brings arrive tagged
+    -- utm_source=referral & utm_campaign=<code>, so counting needs no new columns.
+    CREATE TABLE IF NOT EXISTS referral_codes (
+      code       TEXT PRIMARY KEY,
+      email      TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     -- Ad creative registry for the admin "Ad Fit" tab. name matches the ad URL's
     -- utm_content, so traffic/conversion data joins to the creative. covers is the
     -- list of knowledge-point keys the ad itself communicates (see adfit config).

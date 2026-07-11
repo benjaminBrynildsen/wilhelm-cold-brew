@@ -10,6 +10,7 @@ import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE } from './u
 import { receiveJourney, subscribe } from './ingest.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin } from './admin.js';
+import { mountPortal } from './portal.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
 
@@ -36,7 +37,7 @@ app.use((req, _res, next) => {
     // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
     // below) — the visit is counted there, so don't also log the bounce here
     // (it would double-count every one of those visits).
-    if (p === '/' || p === '/drinkup' || p === '/drinkup/') return next();
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p.startsWith('/r/')) return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -83,6 +84,7 @@ app.post('/api/journey', receiveJourney);
 app.post('/api/beacon', receiveJourney); // sendBeacon target (same handler)
 app.post('/api/subscribe', subscribe);
 mountAdmin(app);
+mountPortal(app);
 mountCheckout(app);
 
 // Case-insensitive redirect for the marketing routes. The static handler is
@@ -148,6 +150,14 @@ app.get('/', (req, res) => {
 // 302 so the tagging can change without fighting browser caches.
 app.get(['/drinkup', '/drinkup/'], (_req, res) => {
   res.redirect(302, '/drink/?utm_source=drinkup&utm_medium=bio');
+});
+
+// Member referral links: /r/CODE → the opt-in page tagged with the code, so the
+// portal can count the friends each member brings (and the dashboard sees the
+// channel). The redirect hop itself isn't counted (see the pageview skip above).
+app.get('/r/:code', (req, res) => {
+  const code = String(req.params.code || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
+  res.redirect(302, `/drink/?utm_source=referral&utm_medium=member&utm_campaign=${encodeURIComponent(code)}`);
 });
 
 // Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).

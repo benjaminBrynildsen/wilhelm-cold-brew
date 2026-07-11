@@ -9,10 +9,10 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
   <meta name="description" content="Wilhelm Cold Brew's Friday Drop — limited bottles every Friday at 9AM, gone in minutes. Join the list for first access."/>
 
-  <!-- Warm font connections early + load fonts in parallel (display=swap shows text immediately). -->
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400;500&display=swap"/>
+  <!-- Self-hosted fonts (latin woff2, display=swap) — no third-party render-blocking request. -->
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/bodoni-moda-normal-400-latin.woff2" crossorigin/>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/lora-normal-400-latin.woff2" crossorigin/>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css"/>
   <!-- Preload the always-visible logo. The hero photo is preloaded dynamically
        by the variant script below, so only the chosen image-test arm is fetched. -->
   <link rel="preload" as="image" href="assets/wilhelm-circle.png"/>
@@ -131,21 +131,21 @@
       // 'reviews' swaps the product photo for a two-up of the real review
       // screenshots (Finley on X, Kaleb on IG) — pair arms render both images.
       var IMG = {
-        cigars:  { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667,  alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
-        barrel:  { src: 'assets/hero-barrel.jpg',   w: 1024, h: 1024, alt: 'A bottle of Wilhelm Cold Brew on a whiskey barrel at dusk' },
-        bottles: { src: 'assets/hero-bottles.jpg',  w: 1280, h: 1222, alt: 'A fresh batch of Wilhelm Cold Brew bottles, just off the line' },
+        cigars:  { src: 'assets/bottle-cigars.webp', w: 1000, h: 667,  alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
+        barrel:  { src: 'assets/hero-barrel.webp',   w: 1024, h: 1024, alt: 'A bottle of Wilhelm Cold Brew on a whiskey barrel at dusk' },
+        bottles: { src: 'assets/hero-bottles.webp',  w: 1280, h: 1222, alt: 'A fresh batch of Wilhelm Cold Brew bottles, just off the line' },
         reviews: { pair: [
-          { src: 'assets/review-finley-hero.jpg', w: 720, h: 1086, alt: 'James Finley (@thefinley) on X: This is a fantastic sipping coffee. Great with a small splash of milk or black.' },
-          { src: 'assets/review-kaleb-hero.jpg',  w: 720, h: 1086, alt: '@kalebspangler on Instagram: Some of the best coffee I’ve ever had!' }
+          { src: 'assets/review-finley-hero.webp', w: 720, h: 1086, alt: 'James Finley (@thefinley) on X: This is a fantastic sipping coffee. Great with a small splash of milk or black.' },
+          { src: 'assets/review-kaleb-hero.webp',  w: 720, h: 1086, alt: '@kalebspangler on Instagram: Some of the best coffee I’ve ever had!' }
         ] },
         // 'minimal' keeps the control photo but drops the three sub-bullets and
         // runs the countdown big instead (CSS keys off data-drink-img="minimal"),
         // so vs 'cigars' it isolates "bullets vs big countdown".
-        minimal: { src: 'assets/bottle-cigars.jpg', w: 1000, h: 667, alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
+        minimal: { src: 'assets/bottle-cigars.webp', w: 1000, h: 667, alt: 'Pouring Wilhelm Cold Brew over ice beside a box of cigars' },
         // 'video' swaps the photo for the 15s muted pour loop (poster = mid-pour
         // frame). mp4 = h264 for Safari/iOS; webm = vp9 for browsers without h264.
         video: { video: 'assets/hero-pour.mp4', videoWebm: 'assets/hero-pour.webm',
-                 poster: 'assets/hero-pour-poster.jpg', w: 360, h: 360,
+                 poster: 'assets/hero-pour-poster.webp', w: 360, h: 360,
                  alt: 'Pouring Wilhelm Cold Brew into a glass, then a splash of cream' }
       };
       // Live arms come from the server (window.__SPLIT_IMG_ARMS, toggled in admin);
@@ -308,7 +308,7 @@
             }
           })();
         </script>
-        <noscript><img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/></noscript>
+        <noscript><img src="assets/bottle-cigars.webp" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/></noscript>
       </div>
 
       <ul class="sub-bullets">
@@ -361,7 +361,7 @@
   <section class="sec family" id="family">
     <div class="sec-inner">
       <div class="family-figure">
-        <img src="assets/wilhelm-portrait-2.jpg" alt="Wilhelm — the man the cold brew is named after" loading="lazy" width="680" height="564"/>
+        <img src="assets/wilhelm-portrait-2.webp" alt="Wilhelm — the man the cold brew is named after" loading="lazy" width="680" height="564"/>
       </div>
       <div class="eyebrow dark">✦&nbsp;&nbsp;OUR LITTLE LEDGER&nbsp;&nbsp;✦</div>
       <h2>Wilhelm,<br/><span class="yr">1897.</span></h2>
@@ -370,7 +370,7 @@
       <p class="muted">That's what aging in oak does, too. Coffee enters the cask as one thing, sits with the wood and the ghost of bourbon for ninety nights, and comes out as something the beans could never have imagined for themselves.</p>
       <div class="pull">A leap. In a bottle.</div>
       <figure class="family-wide">
-        <img src="assets/wilhelm-family.jpg" alt="The Wilhelm family, gathered before the crossing — Wilhelm marked" loading="lazy"/>
+        <img src="assets/wilhelm-family.webp" alt="The Wilhelm family, gathered before the crossing — Wilhelm marked" loading="lazy"/>
         <figcaption>Many years on — the whole family, all eight sons. <span>Wilhelm, marked.</span></figcaption>
       </figure>
     </div>
@@ -380,7 +380,7 @@
   <section class="sec proof" id="proof">
     <div class="sec-inner proof-inner">
       <figure class="proof-photo">
-        <img src="assets/proof-maker.jpg" alt="Overseeing a batch on the tanks" loading="lazy" width="675" height="900"/>
+        <img src="assets/proof-maker.webp" alt="Overseeing a batch on the tanks" loading="lazy" width="675" height="900"/>
       </figure>
       <div class="proof-copy">
         <div class="eyebrow">✦&nbsp;&nbsp;THE HAND BEHIND THE BATCH</div>
@@ -401,19 +401,19 @@
       <p class="bottles-lede">Bourbon-barrel-aged cold brew. No alcohol. Best served neat or over a large ice cube.</p>
       <div class="gallery">
         <figure class="plate">
-          <div class="plate-img"><img src="assets/bottle-library.jpg" alt="Wilhelm Cold Brew bottle and glass among the law-library shelves" loading="lazy"/></div>
+          <div class="plate-img"><img src="assets/bottle-library.webp" alt="Wilhelm Cold Brew bottle and glass among the law-library shelves" loading="lazy"/></div>
           <figcaption>The reading room</figcaption>
         </figure>
         <figure class="plate">
-          <div class="plate-img"><img src="assets/bottle-billiards.jpg" alt="Wilhelm Cold Brew bottle on the billiards table" loading="lazy"/></div>
+          <div class="plate-img"><img src="assets/bottle-billiards.webp" alt="Wilhelm Cold Brew bottle on the billiards table" loading="lazy"/></div>
           <figcaption>The billiard room</figcaption>
         </figure>
         <figure class="plate">
-          <div class="plate-img"><img src="assets/bottle-cigars.jpg" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" loading="lazy"/></div>
+          <div class="plate-img"><img src="assets/bottle-cigars.webp" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" loading="lazy"/></div>
           <figcaption>The humidor</figcaption>
         </figure>
         <figure class="plate">
-          <div class="plate-img"><img src="assets/bottle-pour.jpg" alt="A glass of Wilhelm Cold Brew in hand on a leather chesterfield" loading="lazy"/></div>
+          <div class="plate-img"><img src="assets/bottle-pour.webp" alt="A glass of Wilhelm Cold Brew in hand on a leather chesterfield" loading="lazy"/></div>
           <figcaption>Over ice</figcaption>
         </figure>
       </div>

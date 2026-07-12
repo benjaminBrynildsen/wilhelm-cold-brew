@@ -425,17 +425,28 @@ export function mountAdmin(app) {
         const dayExpr = `TO_CHAR(created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
         const byDay = {};
         const fold = (rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
-        const [s, d, j] = await Promise.all([
+        const [s, d, j, org] = await Promise.all([
           q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE TRUE ${EXCL_JE}${hourFrag} GROUP BY 1`),
           q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($1) ${EXCL_JE}${hourFrag} GROUP BY 1`, [DRINK_PAGES]),
           q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}${hourFrag} GROUP BY 1`),
+          // Organic signups per day — same classification as the overview card:
+          // tagged UTMs split ads out; untagged joins credit the visitor's first
+          // entry referrer (search) or count as direct (incl. untagged X).
+          q(`SELECT day, COUNT(*) FILTER (WHERE b <> 'ad')::int n FROM (
+               SELECT TO_CHAR(s.created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD') AS day,
+                      CASE WHEN s.utm_source IN ('drinkup','referral') OR s.utm_source IS NULL THEN 'organic'
+                           ELSE 'ad' END b
+                 FROM subscribers s
+                WHERE TRUE ${EXCL_PV}${hourFrag}
+             ) t GROUP BY day`),
         ]);
-        fold(s.rows, 'sessions'); fold(d.rows, 'drinkSessions'); fold(j.rows, 'signups');
+        fold(s.rows, 'sessions'); fold(d.rows, 'drinkSessions'); fold(j.rows, 'signups'); fold(org.rows, 'organic');
         const daily = Object.entries(byDay)
           .map(([day, v]) => {
-            const ds = v.drinkSessions || 0, su = v.signups || 0;
+            const ds = v.drinkSessions || 0, su = v.signups || 0, og = v.organic || 0;
             return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
-                     conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0 };
+                     conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
+                     organic: og, organicPct: su ? Math.round((100 * og) / su) : null };
           })
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
         overviewDailyCache = { key: hourFrag, at: Date.now(), daily };

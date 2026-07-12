@@ -416,6 +416,44 @@ export async function sendShippingNotice(to, meta = {}, { record = true } = {}) 
   console.log('[mail] shipping notice sent to', to, record ? '' : '(test)');
 }
 
+// Customer-portal magic link ("The Cellar"). Plain, untracked, single button.
+export async function sendPortalLink(to, link) {
+  if (!transporter) { console.warn('[mail] skip portal link (SMTP not configured):', to); return; }
+  const html = `<!doctype html>
+<html><body style="margin:0;background:#e9dcbb;padding:0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e9dcbb;">
+    <tr><td align="center" style="padding:36px 18px;">
+      <table role="presentation" width="100%" style="max-width:540px;background:#f7f0dd;border:1px solid #ddcfa6;border-radius:6px;">
+        <tr><td style="padding:38px 42px 32px;">
+          <div style="text-align:center;padding-bottom:26px;">
+            <img src="${SITE}/drink/assets/wilhelm-circle.png" width="80" height="80" alt="Wilhelm Cold Brew" style="display:inline-block;border-radius:50%;border:0;"/>
+            <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:3px;color:#b08a2c;margin-top:12px;">SMALL BATCH &middot; ST. LOUIS, MO</div>
+          </div>
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
+            <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">Your key to the cellar.</p>
+            <p style="margin:0 0 20px;">Tap the button to open your Wilhelm account — orders, tracking, and your place on the list. The link works once and expires in 30 minutes.</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="border-radius:6px;background:#8a6914;">
+              <a href="${link}" style="display:inline-block;padding:13px 26px;font-family:Arial,sans-serif;font-size:15px;color:#f7f0dd;text-decoration:none;font-weight:bold;">Open my cellar &rarr;</a>
+            </td></tr></table>
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#6b6047;">Didn't request this? You can ignore it — nothing happens without the link.</p>
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  const text = [
+    'Your key to the cellar.',
+    '',
+    'Open your Wilhelm account (orders, tracking, your place on the list):',
+    link,
+    '',
+    'The link works once and expires in 30 minutes. Didn’t request this? Ignore it.',
+  ].join('\n');
+  await transporter.sendMail({ from: FROM, to, subject: 'Your Wilhelm sign-in link', html, text });
+  console.log('[mail] portal link sent to', to);
+}
+
 // Internal "new order" alert to Ben. Plain, untracked, not logged to email_sends.
 export async function sendOrderAlert({ email, amountCents, dropName, shippingName }) {
   if (!transporter || !SIGNUP_NOTIFY) return;

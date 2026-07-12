@@ -371,11 +371,39 @@ export function mountAdmin(app) {
       const winList = requested ? allWins.filter((w) => w.key === requested) : allWins;
       const winJobs = (winList.length ? winList : allWins).map(async (w) => {
         const p = [w.from, w.to];
-        const [sessions, drinkSessions, signups] = await Promise.all([
+        const [sessions, drinkSessions, signups, joinPaths] = await Promise.all([
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
             [w.from, w.to, DRINK_PAGES]),
           q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
+          // How each signup arrived. Tagged links classify by the UTM captured at
+          // signup (drinkup = X profile bio link, referral = member link, anything
+          // else tagged = a paid ad link — broken {{macro}} tags included). Untagged
+          // signups fall back to the visitor's first-ever entry referrer (same
+          // ip_hash), so organic search still gets credited even though the signup
+          // itself carries no UTM. Untagged X clicks (t.co etc.) count as direct.
+          q(`SELECT
+               COUNT(*) FILTER (WHERE b = 'ad')::int       ad,
+               COUNT(*) FILTER (WHERE b = 'profile')::int  profile,
+               COUNT(*) FILTER (WHERE b = 'referral')::int referral,
+               COUNT(*) FILTER (WHERE b = 'search')::int   search,
+               COUNT(*) FILTER (WHERE b = 'direct')::int   direct
+             FROM (
+               SELECT CASE
+                 WHEN s.utm_source = 'drinkup'  THEN 'profile'
+                 WHEN s.utm_source = 'referral' THEN 'referral'
+                 WHEN s.utm_source IS NOT NULL  THEN 'ad'
+                 WHEN e.referrer_host IN ('google.com','www.google.com','bing.com','duckduckgo.com','search.brave.com','search.yahoo.com') THEN 'search'
+                 ELSE 'direct' END b
+               FROM subscribers s
+               LEFT JOIN LATERAL (
+                 SELECT pv.referrer_host FROM page_views pv
+                  WHERE pv.ip_hash = s.ip_hash
+                    AND pv.referrer_host IS DISTINCT FROM 'wilhelmcoldbrew.com'
+                  ORDER BY pv.created_at ASC LIMIT 1
+               ) e ON TRUE
+               WHERE s.created_at >= $1 AND s.created_at < $2 ${EXCL_PV}${hourFrag}
+             ) t`, p),
         ]);
         const ds = drinkSessions.rows[0].n, su = signups.rows[0].n;
         out[w.key] = {
@@ -383,6 +411,7 @@ export function mountAdmin(app) {
           drinkSessions: ds,
           signups: su,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
+          joinPaths: joinPaths.rows[0],
         };
       });
 

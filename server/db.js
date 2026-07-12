@@ -59,6 +59,7 @@ export async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS pv_created_idx ON page_views (created_at);
     CREATE INDEX IF NOT EXISTS pv_path_idx    ON page_views (path);
+    CREATE INDEX IF NOT EXISTS pv_ip_created_idx ON page_views (ip_hash, created_at);
 
     CREATE TABLE IF NOT EXISTS subscribers (
       id              BIGSERIAL PRIMARY KEY,
@@ -266,6 +267,22 @@ export async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS thankyou_cards (
       order_id   BIGINT PRIMARY KEY,
       written_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    -- Customer portal ("The Cellar"): single-use magic-link login tokens.
+    CREATE TABLE IF NOT EXISTS portal_tokens (
+      token      TEXT PRIMARY KEY,
+      email      TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at    TIMESTAMPTZ
+    );
+    -- One shareable referral code per member. Signups it brings arrive tagged
+    -- utm_source=referral & utm_campaign=<code>, so counting needs no new columns.
+    CREATE TABLE IF NOT EXISTS referral_codes (
+      code       TEXT PRIMARY KEY,
+      email      TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
     -- Ad creative registry for the admin "Ad Fit" tab. name matches the ad URL's

@@ -1019,11 +1019,12 @@ async function showOverview() {
         <td class="num">${num(r.sessions)}</td>
         <td class="num">${num(r.drinkSessions)}</td>
         <td class="num">${num(r.signups)}</td>
-        <td class="num">${r.conversionPct}%</td></tr>`).join('');
+        <td class="num">${r.conversionPct}%</td>
+        <td class="num">${r.organicPct === null || r.organicPct === undefined ? '—' : r.organicPct + '%'}</td></tr>`).join('');
     const dailyTable = dailyRows ? `
       <h3>Day by day <span class="note">— since launch; click a column to sort</span></h3>
       <table><thead><tr><th>Day</th><th class="num">Sessions</th><th class="num">Drink visits</th>
-        <th class="num">Signups</th><th class="num">Conv.</th></tr></thead>
+        <th class="num">Signups</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
 
     // Organic vs ad-link signups — how the window's joins arrived. Organic =

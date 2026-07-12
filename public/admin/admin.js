@@ -1026,6 +1026,18 @@ async function showOverview() {
         <th class="num">Signups</th><th class="num">Conv.</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
 
+    // Organic vs ad-link signups — how the window's joins arrived. Organic =
+    // direct + X profile link + search (+ member referrals); the rest came in
+    // through tagged ad links.
+    const jp = w.joinPaths || {};
+    const jpOrganic = (jp.direct || 0) + (jp.profile || 0) + (jp.search || 0) + (jp.referral || 0);
+    const jpTotal = jpOrganic + (jp.ad || 0);
+    const jpParts = [['direct', jp.direct], ['profile', jp.profile], ['search', jp.search], ['referral', jp.referral], ['ads', jp.ad]]
+      .filter(([, n]) => n > 0).map(([l, n]) => `${l} ${num(n)}`).join(' · ');
+    const organicCard = `<div class="card"><div class="k">Organic signups</div>
+        <div class="v">${jpTotal ? Math.round((100 * jpOrganic) / jpTotal) + '<small>%</small>' : '—'}</div>
+        <div class="k2">${jpTotal ? esc(jpParts) : 'no signups in window'}</div></div>`;
+
     content().innerHTML = winbar('win', { extra: hoursBar, extraActive: !!state.ovHours }) + `
       <div class="cards">
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
@@ -1033,8 +1045,10 @@ async function showOverview() {
         <div class="card"><div class="k">Signups</div><div class="v">${num(w.signups)}</div></div>
         <div class="card"><div class="k">Drink conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
+        ${organicCard}
       </div>
-      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.${hoursNote}</div>
+      <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.
+        Organic = direct + X profile link + search signups; the rest came from tagged ad links (untagged X clicks count as direct).${hoursNote}</div>
       ${dailyTable}`;
     wireWinbar(showOverview);
     document.querySelectorAll('[data-hours]').forEach((el) =>

@@ -59,6 +59,7 @@ export async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS pv_created_idx ON page_views (created_at);
     CREATE INDEX IF NOT EXISTS pv_path_idx    ON page_views (path);
+    CREATE INDEX IF NOT EXISTS pv_ip_created_idx ON page_views (ip_hash, created_at);
 
     CREATE TABLE IF NOT EXISTS subscribers (
       id              BIGSERIAL PRIMARY KEY,

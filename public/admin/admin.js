@@ -1016,7 +1016,7 @@ const niceCeil = (v) => {
   for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
   return 10 * p;
 };
-function ovDotPanel(rows, key, label, color, isPct, W) {
+function ovDotPanel(rows, key, label, color, isPct, W, line) {
   const fmtV = (v) => (isPct ? +(+v).toFixed(1) + '%' : num(Math.round(v)));
   const head = `<div class="ovg-t"><span class="sw" style="background:${color}"></span>${esc(label)}</div>`;
   const pts = rows.map((r, i) => ({ i, day: r.day, v: r[key] })).filter((p) => p.v != null && p.v !== undefined);
@@ -1039,8 +1039,20 @@ function ovDotPanel(rows, key, label, color, isPct, W) {
   for (let i = n - 1; i >= 0; i -= step) {
     svg += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" fill="rgba(241,230,200,.55)" font-family="'DM Mono',monospace" font-size="10">${md(rows[i].day)}</text>`;
   }
+  if (line) {
+    // 2px line broken at gaps (days with no value), small markers on top
+    const segs = [];
+    pts.forEach((p) => {
+      const seg = segs[segs.length - 1];
+      if (seg && p.i === seg.last + 1) { seg.d += ` L${X(p.i)},${Y(p.v)}`; seg.last = p.i; }
+      else segs.push({ d: `M${X(p.i)},${Y(p.v)}`, last: p.i });
+    });
+    segs.forEach((s) => {
+      svg += `<path d="${s.d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    });
+  }
   pts.forEach((p) => {
-    svg += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="4.5" fill="${color}"/>
+    svg += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${line ? 3 : 4.5}" fill="${color}"/>
       <circle class="ovg-hit" data-tip="${esc(p.day)} — ${esc(label)}: ${fmtV(p.v)}" cx="${X(p.i)}" cy="${Y(p.v)}" r="13" fill="transparent"/>`;
   });
   // direct label on the latest point only
@@ -1079,12 +1091,12 @@ async function showOverview() {
         <th class="num">Signups</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
 
-    // List ⇄ Dots toggle. Dots = one small dot plot per picked metric (own
-    // y-scale each, so counts and percentages never share an axis), over the
-    // picked span of days. List stays the default.
-    const dots = state.ovView === 'dots';
+    // List ⇄ Dots ⇄ Line toggle. Both graph modes render one small panel per
+    // picked metric (own y-scale each, so counts and percentages never share
+    // an axis), over the picked span of days. List stays the default.
+    const graph = state.ovView === 'dots' || state.ovView === 'line';
     let dailyBody = dailyTable;
-    if (dots && (d.daily || []).length) {
+    if (graph && (d.daily || []).length) {
       const chrono = (state.ovSpan === 'all' ? d.daily.slice() : d.daily.slice(0, +state.ovSpan)).reverse();
       const W = Math.max(320, Math.min((content().clientWidth || 720) - 32, 940));
       const picked = OV_METRICS.filter(([k]) => state.ovMetrics.includes(k));
@@ -1094,12 +1106,13 @@ async function showOverview() {
         <div class="winbar" style="margin-bottom:14px"><span class="winlabel">SHOW</span>${OV_SPANS.map(([k, l]) =>
           `<div class="win ${state.ovSpan === k ? 'active' : ''}" data-ovspan="${k}">${l}</div>`).join('')}</div>
         ${picked.length
-          ? picked.map(([k, l, c, isPct]) => ovDotPanel(chrono, k, l, c, isPct, W)).join('')
+          ? picked.map(([k, l, c, isPct]) => ovDotPanel(chrono, k, l, c, isPct, W, state.ovView === 'line')).join('')
           : '<div class="note">Pick at least one metric above.</div>'}`;
     }
     const dailySection = dailyRows ? `
-      <div class="ovd-head"><h3>Day by day <span class="note">— ${dots ? 'hover or tap a dot for the value' : 'since launch; click a column to sort'}</span></h3>
-        <div class="winbar" style="margin:0"><div class="win ${dots ? '' : 'active'}" data-ovview="list">List</div><div class="win ${dots ? 'active' : ''}" data-ovview="dots">Dots</div></div>
+      <div class="ovd-head"><h3>Day by day <span class="note">— ${graph ? 'hover or tap a point for the value' : 'since launch; click a column to sort'}</span></h3>
+        <div class="winbar" style="margin:0">${[['list', 'List'], ['dots', 'Dots'], ['line', 'Line']].map(([k, l]) =>
+          `<div class="win ${state.ovView === k ? 'active' : ''}" data-ovview="${k}">${l}</div>`).join('')}</div>
       </div>${dailyBody}` : '';
 
     // Organic vs ad-link signups — how the window's joins arrived. Organic =

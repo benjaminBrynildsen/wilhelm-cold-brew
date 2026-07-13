@@ -1268,10 +1268,10 @@ export function mountAdmin(app) {
          )
          SELECT s.session_id, s.started_at, s.duration_seconds, s.event_count,
                 s.city, s.region, s.country, s.variant, s.subscribed, s.page, s.max_scroll,
-                a.utm_source, a.utm_campaign, a.utm_content, a.referrer_host
+                a.utm_source, a.utm_campaign, a.utm_content, a.referrer_host, a.path AS entry_path
            FROM s
            LEFT JOIN LATERAL (
-             SELECT utm_source, utm_campaign, utm_content, referrer_host
+             SELECT utm_source, utm_campaign, utm_content, referrer_host, path
                FROM page_views pv
               WHERE pv.ip_hash = s.ip_hash
                 AND pv.created_at BETWEEN s.started_at - INTERVAL '2 minutes'

@@ -939,7 +939,9 @@ async function showJourney() {
     const utmCell = (s) => {
       if (s.utm_source) return `${esc(srcName(s.utm_source))}${s.utm_campaign ? ' / ' + esc(s.utm_campaign) : ''}${s.utm_content ? ' / <b>' + esc(s.utm_content) + '</b>' : ''}`;
       if (s.referrer_host) return `<span class="note">${esc(s.referrer_host)}</span>`;
-      return '<span class="note">direct</span>';
+      // Direct = no tag, no referrer — the entry path at least says WHERE they
+      // landed (typed/bookmarked /drink/ vs the buy page vs the old root, etc.).
+      return `<span class="note">direct${s.entry_path ? ' (' + esc(s.entry_path) + ')' : ''}</span>`;
     };
     const rows = d.sessions.map((s) => `
       <tr data-sid="${esc(s.session_id)}" style="cursor:pointer">

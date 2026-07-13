@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'd30', splitWin: 'today', adfitWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'd30', splitWin: 'today', adfitWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -998,6 +998,57 @@ async function showJourneyDetail(sid) {
 // ───────── Overview ─────────
 // Hour-of-day presets for the overview (Central time). '' = whole day.
 const OV_HOURS = [['', 'All day'], ['16-24', '4pm–midnight'], ['0-12', 'Midnight–noon'], ['9-17', '9am–5pm']];
+
+// Day-by-day dot-plot view. Counts and percentages never share a y-axis —
+// each picked metric gets its own small panel with its own scale. Hue per
+// metric is FIXED (validated for CVD separation + contrast on --panel), so
+// toggling metrics never repaints the survivors.
+const OV_METRICS = [
+  ['sessions', 'Sessions', '#3987e5', 0],
+  ['drinkSessions', 'Drink visits', '#199e70', 0],
+  ['signups', 'Signups', '#c98500', 0],
+  ['conversionPct', 'Conv. %', '#9085e9', 1],
+  ['organicPct', 'Organic %', '#d55181', 1],
+];
+const OV_SPANS = [['7', '7 days'], ['30', '30 days'], ['all', 'All']];
+const niceCeil = (v) => {
+  const p = Math.pow(10, Math.floor(Math.log10(v || 1)));
+  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+};
+function ovDotPanel(rows, key, label, color, isPct, W) {
+  const fmtV = (v) => (isPct ? +(+v).toFixed(1) + '%' : num(Math.round(v)));
+  const head = `<div class="ovg-t"><span class="sw" style="background:${color}"></span>${esc(label)}</div>`;
+  const pts = rows.map((r, i) => ({ i, day: r.day, v: r[key] })).filter((p) => p.v != null && p.v !== undefined);
+  if (!pts.length) return `<div class="ovg-panel">${head}<div class="note">No data in this range.</div></div>`;
+  const H = 170, padL = 46, padR = 18, padT = 18, padB = 30;
+  const iw = W - padL - padR, ih = H - padT - padB, n = rows.length;
+  const top = niceCeil(Math.max(...pts.map((p) => p.v)));
+  const X = (i) => padL + (n <= 1 ? iw / 2 : (i * iw) / (n - 1));
+  const Y = (v) => padT + ih - (v / top) * ih;
+  const md = (day) => { const [, m, dd] = day.split('-'); return +m + '/' + +dd; };
+  // recessive grid: baseline + two hairlines, ticks in muted ink
+  let svg = '';
+  [0, 0.5, 1].forEach((f) => {
+    const y = Y(top * f);
+    svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="${f === 0 ? 'rgba(241,230,200,.28)' : 'rgba(241,230,200,.10)'}" stroke-width="1"/>
+      <text x="${padL - 8}" y="${y + 3.5}" text-anchor="end" fill="rgba(241,230,200,.55)" font-family="'DM Mono',monospace" font-size="10">${fmtV(top * f)}</text>`;
+  });
+  // ≤6 x labels, anchored so the most recent day is always labeled
+  const step = Math.max(1, Math.ceil(n / 6));
+  for (let i = n - 1; i >= 0; i -= step) {
+    svg += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" fill="rgba(241,230,200,.55)" font-family="'DM Mono',monospace" font-size="10">${md(rows[i].day)}</text>`;
+  }
+  pts.forEach((p) => {
+    svg += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="4.5" fill="${color}"/>
+      <circle class="ovg-hit" data-tip="${esc(p.day)} — ${esc(label)}: ${fmtV(p.v)}" cx="${X(p.i)}" cy="${Y(p.v)}" r="13" fill="transparent"/>`;
+  });
+  // direct label on the latest point only
+  const last = pts[pts.length - 1];
+  const ly = Y(last.v), above = ly > padT + 16;
+  svg += `<text x="${X(last.i) + 2}" y="${above ? ly - 10 : ly + 20}" text-anchor="end" fill="var(--parch)" font-family="'DM Mono',monospace" font-size="11.5" font-weight="500">${fmtV(last.v)}</text>`;
+  return `<div class="ovg-panel">${head}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} by day">${svg}</svg></div>`;
+}
 async function showOverview() {
   loading();
   try {
@@ -1024,10 +1075,32 @@ async function showOverview() {
         <td class="num">${r.conversionPct}%</td>
         <td class="num">${r.organicPct === null || r.organicPct === undefined ? '—' : r.organicPct + '%'}</td></tr>`).join('');
     const dailyTable = dailyRows ? `
-      <h3>Day by day <span class="note">— since launch; click a column to sort</span></h3>
       <table><thead><tr><th>Day</th><th class="num">Sessions</th><th class="num">Drink visits</th>
         <th class="num">Signups</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
+
+    // List ⇄ Dots toggle. Dots = one small dot plot per picked metric (own
+    // y-scale each, so counts and percentages never share an axis), over the
+    // picked span of days. List stays the default.
+    const dots = state.ovView === 'dots';
+    let dailyBody = dailyTable;
+    if (dots && (d.daily || []).length) {
+      const chrono = (state.ovSpan === 'all' ? d.daily.slice() : d.daily.slice(0, +state.ovSpan)).reverse();
+      const W = Math.max(320, Math.min((content().clientWidth || 720) - 32, 940));
+      const picked = OV_METRICS.filter(([k]) => state.ovMetrics.includes(k));
+      dailyBody = `
+        <div class="ovg-ctl">${OV_METRICS.map(([k, l, c]) =>
+          `<button class="mchip ${state.ovMetrics.includes(k) ? 'active' : ''}" data-ovmetric="${k}"><span class="sw" style="background:${c}"></span>${l}</button>`).join('')}</div>
+        <div class="winbar" style="margin-bottom:14px"><span class="winlabel">SHOW</span>${OV_SPANS.map(([k, l]) =>
+          `<div class="win ${state.ovSpan === k ? 'active' : ''}" data-ovspan="${k}">${l}</div>`).join('')}</div>
+        ${picked.length
+          ? picked.map(([k, l, c, isPct]) => ovDotPanel(chrono, k, l, c, isPct, W)).join('')
+          : '<div class="note">Pick at least one metric above.</div>'}`;
+    }
+    const dailySection = dailyRows ? `
+      <div class="ovd-head"><h3>Day by day <span class="note">— ${dots ? 'hover or tap a dot for the value' : 'since launch; click a column to sort'}</span></h3>
+        <div class="winbar" style="margin:0"><div class="win ${dots ? '' : 'active'}" data-ovview="list">List</div><div class="win ${dots ? 'active' : ''}" data-ovview="dots">Dots</div></div>
+      </div>${dailyBody}` : '';
 
     // Organic vs ad-link signups — how the window's joins arrived. Organic =
     // direct + X profile link + search (+ member referrals); the rest came in
@@ -1052,10 +1125,39 @@ async function showOverview() {
       </div>
       <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.
         Organic = direct + X profile link + search signups; the rest came from tagged ad links (untagged X clicks count as direct).${hoursNote}</div>
-      ${dailyTable}`;
+      ${dailySection}`;
     wireWinbar(showOverview);
     document.querySelectorAll('[data-hours]').forEach((el) =>
       el.addEventListener('click', () => { state.ovHours = el.dataset.hours; showOverview(); }));
+    document.querySelectorAll('[data-ovview]').forEach((el) =>
+      el.addEventListener('click', () => { state.ovView = el.dataset.ovview; showOverview(); }));
+    document.querySelectorAll('[data-ovspan]').forEach((el) =>
+      el.addEventListener('click', () => { state.ovSpan = el.dataset.ovspan; showOverview(); }));
+    document.querySelectorAll('[data-ovmetric]').forEach((el) =>
+      el.addEventListener('click', () => {
+        const k = el.dataset.ovmetric;
+        state.ovMetrics = state.ovMetrics.includes(k) ? state.ovMetrics.filter((m) => m !== k) : [...state.ovMetrics, k];
+        showOverview();
+      }));
+    // one shared tooltip for the dot plots (hover on desktop, tap on phone)
+    let tip = document.getElementById('ovg-tip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'ovg-tip'; tip.className = 'ovg-tip'; tip.hidden = true;
+      document.body.appendChild(tip);
+    }
+    tip.hidden = true;
+    document.querySelectorAll('.ovg-hit').forEach((c) => {
+      const show = () => {
+        tip.textContent = c.dataset.tip; tip.hidden = false;
+        const r = c.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+        tip.style.left = Math.min(Math.max(8, r.left + r.width / 2 - tw / 2), window.innerWidth - tw - 8) + 'px';
+        tip.style.top = (r.top - th - 8 > 0 ? r.top - th - 8 : r.bottom + 8) + 'px';
+      };
+      c.addEventListener('pointerenter', show);
+      c.addEventListener('click', show);
+      c.addEventListener('pointerleave', () => { tip.hidden = true; });
+    });
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 

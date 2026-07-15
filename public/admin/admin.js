@@ -1039,10 +1039,15 @@ function ovDotPanel(rows, key, label, color, isPct, W, line) {
   for (let i = n - 1; i >= 0; i -= step) {
     svg += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" fill="rgba(241,230,200,.55)" font-family="'DM Mono',monospace" font-size="10">${md(rows[i].day)}</text>`;
   }
+  // Today's Central day is still filling in — its point renders hollow and its
+  // line segment dashed so a mid-day dip never reads as a real drop.
+  const todayC = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
   if (line) {
-    // 2px line broken at gaps (days with no value), small markers on top
+    // 2px line broken at gaps (days with no value), small markers on top.
+    // The segment INTO today is drawn separately, dashed.
+    const solid = pts.filter((p) => p.day !== todayC);
     const segs = [];
-    pts.forEach((p) => {
+    solid.forEach((p) => {
       const seg = segs[segs.length - 1];
       if (seg && p.i === seg.last + 1) { seg.d += ` L${X(p.i)},${Y(p.v)}`; seg.last = p.i; }
       else segs.push({ d: `M${X(p.i)},${Y(p.v)}`, last: p.i });
@@ -1050,10 +1055,18 @@ function ovDotPanel(rows, key, label, color, isPct, W, line) {
     segs.forEach((s) => {
       svg += `<path d="${s.d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     });
+    const ti = pts.findIndex((p) => p.day === todayC);
+    if (ti > 0) {
+      const prev = pts[ti - 1], tp = pts[ti];
+      svg += `<path d="M${X(prev.i)},${Y(prev.v)} L${X(tp.i)},${Y(tp.v)}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="3 5" stroke-linecap="round"/>`;
+    }
   }
   pts.forEach((p) => {
-    svg += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${line ? 3 : 4.5}" fill="${color}"/>
-      <circle class="ovg-hit" data-tip="${esc(p.day)} — ${esc(label)}: ${fmtV(p.v)}" cx="${X(p.i)}" cy="${Y(p.v)}" r="13" fill="transparent"/>`;
+    const isToday = p.day === todayC;
+    svg += isToday
+      ? `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${line ? 3.5 : 4.5}" fill="#1a140d" stroke="${color}" stroke-width="2"/>`
+      : `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${line ? 3 : 4.5}" fill="${color}"/>`;
+    svg += `<circle class="ovg-hit" data-tip="${esc(p.day)}${isToday ? ' (today — still counting)' : ''} — ${esc(label)}: ${fmtV(p.v)}" cx="${X(p.i)}" cy="${Y(p.v)}" r="13" fill="transparent"/>`;
   });
   // direct label on the latest point only
   const last = pts[pts.length - 1];
@@ -1110,7 +1123,7 @@ async function showOverview() {
           : '<div class="note">Pick at least one metric above.</div>'}`;
     }
     const dailySection = dailyRows ? `
-      <div class="ovd-head"><h3>Day by day <span class="note">— ${graph ? 'hover or tap a point for the value' : 'since launch; click a column to sort'}</span></h3>
+      <div class="ovd-head"><h3>Day by day <span class="note">— ${graph ? 'hover or tap a point for the value · hollow point = today, still counting' : 'since launch; click a column to sort'}</span></h3>
         <div class="winbar" style="margin:0">${[['list', 'List'], ['dots', 'Dots'], ['line', 'Line']].map(([k, l]) =>
           `<div class="win ${state.ovView === k ? 'active' : ''}" data-ovview="${k}">${l}</div>`).join('')}</div>
       </div>${dailyBody}` : '';

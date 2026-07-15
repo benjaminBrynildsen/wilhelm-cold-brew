@@ -1615,6 +1615,13 @@ async function showTraffic() {
       ? `<tr style="font-weight:700;border-bottom:2px solid var(--gold)"><td>All channels</td><td class="num">${num(juLanded)}</td><td class="num">${num(juJoined)}</td><td class="num"><b>${juLanded ? pct(juJoined, juLanded) : '—'}</b></td></tr>`
       : '';
     const w = (dflt) => rlab || dflt;   // table-title window label
+    // Channel-conversion rows — first 25 visible, the rest revealed 25 at a
+    // time by the button under the table.
+    const JU_PAGE = 25;
+    const juBody = juTotalRow + (ju.map((r, i) => {
+      const ch = String(r.channel || '').split(' / '); ch[0] = srcName(ch[0]);
+      return `<tr class="ju-row"${i >= JU_PAGE ? ' style="display:none"' : ''}><td>${esc(ch.join(' / '))}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`;
+    }).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>');
     content().innerHTML = rangeBar + `
       <div class="cards">
         ${d.range ? `<div class="card" style="border-color:var(--gold)"><div class="k">Views (${esc(rlab)})</div><div class="v">${num(d.range.views)}</div></div>
@@ -1625,16 +1632,27 @@ async function showTraffic() {
         <div class="card"><div class="k">Visitors (30d)</div><div class="v">${num(vis.last30d)}</div></div>
         <div class="card"><div class="k">Views (total)</div><div class="v">${num(v.total)}</div></div>
       </div>
-      <h3>${rlab ? esc(rlab) : 'Last 14 days'}</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>
       <div class="grid2">
+        <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juBody, [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
+          ${ju.length > JU_PAGE ? `<button class="btn ghost sm" id="ju-more" style="margin-top:8px">Show 25 more (${ju.length - JU_PAGE} hidden)</button>` : ''}
+          ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view${rlab ? ' · entries limited to the selected dates; "joined" = subscribed on/after the range start (already-subscribed visitors don’t count)' : ''}.</div>` : ''}</div>
         <div>${tbl(`Top paths (${esc(w('30d'))})`, d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl(`Top referrers (${esc(w('30d'))})`, d.topReferrers.map((r) => `<tr><td>${esc(r.host)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Referrer' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl(`Top countries (${esc(w('30d'))})`, d.topCountries.map((r) => `<tr><td>${esc(r.country)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Country' }, { h: 'Views', num: 1 }])}</div>
         <div>${tbl(`UTM campaigns (${esc(w('30d'))} views)`, d.topCampaigns.map((r) => `<tr><td>${esc(srcName(r.source))}${r.campaign ? ' / ' + esc(r.campaign) : ''}${r.content ? ' / <b>' + esc(r.content) + '</b>' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'source / campaign / ad' }, { h: 'Views', num: 1 }])}</div>
-        <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juTotalRow + ((d.joinersByUtm || []).map((r) => { const ch = String(r.channel || '').split(' / '); ch[0] = srcName(ch[0]); return `<tr><td>${esc(ch.join(' / '))}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`; }).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>'), [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
-          ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view${rlab ? ' · entries limited to the selected dates; "joined" = ever subscribed' : ''}.</div>` : ''}</div>
         <div>${tbl(`Top cities (${esc(w('30d'))})`, (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
-      </div>`;
+      </div>
+      <h3>${rlab ? esc(rlab) : 'Last 14 days'}</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>`;
+
+    // reveal hidden channel rows 25 at a time
+    const juMore = document.getElementById('ju-more');
+    if (juMore) juMore.addEventListener('click', () => {
+      const hidden = [...document.querySelectorAll('.ju-row')].filter((r) => r.style.display === 'none');
+      hidden.slice(0, JU_PAGE).forEach((r) => { r.style.display = ''; });
+      const left = Math.max(0, hidden.length - JU_PAGE);
+      if (left) juMore.textContent = `Show 25 more (${left} hidden)`;
+      else juMore.remove();
+    });
 
     // wire the picker
     const setRange = (from, to) => { state.trafficRange = from && to ? { from, to } : null; showTraffic(); };

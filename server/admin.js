@@ -621,7 +621,10 @@ export function mountAdmin(app) {
       // channel; joined = those whose ip_hash later subscribed; conv = the rate.
       // Internal nav (self-referrals) is skipped so it can't masquerade as a
       // source. This is what X's CTR can't tell you: on-page conversion per ad,
-      // and it keeps untagged X out of "direct".
+      // and it keeps untagged X out of "direct". With a day/range picked,
+      // entries are limited to those dates and "joined" only counts people who
+      // subscribed ON OR AFTER the range start — an existing subscriber
+      // re-clicking a link isn't a conversion for that day.
       const joinersByUtm = (await q(
         `WITH entry AS (
            SELECT DISTINCT ON (ip_hash) ip_hash, utm_source, utm_campaign, utm_content, referrer_host
@@ -643,13 +646,13 @@ export function mountAdmin(app) {
              ELSE referrer_host END channel
            FROM entry
          ),
-         joined_ips AS (SELECT DISTINCT ip_hash FROM subscribers WHERE ip_hash IS NOT NULL)
+         joined_ips AS (SELECT DISTINCT ip_hash FROM subscribers WHERE ip_hash IS NOT NULL AND created_at >= $1)
          SELECT c.channel, COUNT(*)::int landed, COUNT(ji.ip_hash)::int joined,
                 ROUND(100.0 * COUNT(ji.ip_hash) / NULLIF(COUNT(*),0), 1)::float conv
            FROM classified c LEFT JOIN joined_ips ji ON ji.ip_hash = c.ip_hash
           GROUP BY c.channel
           ORDER BY joined DESC, landed DESC
-          LIMIT 30`, [custom ? rF : new Date(0), rT])).rows;
+          LIMIT 200`, [custom ? rF : new Date(0), rT])).rows;
       const joinersTotalRow = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
       const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.joined, 0);

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Wilhelm · Batch Notes</title>
+  <link rel="icon" href="/favicon.ico" sizes="any"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <meta name="description" content="Tasting notes for every batch of Wilhelm Cold Brew — the one in your hand, and every one before it."/>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/bodoni-moda-normal-400-latin.woff2" crossorigin/>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/lora-normal-400-latin.woff2" crossorigin/>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css"/>
+  <style>
+    :root{
+      --gold:#e8c24a; --gold-deep:#b8922f; --ink:#0c0a08; --panel:#1a140d;
+      --line:rgba(232,194,74,.25); --line-soft:rgba(232,194,74,.12);
+      --parch:#f1e6c8; --body:rgba(241,230,200,.86); --dim:rgba(241,230,200,.55);
+      --serif:'Bodoni Moda',Georgia,serif; --text:'Lora',Georgia,serif; --mono:'DM Mono',monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--ink);color:var(--body);font-family:var(--text);font-size:17px;line-height:1.65;
+      background-image:radial-gradient(ellipse 120% 60% at 50% -10%, rgba(232,194,74,.07), transparent 60%)}
+    .wrap{max-width:660px;margin:0 auto;padding:44px 20px 70px}
+    header{text-align:center;margin-bottom:38px}
+    header img{width:92px;height:92px;border-radius:50%;border:1.5px solid var(--gold-deep);background:var(--ink)}
+    h1{font-family:var(--serif);font-weight:700;color:var(--gold);font-size:34px;letter-spacing:1px;margin:18px 0 6px}
+    .sub{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:2.5px;text-transform:uppercase}
+    .intro{color:var(--body);font-size:16.5px;font-style:italic;margin:16px auto 0;max-width:440px}
+    .batch{background:var(--panel);border:1px solid var(--line-soft);padding:26px 26px 22px;margin:0 0 18px}
+    .batch.current{border-color:var(--gold-deep);box-shadow:0 0 0 1px rgba(232,194,74,.12), 0 14px 40px rgba(0,0,0,.4)}
+    .tag{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+      color:var(--ink);background:var(--gold);padding:4px 10px;border-radius:6px;margin-bottom:12px}
+    .tag.past{background:transparent;color:var(--dim);border:1px solid var(--line-soft)}
+    .batch h2{font-family:var(--serif);font-weight:600;color:var(--parch);font-size:24px;margin:0 0 2px}
+    .date{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px}
+    .notes{font-size:17px;color:var(--body);margin:0 0 16px;white-space:pre-line}
+    .meta{display:flex;flex-wrap:wrap;gap:8px 22px;border-top:1px solid var(--line-soft);padding-top:14px}
+    .meta div{min-width:0}
+    .meta .k{font-family:var(--mono);font-size:9.5px;letter-spacing:1.8px;text-transform:uppercase;color:var(--dim)}
+    .meta .v{font-size:14.5px;color:var(--parch)}
+    .divider{text-align:center;color:var(--gold-deep);font-family:var(--mono);font-size:10.5px;letter-spacing:3px;
+      text-transform:uppercase;margin:34px 0 18px}
+    .empty{text-align:center;color:var(--dim);font-style:italic;padding:40px 0}
+    .cta{margin-top:44px;text-align:center;border:1px solid var(--line);padding:30px 22px;background:var(--panel)}
+    .cta p{margin:0 0 16px;font-size:16.5px}
+    .cta a.btn{display:inline-block;background:var(--gold);color:var(--ink);font-family:var(--text);font-weight:700;
+      font-size:16px;text-decoration:none;padding:13px 28px;border-radius:8px}
+    .cta .alt{margin-top:14px;font-size:13.5px;color:var(--dim)}
+    .cta .alt a{color:var(--gold)}
+    footer{text-align:center;margin-top:36px;color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:2px;text-transform:uppercase}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
+      <h1>Batch Notes</h1>
+      <div class="sub">Barrel-aged · Small batch · Bottled by hand</div>
+      <p class="intro">Every batch is its own animal — the barrel, the bean, and the week all leave a mark. Here's what's in your glass, and everything that came before it.</p>
+    </header>
+    <div id="book"><div class="empty">Pulling the batch book…</div></div>
+    <div class="cta">
+      <p>Bottles go up every Friday at 9AM and sell out in minutes.<br/>The list hears first.</p>
+      <a class="btn" href="/drink/?utm_source=batches&utm_medium=label">Join the Friday Drop</a>
+      <div class="alt">Already on the list? <a href="/account/">Track your orders in The Cellar</a></div>
+    </div>
+    <footer>Wilhelm Cold Brew · Est. on a handshake</footer>
+  </div>
+  <script>
+    (async function () {
+      var book = document.getElementById('book');
+      function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+      function when(iso) {
+        if (!iso) return '';
+        return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
+      }
+      function metaRow(b) {
+        var pairs = [['Origin', b.origin], ['Varietal', b.varietal], ['Elevation', b.elevation], ['Roast', b.roast]]
+          .filter(function (p) { return p[1]; });
+        if (!pairs.length) return '';
+        return '<div class="meta">' + pairs.map(function (p) {
+          return '<div><div class="k">' + p[0] + '</div><div class="v">' + esc(p[1]) + '</div></div>';
+        }).join('') + '</div>';
+      }
+      function card(b, isCurrent) {
+        var tag = isCurrent
+          ? '<span class="tag">' + (b.status === 'live' ? 'Current batch · live now' : 'Latest batch') + '</span>'
+          : '<span class="tag past">Past batch</span>';
+        return '<article class="batch' + (isCurrent ? ' current' : '') + '">'
+          + tag
+          + '<h2>' + esc(b.name || 'Friday Drop') + '</h2>'
+          + '<div class="date">Dropped ' + esc(when(b.opens_at)) + '</div>'
+          + (b.tasting_notes ? '<p class="notes">' + esc(b.tasting_notes) + '</p>' : '<p class="notes" style="font-style:italic;color:var(--dim)">Notes for this batch were never written down — it went too fast.</p>')
+          + metaRow(b)
+          + '</article>';
+      }
+      try {
+        var r = await fetch('/api/batches');
+        var d = await r.json();
+        var bs = (d && d.batches) || [];
+        if (!bs.length) { book.innerHTML = '<div class="empty">The first batch notes land here soon.</div>'; return; }
+        var html = card(bs[0], true);
+        if (bs.length > 1) {
+          html += '<div class="divider">— The batches before it —</div>';
+          html += bs.slice(1).map(function (b) { return card(b, false); }).join('');
+        }
+        book.innerHTML = html;
+      } catch (e) {
+        book.innerHTML = '<div class="empty">Couldn’t load the batch book — try again in a minute.</div>';
+      }
+    })();
+  </script>
+</body>
+</html>

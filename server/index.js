@@ -90,7 +90,7 @@ mountCheckout(app);
 // Case-insensitive redirect for the marketing routes. The static handler is
 // case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos
 // and bounce them to the real lowercase path so an ad link can't dead-end.
-const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join'];
+const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'batches'];
 app.get(/^\/([A-Za-z-]+)\/?$/, (req, res, next) => {
   const slug = req.params[0].toLowerCase();
   if (CASE_ROUTES.includes(slug) && req.params[0] !== slug) return res.redirect(301, '/' + slug);
@@ -164,6 +164,20 @@ app.get(['/join', '/join/'], (_req, res) => {
 app.get('/r/:code', (req, res) => {
   const code = String(req.params.code || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
   res.redirect(302, `/drink/?utm_source=referral&utm_medium=member&utm_campaign=${encodeURIComponent(code)}`);
+});
+
+// Public batch book for the /batches page (QR code on the bottle label).
+// Every drop that has opened — never scheduled ones, so future drops don't leak.
+app.get('/api/batches', async (_req, res) => {
+  try {
+    const r = await q(
+      `SELECT id, name, status, opens_at, tasting_notes, origin, varietal, elevation, roast
+         FROM drops
+        WHERE status <> 'scheduled' AND opens_at IS NOT NULL AND opens_at <= now()
+        ORDER BY opens_at DESC`);
+    res.set('Cache-Control', 'public, max-age=300');   // label scans spike together; let the CDN absorb them
+    res.json({ batches: r.rows });
+  } catch (e) { console.error('[batches]', e); res.status(500).json({ error: 'unavailable' }); }
 });
 
 // Legacy: the opt-in page moved /drop → /drink. Redirect old links/ads (keep query).

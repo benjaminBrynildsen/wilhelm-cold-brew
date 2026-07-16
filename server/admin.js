@@ -371,7 +371,7 @@ export function mountAdmin(app) {
       const winList = requested ? allWins.filter((w) => w.key === requested) : allWins;
       const winJobs = (winList.length ? winList : allWins).map(async (w) => {
         const p = [w.from, w.to];
-        const [sessions, drinkSessions, signups, joinPaths] = await Promise.all([
+        const [sessions, drinkSessions, signups, joinPaths, pageTiming] = await Promise.all([
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
             [w.from, w.to, DRINK_PAGES]),
@@ -404,6 +404,16 @@ export function mountAdmin(app) {
                ) e ON TRUE
                WHERE s.created_at >= $1 AND s.created_at < $2 ${EXCL_PV}${hourFrag}
              ) t`, p),
+          // Real-user page timing (journey.js attaches data.perf to page_load,
+          // ms). ttfb = how long the server took to serve the HTML — the number
+          // that quietly climbed before the July flatline; p95 is the canary.
+          q(`SELECT COUNT(*)::int n,
+                    percentile_cont(0.5)  WITHIN GROUP (ORDER BY (data->'perf'->>'ttfb')::numeric)::int ttfb50,
+                    percentile_cont(0.95) WITHIN GROUP (ORDER BY (data->'perf'->>'ttfb')::numeric)::int ttfb95,
+                    percentile_cont(0.5)  WITHIN GROUP (ORDER BY (data->'perf'->>'fcp')::numeric)::int  fcp50
+               FROM journey_events
+              WHERE event = 'page_load' AND data->'perf'->>'ttfb' IS NOT NULL
+                AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
         ]);
         const ds = drinkSessions.rows[0].n, su = signups.rows[0].n;
         out[w.key] = {
@@ -412,6 +422,7 @@ export function mountAdmin(app) {
           signups: su,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
           joinPaths: joinPaths.rows[0],
+          pageTiming: pageTiming.rows[0],
         };
       });
 

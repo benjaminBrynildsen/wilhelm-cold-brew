@@ -58,10 +58,37 @@
     flushTimer = setTimeout(flush, 3000);
   }
 
+  // Real-user load timing — read (not measured; the browser already recorded
+  // it) from the Performance API and tucked into the page_load event at flush
+  // time, when load/paint marks have had 3s to settle. Millisecond ints:
+  //   ttfb = server serve time, fcp = first paint, dcl/load = DOM/full load.
+  function perfNums() {
+    try {
+      var out = {};
+      var nav = performance.getEntriesByType('navigation')[0];
+      if (nav) {
+        if (nav.responseStart > 0) out.ttfb = Math.round(nav.responseStart);
+        if (nav.domContentLoadedEventEnd > 0) out.dcl = Math.round(nav.domContentLoadedEventEnd);
+        if (nav.loadEventEnd > 0) out.load = Math.round(nav.loadEventEnd);
+      }
+      performance.getEntriesByType('paint').forEach(function (p) {
+        if (p.name === 'first-contentful-paint') out.fcp = Math.round(p.startTime);
+      });
+      var keys = 0; for (var k in out) keys++;
+      return keys ? out : null;
+    } catch (e) { return null; }
+  }
+
   function flush(useBeacon) {
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
     if (!queue.length) return;
     var batch = queue.splice(0, 100);
+    batch.forEach(function (ev) {
+      if (ev.event === 'page_load' && ev.data && !ev.data.perf) {
+        var p = perfNums();
+        if (p) ev.data.perf = p;
+      }
+    });
     var body = JSON.stringify({ events: batch });
     try {
       if (useBeacon && navigator.sendBeacon) {

@@ -909,7 +909,17 @@ const ago = (iso) => {
 function eventLabel(e) {
   const d = e.data || {};
   switch (e.event) {
-    case 'page_load': return 'Landed on the page';
+    case 'page_load': {
+      // Real-user timing captured by journey.js (ms): server = TTFB, paint = FCP.
+      const pf = d.perf;
+      if (!pf) return 'Landed on the page';
+      const s = (ms) => (ms / 1000).toFixed(ms < 9950 ? 1 : 0) + 's';
+      const bits = [];
+      if (pf.ttfb != null) bits.push(`server ${s(pf.ttfb)}`);
+      if (pf.fcp != null) bits.push(`paint ${s(pf.fcp)}`);
+      if (pf.load != null) bits.push(`loaded ${s(pf.load)}`);
+      return `Landed on the page${bits.length ? ` (${bits.join(' · ')})` : ''}`;
+    }
     case 'geo': return 'Location resolved';
     case 'focus_email': return 'Focused the email field';
     case 'scroll': return `Scrolled to ${d.depth_pct || '?'}%`;
@@ -1140,6 +1150,14 @@ async function showOverview() {
         <div class="v">${jpTotal ? Math.round((100 * jpOrganic) / jpTotal) + '<small>%</small>' : '—'}</div>
         <div class="k2">${jpTotal ? esc(jpParts) : 'no signups in window'}</div></div>`;
 
+    // Real-user serve time (median TTFB from visitors' own browsers). The p95
+    // sub-line is the canary — it climbs first when the server starts straining.
+    const pt = w.pageTiming || {};
+    const sec1 = (ms) => (ms == null ? '—' : (ms / 1000).toFixed(1));
+    const timingCard = `<div class="card"><div class="k">Page serve time</div>
+        <div class="v">${pt.n ? sec1(pt.ttfb50) + '<small>s</small>' : '—'}</div>
+        <div class="k2">${pt.n ? `p95 ${sec1(pt.ttfb95)}s · paint ${sec1(pt.fcp50)}s · ${num(pt.n)} loads` : 'no timing data yet'}</div></div>`;
+
     content().innerHTML = winbar('win', { extra: hoursBar, extraActive: !!state.ovHours }) + `
       <div class="cards">
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
@@ -1148,6 +1166,7 @@ async function showOverview() {
         <div class="card"><div class="k">Drink conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
         ${organicCard}
+        ${timingCard}
       </div>
       <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.
         Organic = direct + X profile link + search signups; the rest came from tagged ad links (untagged X clicks count as direct).${hoursNote}</div>

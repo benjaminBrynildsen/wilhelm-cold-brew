@@ -241,9 +241,13 @@ app.get(['/drink', '/drink/'], async (req, res, next) => {
     for (const r of rows) (byTest[r.test_id] = byTest[r.test_id] || []).push(r.arm_key);
     if (!byTest.image || !byTest.image.length) return next();   // image is the original guard; keep the static fallback if it's somehow empty
     // Autopilot traffic weights (null when off/erroring → page splits evenly).
-    const bw = await getBanditWeights();
+    // Hard 800ms budget: the landing page must NEVER wait on analytics — if the
+    // bandit state isn't ready in time (first compute after boot, DB strain),
+    // ship the page without weights and let it fail open to an even split.
+    const softly = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), 800))]).catch(() => null);
+    const bw = await softly(getBanditWeights());
     // Pinned + champion-pool recipes served as a unit (null → per-dimension only).
-    const combos = await getComboServe();
+    const combos = await softly(getComboServe());
     // __SPLIT_ARMS drives all three; __SPLIT_IMG_ARMS kept for backward-compat with any cached page.
     const inject = `<script>window.__SPLIT_ARMS=${JSON.stringify(byTest)};window.__SPLIT_IMG_ARMS=${JSON.stringify(byTest.image)};${bw ? `window.__SPLIT_WEIGHTS=${JSON.stringify(bw)};` : ''}${combos ? `window.__SPLIT_COMBOS=${JSON.stringify(combos)};` : ''}</script>`;
     const html = DRINK_HTML.replace('<!--SPLIT_CONFIG-->', inject);
@@ -268,7 +272,15 @@ app.use(express.static(PUBLIC_DIR, {
 // ───────── boot ─────────
 ensureSchema()
   .then(() => {
-    app.listen(PORT, () => console.log(`[wilhelm] listening on :${PORT}`));
+    app.listen(PORT, () => {
+      console.log(`[wilhelm] listening on :${PORT}`);
+      // Warm the bandit cache so the first visitors after a deploy never pay
+      // for the aggregate queries; refresh it on an interval so cache expiry
+      // is invisible too (getState single-flights, so this never stacks).
+      const warm = () => getBanditWeights().catch(() => {});
+      warm();
+      setInterval(warm, 4 * 60 * 1000).unref();
+    });
   })
   .catch((err) => {
     console.error('[wilhelm] schema bootstrap failed:', err);

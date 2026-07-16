@@ -50,7 +50,9 @@ export const BANDIT_DEFAULTS = {
 
 const TTL_MS = 5 * 60 * 1000;
 let cache = { at: 0, state: null };
-export function bustBanditCache() { cache = { at: 0, state: null }; }
+// Soft bust: mark stale but KEEP the last state, so visitors get served the old
+// weights instantly while the next getState() refreshes in the background.
+export function bustBanditCache() { cache = { at: 0, state: cache.state }; }
 
 function centralDay(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
@@ -331,11 +333,25 @@ async function compute() {
   return state;
 }
 
+// Stale-while-revalidate with single-flight. The aggregate queries behind
+// compute() can take seconds once journey_events gets big, and the old
+// "recompute inline on expiry" meant the unlucky visitor(s) hitting an expired
+// cache waited that long for the landing page HTML — under a click burst,
+// EVERY concurrent request re-ran the heavy queries in parallel and piled up
+// the DB. Now: a stale state is served instantly and exactly one background
+// recompute runs; only the very first call after boot ever awaits compute().
+let inflight = null;
 async function getState() {
-  if (cache.state && Date.now() - cache.at < TTL_MS) return cache.state;
-  const state = await compute();
-  cache = { at: Date.now(), state };
-  return state;
+  const fresh = cache.state && Date.now() - cache.at < TTL_MS;
+  if (fresh) return cache.state;
+  if (!inflight) {
+    inflight = compute()
+      .then((state) => { cache = { at: Date.now(), state }; return state; })
+      .catch((e) => { console.warn('[bandit] recompute failed — serving stale:', e?.message || e); return cache.state; })
+      .finally(() => { inflight = null; });
+  }
+  if (cache.state) return cache.state;   // stale, but a visitor never waits
+  return inflight;                       // no state yet (boot) — first caller warms it
 }
 
 // For the /drink page: { image: {cigars: .58, …}, background: {…}, … } or null

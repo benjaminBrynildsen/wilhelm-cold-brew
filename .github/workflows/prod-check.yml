@@ -13,6 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: time the landing route repeatedly (is /drink slow to serve?)
+        run: |
+          UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
+          B='https://wilhelmcoldbrew.com'
+          for i in 1 2 3 4 5; do
+            curl -sS -A "$UA" -o /dev/null -w "healthz  t=%{time_total}s\n" "$B/healthz"
+            curl -sS -A "$UA" -o /dev/null -w "drink    t=%{time_total}s ttfb=%{time_starttransfer}s status=%{http_code}\n" "$B/drink/?utm_source=x&utm_campaign=probe$i"
+            curl -sS -A "$UA" -o /dev/null -w "batches  t=%{time_total}s\n" "$B/api/batches"
+          done
       - name: probe public surface like an X ad click
         run: |
           set -x

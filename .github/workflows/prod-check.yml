@@ -1,0 +1,86 @@
+# Temporary production diagnostics — dispatched from an analysis session whose
+# own network can't reach the live site. Probes the public surface exactly like
+# an X ad click, and (only if a DATABASE_URL secret exists) runs read-only
+# funnel queries. Safe to delete once the signup investigation closes.
+name: prod-check
+on:
+  workflow_dispatch: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: probe public surface like an X ad click
+        run: |
+          set -x
+          UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
+          B='https://wilhelmcoldbrew.com'
+          # 1) the ad landing itself
+          curl -sS -A "$UA" -e 'https://t.co/probe' -o drink.html -w 'DRINK_STATUS=%{http_code} TIME=%{time_total}\n' "$B/drink/?utm_source=x&utm_campaign=V13&utm_content=probe&twclid=2-probe"
+          echo "---- head of served drink.html ----"; head -c 600 drink.html; echo
+          grep -c 'window.__SPLIT_ARMS' drink.html && echo SPLIT_INJECTED || echo SPLIT_MISSING
+          grep -o '/assets/fonts/fonts.css' drink.html | head -1 || echo FONTS_LINK_MISSING
+          grep -o 'optin.js' drink.html | head -1 || echo OPTIN_TAG_MISSING
+          # 2) static assets the form depends on
+          for p in /drink/optin.js /journey.js /assets/fonts/fonts.css /drink/optin.css /drink/assets/bottle-cigars.webp; do
+            curl -sS -A "$UA" -o "asset$(basename $p)" -w "ASSET $p %{http_code} bytes=%{size_download}\n" "$B$p"
+          done
+          echo "OPTIN_SHA=$(sha256sum assetoptin.js | cut -d' ' -f1)   (repo master: 4c657ea0e81ef6f415c71bfe376072665233e804dc861f09c08385b549937fb0)"
+          echo "JOURNEY_SHA=$(sha256sum assetjourney.js | cut -d' ' -f1) (repo master: 4b687a83a39aeb36fb85955436284059574972064f0558102a44d1cdbe7ef9b1)"
+          # 3) journey ingest — must NOT come back skipped for a real phone UA
+          curl -sS -A "$UA" -X POST -H 'Content-Type: application/json' \
+            -d '{"events":[{"sessionId":"s_prodprobe_ci","event":"page_load","data":{"probe":true},"page":"/drink/","variant":"probe"}]}' \
+            "$B/api/journey"; echo
+          # 4) the subscribe endpoint end-to-end (test-flagged address; alert email to Ben is expected)
+          curl -sS -A "$UA" -X POST -H 'Content-Type: application/json' \
+            -d '{"email":"wilhelm-prod-probe-test@example.com","variant":"probe","sessionId":"s_prodprobe_ci","utm_source":"probe","utm_medium":"ci"}' \
+            "$B/api/subscribe"; echo
+      - name: read-only funnel queries (only if a DATABASE_URL secret exists)
+        env:
+          DB_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then echo "NO_DATABASE_URL_SECRET — skipping DB queries"; exit 0; fi
+          npm install pg@8 --no-save --silent
+          node - <<'EOF'
+          const pg = require('pg');
+          const QUERIES = [
+            // signups per hour, last 48h, by source
+            `SELECT to_char(date_trunc('hour', created_at AT TIME ZONE 'America/Chicago'), 'MM-DD HH24:00') h,
+                    COALESCE(utm_source,'(none)') src, COUNT(*)::int n
+               FROM subscribers WHERE created_at > now() - interval '48 hours'
+              GROUP BY 1,2 ORDER BY 1`,
+            // funnel events per hour, last 48h (drink page)
+            `SELECT to_char(date_trunc('hour', created_at AT TIME ZONE 'America/Chicago'), 'MM-DD HH24:00') h,
+                    COUNT(DISTINCT session_id) FILTER (WHERE event='page_load')::int loads,
+                    COUNT(DISTINCT session_id) FILTER (WHERE event='scroll')::int scrolled,
+                    COUNT(DISTINCT session_id) FILTER (WHERE event='focus_email')::int focused,
+                    COUNT(DISTINCT session_id) FILTER (WHERE event='submit_attempt')::int attempts,
+                    COUNT(DISTINCT session_id) FILTER (WHERE event='submit_invalid')::int invalid,
+                    COUNT(DISTINCT session_id) FILTER (WHERE event='subscribed')::int joined
+               FROM journey_events WHERE created_at > now() - interval '48 hours'
+              GROUP BY 1 ORDER BY 1`,
+            // X-tagged page views per hour vs distinct visitors, last 48h
+            `SELECT to_char(date_trunc('hour', created_at AT TIME ZONE 'America/Chicago'), 'MM-DD HH24:00') h,
+                    COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
+               FROM page_views WHERE created_at > now() - interval '48 hours' AND lower(utm_source)='x'
+              GROUP BY 1 ORDER BY 1`,
+            // top user agents on X-tagged views today
+            `SELECT LEFT(user_agent, 90) ua, COUNT(*)::int n
+               FROM page_views WHERE created_at > now() - interval '24 hours' AND lower(utm_source)='x'
+              GROUP BY 1 ORDER BY n DESC LIMIT 12`,
+          ];
+          (async () => {
+            const c = new pg.Client({ connectionString: process.env.DB_URL, ssl: { rejectUnauthorized: false } });
+            await c.connect();
+            await c.query('BEGIN TRANSACTION READ ONLY');
+            await c.query(`SET LOCAL statement_timeout = '30s'`);
+            for (let i = 0; i < QUERIES.length; i++) {
+              let out;
+              try { out = (await c.query(QUERIES[i])).rows; }
+              catch (e) { out = { error: e.message }; await c.query('ROLLBACK'); await c.query('BEGIN TRANSACTION READ ONLY'); }
+              console.log(`==RESULT ${i}==`);
+              console.log(JSON.stringify(out));
+            }
+            await c.query('ROLLBACK'); await c.end();
+          })().catch((e) => { console.error('FATAL', e.message); process.exit(1); });
+          EOF

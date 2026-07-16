@@ -5,6 +5,9 @@
 name: prod-check
 on:
   workflow_dispatch: {}
+  push:
+    branches: [master]
+    paths: ['.github/workflows/prod-check.yml', '.github/prodcheck.trigger']
 jobs:
   probe:
     runs-on: ubuntu-latest

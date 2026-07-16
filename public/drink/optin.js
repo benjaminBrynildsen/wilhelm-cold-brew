@@ -177,15 +177,40 @@ function funnel(event, props) {
       button.textContent = on ? 'Joining…' : BTN_LABEL;
     };
 
+    // Why an entry failed — for the Journey replay, never the address itself.
+    const invalidReason = (v) => {
+      if (!v) return 'empty';
+      if (/\s/.test(v)) return 'has-space';
+      if (v.indexOf('@') < 0) return 'missing-@';
+      if (!/\.[^@\s]+$/.test(v.split('@').pop())) return 'missing-dot';
+      return 'other';
+    };
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       funnel('submit_attempt', { variant: VARIANT });
-      const email = input.value.trim();
+      let email = input.value.trim();
       if (!EMAIL_RE.test(email)) {
-        funnel('submit_invalid', { variant: VARIANT });
-        showError('Please enter a valid email address.');
-        input.focus();
-        return;
+        // Rescue the two-forms case: they typed their email into the OTHER
+        // form on the page, then tapped this one's button. Use what they typed.
+        let rescued = null;
+        document.querySelectorAll('.optin-form input[type="email"]').forEach((other) => {
+          if (other === input || rescued) return;
+          const v = other.value.trim();
+          if (EMAIL_RE.test(v)) rescued = v;
+        });
+        if (rescued) {
+          email = rescued;
+          input.value = rescued;   // show them what's being submitted
+        } else {
+          const reason = invalidReason(email);
+          funnel('submit_invalid', { variant: VARIANT, reason: reason, len: email.length });
+          showError(reason === 'empty'
+            ? 'Type your email in the box above, then tap Join.'
+            : 'Please enter a valid email address.');
+          input.focus();
+          return;
+        }
       }
       errorEl.hidden = true;
       setLoading(true);

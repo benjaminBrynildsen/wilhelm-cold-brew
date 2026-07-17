@@ -318,4 +318,26 @@ export async function ensureSchema() {
     );
   `);
   console.log('[db] schema ready');
+
+  // Adopt orphaned sold-out demand votes. A bug in /api/drop/current left
+  // "would've bought" votes untagged (dropId null) whenever next week's
+  // scheduled batch already existed — the votes were recorded but invisible
+  // in the admin's per-drop demand count. Re-attribute each untagged vote to
+  // the batch most recently OPENED at the moment it was cast. Idempotent
+  // (only touches rows still missing a dropId), so it's safe on every boot.
+  try {
+    const r = await q(`
+      UPDATE journey_events je
+         SET data = jsonb_set(COALESCE(je.data, '{}'::jsonb), '{dropId}',
+               to_jsonb((SELECT d.id::text FROM drops d
+                          WHERE d.status <> 'scheduled' AND d.opens_at IS NOT NULL
+                            AND d.opens_at <= je.created_at
+                          ORDER BY d.opens_at DESC LIMIT 1)))
+       WHERE je.event = 'soldout_demand'
+         AND (je.data->>'dropId') IS NULL
+         AND EXISTS (SELECT 1 FROM drops d
+                      WHERE d.status <> 'scheduled' AND d.opens_at IS NOT NULL
+                        AND d.opens_at <= je.created_at)`);
+    if (r.rowCount) console.log(`[db] adopted ${r.rowCount} untagged sold-out vote(s)`);
+  } catch (e) { console.warn('[db] demand-vote backfill failed (non-fatal):', e?.message || e); }
 }

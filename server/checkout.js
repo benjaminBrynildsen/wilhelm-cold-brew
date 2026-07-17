@@ -92,13 +92,16 @@ export function mountCheckout(app) {
           shipCents: SHIP_CENTS, nextDropAt,
         });
       }
-      // Not buyable: distinguish "this week sold out" from "nothing scheduled" by the
-      // latest drop's status (a live-at-cap drop, or a soldout one with nothing newer).
-      const latest = (await q(`SELECT id, status FROM drops ORDER BY created_at DESC LIMIT 1`)).rows[0];
+      // Not buyable: the drop the visitor just missed is the most recent drop
+      // that has actually OPENED — not the newest row, which is next week's
+      // scheduled batch as soon as it's created, and that bug left sold-out
+      // "would've bought" votes untagged (dropId null → invisible in the
+      // admin's per-drop demand count).
+      const latest = (await q(
+        `SELECT id, status FROM drops WHERE status <> 'scheduled'
+          ORDER BY opens_at DESC NULLS LAST, created_at DESC LIMIT 1`)).rows[0];
       const soldOut = (d && d.remaining <= 0) || latest?.status === 'soldout';
-      // The drop the visitor just missed — so the sold-out page can tag its
-      // "would've bought" vote to the right batch.
-      const dropId = (d && d.remaining <= 0) ? d.id : (latest?.status === 'soldout' ? latest.id : null);
+      const dropId = (d && d.remaining <= 0) ? d.id : (latest?.id ?? null);
       res.json({ available: false, soldOut, dropId, nextDropAt, shipCents: SHIP_CENTS });
     } catch (e) { console.error('[drop/current]', e); res.status(500).json({ error: e.message }); }
   });

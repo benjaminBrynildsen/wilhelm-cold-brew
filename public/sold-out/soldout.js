@@ -16,9 +16,10 @@
 
   // The drop this visitor just missed — tags the demand vote to the right batch.
   var soldOutDropId = null;
+  var dropSettled = false;
 
   // Show the real next-drop date if one is scheduled.
-  fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
+  var dropFetch = fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (d && d.dropId != null) soldOutDropId = d.dropId;
@@ -29,7 +30,19 @@
         nextDate.textContent = s + ' at ' + t;
       }
     })
-    .catch(function () {});
+    .catch(function () {})
+    .then(function () { dropSettled = true; });
+
+  // A fast tap can beat the drop lookup — hold the vote until the batch id is
+  // known (2s cap so a hung request can never lose the vote entirely).
+  function fundVote(choice) {
+    var send = function () { fund('soldout_demand', { choice: choice, variant: variant(), dropId: soldOutDropId }); };
+    if (dropSettled) return send();
+    var sent = false;
+    var once = function () { if (!sent) { sent = true; send(); } };
+    dropFetch.then(once);
+    setTimeout(once, 2000);
+  }
 
   var MSG = {
     would_buy: {
@@ -48,7 +61,7 @@
       if (done) return;
       done = true;
       var choice = btn.getAttribute('data-fb');
-      fund('soldout_demand', { choice: choice, variant: variant(), dropId: soldOutDropId });
+      fundVote(choice);
       // High-intent "would have bought" is a strong lead — fire the X pixel too.
       if (choice === 'would_buy') { try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {} }
       var m = MSG[choice] || MSG.just_looking;

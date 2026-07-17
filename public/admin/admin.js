@@ -1799,6 +1799,7 @@ async function showOrders() {
         <div class="card"><div class="k">${scoped && shown ? esc(shown.name || 'Selected drop') : 'This drop'}</div><div class="v" style="font-size:22px">${shown ? num(shown.sold) + '<small>/' + num(shown.bottle_cap) + ' sold</small>' : (scoped ? '—' : 'none live')}</div></div>
         <div class="card"><div class="k">Remaining</div><div class="v">${shown ? num(shown.remaining) : '—'}</div></div>
         <div class="card"><div class="k">Missed-drop demand${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
+        <div class="card"><div class="k">${scoped ? 'Returning customers (this drop)' : 'Repeat customers'}</div><div class="v" style="font-size:22px">${o.returning ? num(o.returning.returning) : 0}<small> ${scoped ? `of ${o.returning ? num(o.returning.buyers) : 0} buyers bought before` : `of ${o.returning ? num(o.returning.buyers) : 0} customers bought 2+ batches`}</small></div></div>
       </div>
 
       <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>

@@ -1538,6 +1538,28 @@ export function mountAdmin(app) {
       const unshipped = (await q(
         `SELECT COUNT(*)::int n FROM orders
           WHERE status='paid' AND shipped_at IS NULL AND ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0].n;
+      // Returning customers. Scoped: how many of this batch's distinct buyers had
+      // already bought an EARLIER batch (matched by email, case-insensitive).
+      // Unscoped: customers who have bought 2+ different batches, ever.
+      const returning = dropId
+        ? (await q(
+            `WITH cur AS (SELECT COALESCE(opens_at, created_at) AS t FROM drops WHERE id = $1),
+                  buyers AS (SELECT DISTINCT lower(email) e FROM orders
+                              WHERE drop_id = $1 AND status = 'paid' AND email IS NOT NULL)
+             SELECT (SELECT COUNT(*)::int FROM buyers) AS buyers,
+                    (SELECT COUNT(*)::int FROM buyers b
+                      WHERE EXISTS (SELECT 1 FROM orders p JOIN drops pd ON pd.id = p.drop_id, cur
+                                     WHERE p.status = 'paid' AND lower(p.email) = b.e
+                                       AND p.drop_id <> $1
+                                       AND COALESCE(pd.opens_at, pd.created_at) < cur.t)) AS returning`,
+            [dropId])).rows[0]
+        : (await q(
+            `SELECT (SELECT COUNT(DISTINCT lower(email))::int FROM orders
+                      WHERE status = 'paid' AND email IS NOT NULL) AS buyers,
+                    (SELECT COUNT(*)::int FROM (
+                       SELECT lower(email) FROM orders
+                        WHERE status = 'paid' AND email IS NOT NULL
+                        GROUP BY 1 HAVING COUNT(DISTINCT drop_id) >= 2) t) AS returning`)).rows[0];
       const live = (await q(
         `SELECT id, name, price_cents, bottle_cap, status,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
@@ -1566,7 +1588,7 @@ export function mountAdmin(app) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;
         else if (r.choice === 'just_looking') demand.justLooking = r.n;
       }
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

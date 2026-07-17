@@ -50,14 +50,18 @@ async function currentDrop() {
   return d;
 }
 
-// Bottles taken against a drop's cap: paid + recent-pending (soft 30-min reservation).
+// Bottles taken against a drop's cap: paid + recent-pending (soft reservation).
 // Sums quantity so a multi-bottle pending order reserves all its bottles.
+// The hold clock starts when the buyer taps Pay (intent creation), so a few
+// minutes covers any real payment; an abandoned last bottle goes back on sale
+// fast instead of sitting reserved for half an hour.
+const HOLD_MINUTES = Math.max(1, parseInt(process.env.HOLD_MINUTES || '3', 10));
 async function reservedBottles(dropId) {
   const r = await q(
     `SELECT COALESCE(SUM(quantity),0)::int n FROM orders
       WHERE drop_id = $1 AND (status = 'paid'
-         OR (status = 'pending' AND created_at > now() - interval '30 minutes'))`,
-    [dropId]);
+         OR (status = 'pending' AND created_at > now() - ($2 || ' minutes')::interval))`,
+    [dropId, String(HOLD_MINUTES)]);
   return r.rows[0].n;
 }
 

@@ -1272,6 +1272,7 @@ export function mountAdmin(app) {
                   MAX(variant) variant,
                   BOOL_OR(event = 'subscribed') subscribed,
                   MAX(CASE WHEN event = 'page_load' THEN page END) page,
+                  MAX(CASE WHEN event = 'page_load' THEN (data->'perf'->>'ttfb')::int END) ttfb_ms,
                   MAX((data->>'depth_pct')::int) max_scroll,
                   MAX(ip_hash) ip_hash
              FROM journey_events
@@ -1281,7 +1282,7 @@ export function mountAdmin(app) {
             LIMIT $3
          )
          SELECT s.session_id, s.started_at, s.duration_seconds, s.event_count,
-                s.city, s.region, s.country, s.variant, s.subscribed, s.page, s.max_scroll,
+                s.city, s.region, s.country, s.variant, s.subscribed, s.page, s.max_scroll, s.ttfb_ms,
                 a.utm_source, a.utm_campaign, a.utm_content, a.referrer_host, a.path AS entry_path
            FROM s
            LEFT JOIN LATERAL (

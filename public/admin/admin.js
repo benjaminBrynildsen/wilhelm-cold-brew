@@ -957,6 +957,7 @@ async function showJourney() {
       <tr data-sid="${esc(s.session_id)}" style="cursor:pointer">
         <td>${esc(ago(s.started_at))}</td>
         <td>${esc(loc(s))}</td>
+        <td class="num">${s.ttfb_ms != null ? (s.ttfb_ms / 1000).toFixed(1) + 's' : '—'}</td>
         <td class="num">${esc(dur(s.duration_seconds))}</td>
         <td class="num">${num(s.event_count)}</td>
         <td>${esc(s.max_scroll != null ? s.max_scroll + '%' : '—')}</td>
@@ -965,9 +966,9 @@ async function showJourney() {
         <td>${s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : ''}</td>
       </tr>`).join('');
     content().innerHTML = winbar('journeyWin') + `
-      <div class="note" style="margin:8px 0 12px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did.</div>
-      <table><thead><tr><th>When</th><th>From</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th>UTM / Source</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="8">No sessions in this window.</td></tr>'}</tbody></table>`;
+      <div class="note" style="margin:8px 0 12px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did. Load = how fast the page was served to them.</div>
+      <table><thead><tr><th>When</th><th>From</th><th class="num">Load</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th>UTM / Source</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td class="note" colspan="9">No sessions in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showJourney, 'journeyWin');
     document.querySelectorAll('tr[data-sid]').forEach((tr) =>
       tr.addEventListener('click', () => { state.journeySid = tr.dataset.sid; showJourneyDetail(tr.dataset.sid); }));

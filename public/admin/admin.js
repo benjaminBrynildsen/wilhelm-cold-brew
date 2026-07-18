@@ -978,16 +978,27 @@ async function showJourney() {
     const srcKey = (s) => s.utm_source ? srcName(s.utm_source) + (s.utm_content ? ' / ' + s.utm_content : '') : (s.referrer_host || 'direct');
     const ghostBySrc = {};
     gh.forEach((s) => { const k = srcKey(s); ghostBySrc[k] = (ghostBySrc[k] || 0) + 1; });
-    const topGhost = Object.entries(ghostBySrc).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    const topGhost = Object.entries(ghostBySrc).sort((a, b) => b[1] - a[1]).slice(0, 2)
       .map(([k, n]) => `${esc(k)} ${n}`).join(' · ');
     const pctOf = (n) => (ss.length ? Math.round((100 * n) / ss.length) : 0);
     const quality = ss.length ? `
-      <div class="note" style="margin:0 0 12px">Quality: <b>${num(gh.length)}</b> ghost${gh.length === 1 ? '' : 's'} (${pctOf(gh.length)}% — landed &amp; vanished, likely junk clicks)
-        · <b>${num(eng.length)}</b> engaged (${pctOf(eng.length)}% — scrolled 50%+ or stayed 30s+)
-        · <b>${num(joined)}</b> joined · <b>${num(onList)}</b> already on the list${topGhost ? `<br/>Ghosts by source: ${topGhost}` : ''}</div>` : '';
+      <div class="cards">
+        <div class="card"><div class="k">Ghost clicks</div>
+          <div class="v">${num(gh.length)}<small> ${pctOf(gh.length)}%</small></div>
+          <div class="k2">${gh.length ? `landed &amp; gone in 5s — ${topGhost}` : 'none — clean traffic'}</div></div>
+        <div class="card"><div class="k">Engaged</div>
+          <div class="v">${num(eng.length)}<small> ${pctOf(eng.length)}%</small></div>
+          <div class="k2">scrolled 50%+ or stayed 30s+</div></div>
+        <div class="card"><div class="k">Joined</div>
+          <div class="v"${joined ? ' style="color:var(--good)"' : ''}>${num(joined)}</div>
+          <div class="k2">new signups this window</div></div>
+        <div class="card"><div class="k">Already on list</div>
+          <div class="v">${num(onList)}</div>
+          <div class="k2">members clicking back in</div></div>
+      </div>` : '';
     content().innerHTML = winbar('journeyWin') + `
-      <div class="note" style="margin:8px 0 6px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did. Load = how fast the page was served to them.</div>
       ${quality}
+      <div class="note" style="margin:8px 0 6px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did. Load = how fast the page was served to them.</div>
       <table><thead><tr><th>When</th><th>From</th><th class="num">Load</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th>UTM / Source</th><th></th></tr></thead>
         <tbody>${rows || '<tr><td class="note" colspan="9">No sessions in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showJourney, 'journeyWin');

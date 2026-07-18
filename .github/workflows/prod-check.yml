@@ -45,7 +45,7 @@ jobs:
             "$B/api/journey"; echo
           # 4) the subscribe endpoint end-to-end (test-flagged address; alert email to Ben is expected)
           curl -sS -A "$UA" -X POST -H 'Content-Type: application/json' \
-            -d '{"email":"wilhelm-prod-probe-test@example.com","variant":"probe","sessionId":"s_prodprobe_ci","utm_source":"probe","utm_medium":"ci"}' \
+            -d '{"email":"wilhelm-prod-probe-test-${{ github.run_id }}@example.com","variant":"probe","sessionId":"s_prodprobe_ci","utm_source":"probe","utm_medium":"ci"}' \
             "$B/api/subscribe"; echo
       - name: read-only funnel queries (only if a DATABASE_URL secret exists)
         env:

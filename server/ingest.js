@@ -85,11 +85,16 @@ export async function subscribe(req, res) {
     // can be lost if the tab closes right after joining — which is why a real
     // subscriber can show as not-joined on the Journey tab. The session view
     // de-dupes via BOOL_OR, so a belt-and-suspenders second event is harmless.
+    // dup:true = the email was ALREADY on the list (re-subscribe): the visitor
+    // saw the success state, but no row/welcome/alert happened — the admin
+    // shows these distinctly so "joined" sessions reconcile with new signups.
+    // (The HTTP response stays identical either way, so the endpoint can't be
+    // used to probe which emails are subscribed.)
     const sessionId = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
     if (sessionId) {
       q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)
          VALUES ($1,'subscribed',$2,$3,$4,$5,$6)`,
-        [sessionId, JSON.stringify({ server: true }), hashIp(getClientIp(req)), countryFrom(req), '/drink/', variant])
+        [sessionId, JSON.stringify({ server: true, dup: r.rows.length === 0 }), hashIp(getClientIp(req)), countryFrom(req), '/drink/', variant])
         .catch((e) => console.warn('[subscribe] journey mark failed:', e?.message || e));
     }
     // New subscriber only (RETURNING is empty on duplicate). Fire-and-forget

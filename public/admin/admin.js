@@ -928,7 +928,7 @@ function eventLabel(e) {
     case 'click': return `Clicked: ${d.element || '?'}`;
     case 'submit_attempt': return 'Clicked “Join the List”';
     case 'submit_invalid': return `Entered an invalid email${d.reason ? ` (${d.reason === 'empty' ? 'field was empty' : d.reason}${d.reason !== 'empty' && d.len ? ', ' + d.len + ' chars' : ''})` : ''}`;
-    case 'subscribed': return 'Joined the list ✓';
+    case 'subscribed': return d.dup ? 'Re-entered their email — already on the list' : 'Joined the list ✓';
     case 'sticky_click': return 'Tapped the sticky “Join” button';
     case 'nudge_shown': return 'Saw the timed nudge';
     case 'nudge_join': return 'Tapped “Join” on the nudge';
@@ -963,7 +963,7 @@ async function showJourney() {
         <td>${esc(s.max_scroll != null ? s.max_scroll + '%' : '—')}</td>
         <td>${esc(s.variant || '—')}</td>
         <td style="font-size:12px">${utmCell(s)}</td>
-        <td>${s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : ''}</td>
+        <td>${s.already_sub ? '<span class="note">on list already</span>' : (s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : '')}</td>
       </tr>`).join('');
     content().innerHTML = winbar('journeyWin') + `
       <div class="note" style="margin:8px 0 12px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did. Load = how fast the page was served to them.</div>

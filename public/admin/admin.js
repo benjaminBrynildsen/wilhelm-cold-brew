@@ -965,8 +965,29 @@ async function showJourney() {
         <td style="font-size:12px">${utmCell(s)}</td>
         <td>${s.already_sub ? '<span class="note">on list already</span>' : (s.subscribed ? '<span style="color:var(--good);font-weight:700">Joined ✓</span>' : '')}</td>
       </tr>`).join('');
+    // Session-quality rollup for the listed window: a ghost is a click that
+    // landed and vanished (≤2 events, no scroll, under 5s) — the signature of
+    // bot/junk ad clicks. Real people scroll or linger. Ghost concentration by
+    // source names the campaign to look at when quality tanks.
+    const isGhost = (s) => !s.subscribed && !s.already_sub && (s.event_count || 0) <= 2 && s.max_scroll == null && (s.duration_seconds || 0) < 5;
+    const isEngaged = (s) => !isGhost(s) && ((s.max_scroll || 0) >= 50 || (s.duration_seconds || 0) >= 30);
+    const ss = d.sessions;
+    const gh = ss.filter(isGhost), eng = ss.filter(isEngaged);
+    const joined = ss.filter((s) => s.subscribed && !s.already_sub).length;
+    const onList = ss.filter((s) => s.already_sub).length;
+    const srcKey = (s) => s.utm_source ? srcName(s.utm_source) + (s.utm_content ? ' / ' + s.utm_content : '') : (s.referrer_host || 'direct');
+    const ghostBySrc = {};
+    gh.forEach((s) => { const k = srcKey(s); ghostBySrc[k] = (ghostBySrc[k] || 0) + 1; });
+    const topGhost = Object.entries(ghostBySrc).sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, n]) => `${esc(k)} ${n}`).join(' · ');
+    const pctOf = (n) => (ss.length ? Math.round((100 * n) / ss.length) : 0);
+    const quality = ss.length ? `
+      <div class="note" style="margin:0 0 12px">Quality: <b>${num(gh.length)}</b> ghost${gh.length === 1 ? '' : 's'} (${pctOf(gh.length)}% — landed &amp; vanished, likely junk clicks)
+        · <b>${num(eng.length)}</b> engaged (${pctOf(eng.length)}% — scrolled 50%+ or stayed 30s+)
+        · <b>${num(joined)}</b> joined · <b>${num(onList)}</b> already on the list${topGhost ? `<br/>Ghosts by source: ${topGhost}` : ''}</div>` : '';
     content().innerHTML = winbar('journeyWin') + `
-      <div class="note" style="margin:8px 0 12px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did. Load = how fast the page was served to them.</div>
+      <div class="note" style="margin:8px 0 6px">${num(d.sessions.length)} visitor session${d.sessions.length === 1 ? '' : 's'} in this window (your test traffic excluded). Click a header to sort, or a row to replay what they did. Load = how fast the page was served to them.</div>
+      ${quality}
       <table><thead><tr><th>When</th><th>From</th><th class="num">Load</th><th class="num">Time</th><th class="num">Events</th><th>Scroll</th><th>Variant</th><th>UTM / Source</th><th></th></tr></thead>
         <tbody>${rows || '<tr><td class="note" colspan="9">No sessions in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showJourney, 'journeyWin');

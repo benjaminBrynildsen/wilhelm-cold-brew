@@ -13,6 +13,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: REAL browser signup on prod (JS errors, split config, full form flow)
+        run: |
+          npm install playwright-core@1 --no-save --silent
+          node - <<'EOF'
+          const { chromium } = require('playwright-core');
+          (async () => {
+            const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+            const ctx = await b.newContext({ viewport: { width: 390, height: 844 },
+              userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1' });
+            const p = await ctx.newPage();
+            p.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE_ERROR', m.text().slice(0, 300)); });
+            p.on('pageerror', (e) => console.log('PAGE_ERROR', String(e).slice(0, 300)));
+            p.on('requestfailed', (r) => console.log('REQ_FAILED', r.url().slice(0, 120), (r.failure() || {}).errorText));
+            await p.goto('https://wilhelmcoldbrew.com/drink/?utm_source=x&utm_campaign=browser-probe', { waitUntil: 'load', timeout: 30000 });
+            await p.waitForTimeout(2000);
+            console.log('SPLIT', await p.evaluate(() => JSON.stringify({
+              arms: window.__SPLIT_ARMS, weights: window.__SPLIT_WEIGHTS, combos: window.__SPLIT_COMBOS })));
+            console.log('PICKED', await p.evaluate(() => JSON.stringify({
+              variant: window.__DRINK_VARIANT, hl: window.__DRINK_HL,
+              bg: document.documentElement.getAttribute('data-drink-bg') })));
+            console.log('FORMSTATE', await p.evaluate(() => {
+              const f = document.querySelector('.optin-form'); const i = f && f.querySelector('input[type=email]');
+              const btn = f && f.querySelector('[data-submit]');
+              const img = document.querySelector('.hero-media img, #hero-img');
+              return JSON.stringify({ form: !!f, input: !!i, btnDisabled: btn ? btn.disabled : null,
+                heroLoaded: img ? (img.complete && img.naturalWidth > 0) : null,
+                trackerLoaded: typeof window.wilhelmTrack === 'function' });
+            }));
+            const email = 'wilhelm-browser-probe-test-' + (process.env.GITHUB_RUN_ID || 'x') + '@example.com';
+            await p.fill('.optin-form input[type=email]', email);
+            await p.click('.optin-form [data-submit]');
+            await p.waitForTimeout(5000);
+            const success = await p.evaluate(() => { const s = document.querySelector('[data-success]'); return !!(s && !s.hidden); });
+            const err = await p.evaluate(() => { const e = document.querySelector('[data-error]'); return e && !e.hidden ? e.textContent : null; });
+            console.log('SIGNUP_RESULT success=' + success + ' err=' + JSON.stringify(err) + ' email=' + email);
+            await b.close();
+          })().catch((e) => { console.log('FATAL', String(e).slice(0, 500)); process.exit(1); });
+          EOF
       - name: time the landing route repeatedly (is /drink slow to serve?)
         run: |
           UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'

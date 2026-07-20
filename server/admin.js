@@ -377,20 +377,23 @@ export function mountAdmin(app) {
             [w.from, w.to, DRINK_PAGES]),
           q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
           // How each signup arrived. Tagged links classify by the UTM captured at
-          // signup (drinkup = X profile bio link, referral = member link, anything
-          // else tagged = a paid ad link — broken {{macro}} tags included). Untagged
+          // signup (drinkup = X profile bio link, join = the /join reply link,
+          // referral = member link, anything else tagged = a paid ad link —
+          // broken {{macro}} tags included). Untagged
           // signups fall back to the visitor's first-ever entry referrer (same
           // ip_hash), so organic search still gets credited even though the signup
           // itself carries no UTM. Untagged X clicks (t.co etc.) count as direct.
           q(`SELECT
                COUNT(*) FILTER (WHERE b = 'ad')::int       ad,
                COUNT(*) FILTER (WHERE b = 'profile')::int  profile,
+               COUNT(*) FILTER (WHERE b = 'reply')::int    reply,
                COUNT(*) FILTER (WHERE b = 'referral')::int referral,
                COUNT(*) FILTER (WHERE b = 'search')::int   search,
                COUNT(*) FILTER (WHERE b = 'direct')::int   direct
              FROM (
                SELECT CASE
                  WHEN s.utm_source = 'drinkup'  THEN 'profile'
+                 WHEN s.utm_source = 'join'     THEN 'reply'
                  WHEN s.utm_source = 'referral' THEN 'referral'
                  WHEN s.utm_source IS NOT NULL  THEN 'ad'
                  WHEN e.referrer_host IN ('google.com','www.google.com','bing.com','duckduckgo.com','search.brave.com','search.yahoo.com') THEN 'search'
@@ -442,10 +445,12 @@ export function mountAdmin(app) {
           q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}${hourFrag} GROUP BY 1`),
           // Organic signups per day — same classification as the overview card:
           // tagged UTMs split ads out; untagged joins credit the visitor's first
-          // entry referrer (search) or count as direct (incl. untagged X).
+          // entry referrer (search) or count as direct (incl. untagged X). The
+          // 'join' tag is the /join vanity link dropped in X replies/posts — own
+          // audience, so it counts organic, not ad.
           q(`SELECT day, COUNT(*) FILTER (WHERE b <> 'ad')::int n FROM (
                SELECT TO_CHAR(s.created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD') AS day,
-                      CASE WHEN s.utm_source IN ('drinkup','referral') OR s.utm_source IS NULL THEN 'organic'
+                      CASE WHEN s.utm_source IN ('drinkup','referral','join') OR s.utm_source IS NULL THEN 'organic'
                            ELSE 'ad' END b
                  FROM subscribers s
                 WHERE TRUE ${EXCL_PV}${hourFrag}

@@ -1175,9 +1175,9 @@ async function showOverview() {
     // direct + X profile link + search (+ member referrals); the rest came in
     // through tagged ad links.
     const jp = w.joinPaths || {};
-    const jpOrganic = (jp.direct || 0) + (jp.profile || 0) + (jp.search || 0) + (jp.referral || 0);
+    const jpOrganic = (jp.direct || 0) + (jp.profile || 0) + (jp.reply || 0) + (jp.search || 0) + (jp.referral || 0);
     const jpTotal = jpOrganic + (jp.ad || 0);
-    const jpParts = [['direct', jp.direct], ['profile', jp.profile], ['search', jp.search], ['referral', jp.referral], ['ads', jp.ad]]
+    const jpParts = [['direct', jp.direct], ['profile', jp.profile], ['reply link', jp.reply], ['search', jp.search], ['referral', jp.referral], ['ads', jp.ad]]
       .filter(([, n]) => n > 0).map(([l, n]) => `${l} ${num(n)}`).join(' · ');
     const organicCard = `<div class="card"><div class="k">Organic signups</div>
         <div class="v">${jpTotal ? Math.round((100 * jpOrganic) / jpTotal) + '<small>%</small>' : '—'}</div>

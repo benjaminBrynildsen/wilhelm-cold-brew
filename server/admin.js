@@ -1561,6 +1561,26 @@ export function mountAdmin(app) {
                        SELECT lower(email) FROM orders
                         WHERE status = 'paid' AND email IS NOT NULL
                         GROUP BY 1 HAVING COUNT(DISTINCT drop_id) >= 2) t) AS returning`)).rows[0];
+      // Fresh-signup buyers: paid orders whose buyer joined the list AFTER the
+      // previous drop opened (and before they bought) — i.e. this drop's email
+      // blast / week-of hype converted them on their first cycle. For a drop
+      // with no predecessor, any signup before the purchase counts as fresh.
+      const freshSignups = (await q(
+        `SELECT COUNT(*)::int AS orders,
+                COUNT(*) FILTER (WHERE EXISTS (
+                  SELECT 1 FROM subscribers s
+                   WHERE lower(s.email) = lower(o.email)
+                     AND s.created_at <= o.created_at
+                     AND (prev.t IS NULL OR s.created_at > prev.t)))::int AS fresh
+           FROM orders o
+           JOIN drops d ON d.id = o.drop_id
+           LEFT JOIN LATERAL (
+             SELECT MAX(COALESCE(p.opens_at, p.created_at)) AS t
+               FROM drops p
+              WHERE p.status <> 'scheduled' AND p.id <> d.id
+                AND COALESCE(p.opens_at, p.created_at) < COALESCE(d.opens_at, d.created_at)) prev ON true
+          WHERE o.status = 'paid' AND o.email IS NOT NULL
+            AND ($1::int IS NULL OR o.drop_id = $1)`, [dropId])).rows[0];
       const live = (await q(
         `SELECT id, name, price_cents, bottle_cap, status,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
@@ -1589,7 +1609,7 @@ export function mountAdmin(app) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;
         else if (r.choice === 'just_looking') demand.justLooking = r.n;
       }
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -1796,6 +1796,7 @@ async function showOrders() {
     // Card stats follow the selected drop (or the live one when viewing all).
     const shown = o.selected || o.liveDrop;
     const scoped = !!state.ordersDrop;
+    const fs = o.freshSignups || { orders: 0, fresh: 0 };
     const dropOpts = `<option value="">All drops</option>` + dd.drops.map((d) =>
       `<option value="${d.id}" ${String(state.ordersDrop) === String(d.id) ? 'selected' : ''}>${esc(d.name || '(unnamed)')}</option>`).join('');
     const orderRows = o.orders.length
@@ -1832,6 +1833,7 @@ async function showOrders() {
         <div class="card"><div class="k">Remaining</div><div class="v">${shown ? num(shown.remaining) : '—'}</div></div>
         <div class="card"><div class="k">Missed-drop demand${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
         <div class="card"><div class="k">${scoped ? 'Returning customers (this drop)' : 'Repeat customers'}</div><div class="v" style="font-size:22px">${o.returning ? num(o.returning.returning) : 0}<small> ${scoped ? `of ${o.returning ? num(o.returning.buyers) : 0} buyers bought before` : `of ${o.returning ? num(o.returning.buyers) : 0} customers bought 2+ batches`}</small></div></div>
+        <div class="card"><div class="k">Week-of signups who bought${scoped ? ' (this drop)' : ''}</div><div class="v">${fs.orders ? Math.round((100 * fs.fresh) / fs.orders) + '<small>%</small>' : '—'}</div><div class="k2">${fs.orders ? `${num(fs.fresh)} of ${num(fs.orders)} paid orders · joined after the previous drop` : 'no paid orders yet'}</div></div>
       </div>
 
       <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>

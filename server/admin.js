@@ -1534,7 +1534,7 @@ export function mountAdmin(app) {
           WHERE ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0];
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
-                o.variant, o.created_at, o.paid_at, o.shipped_at,
+                o.shipping_address, o.variant, o.created_at, o.paid_at, o.shipped_at,
                 o.tracking_number, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ($1::int IS NULL OR o.drop_id = $1)
@@ -1616,6 +1616,34 @@ export function mountAdmin(app) {
       }
       res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Fix an order's shipping address after the fact (customer emailed a
+  // correction). Stripe won't let a completed payment's shipping block be
+  // edited in its dashboard, so the admin's stored copy is the source of
+  // truth — and the Pirate Ship export prefers it, so a correction here
+  // flows straight into the next label run.
+  app.post('/api/admin/orders/:id/shipping', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'bad order id' });
+    const b = req.body || {};
+    const t = (v, n) => { const s = v == null ? '' : String(v).trim(); return s ? s.slice(0, n) : null; };
+    const name = t(b.name, 120);
+    const address = {
+      line1: t(b.line1, 200), line2: t(b.line2, 200), city: t(b.city, 120),
+      state: t(b.state, 40), postal_code: t(b.postal_code, 20), country: t(b.country, 2) || 'US',
+    };
+    if (!address.line1 || !address.city || !address.state || !address.postal_code) {
+      return res.status(400).json({ error: 'address needs street, city, state and zip' });
+    }
+    try {
+      const r = await q(
+        `UPDATE orders SET shipping_address = $1, shipping_name = COALESCE($2, shipping_name)
+          WHERE id = $3 RETURNING id`, [JSON.stringify(address), name, id]);
+      if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
+      res.json({ ok: true });
+    } catch (e) { console.error('[orders] shipping update', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Pirate Ship export: paid orders → bulk-import CSV ─────────

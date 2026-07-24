@@ -1804,7 +1804,7 @@ async function showOrders() {
           <td>${esc((r.created_at || '').slice(0, 10))}</td>
           <td>${esc(r.email || '—')}</td>
           <td>${esc(r.drop_name || '—')}</td>
-          <td>${esc(r.shipping_name || '—')}</td>
+          <td>${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
           <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
           <td>${r.tracking_number
@@ -2088,6 +2088,43 @@ async function showOrders() {
         showOrders();
       } catch (e) { msg.textContent = 'Failed: ' + e.message; }
     });
+    // Inline shipping-address editor: ✎ on a paid order opens a one-row form
+    // under it. Saved corrections are what the Pirate Ship export prints.
+    document.querySelectorAll('.oaddr').forEach((b) => b.addEventListener('click', () => {
+      const open = document.getElementById('addr-editor');
+      const wasMine = open && open.dataset.for === b.dataset.id;
+      if (open) open.remove();
+      if (wasMine) return; // second click on the same ✎ just closes it
+      const ord = o.orders.find((x) => String(x.id) === b.dataset.id) || {};
+      const a = ord.shipping_address || {};
+      const f = (id, ph, val, w) => `<input id="${id}" placeholder="${ph}" value="${esc(val || '')}" style="${FLD_DARK};width:${w}px"/>`;
+      const ed = document.createElement('tr');
+      ed.id = 'addr-editor';
+      ed.dataset.for = b.dataset.id;
+      ed.innerHTML = `<td colspan="7"><div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0">
+          ${f('oa-name', 'Name', ord.shipping_name, 150)}
+          ${f('oa-l1', 'Street address', a.line1, 210)}
+          ${f('oa-l2', 'Apt / unit', a.line2, 110)}
+          ${f('oa-city', 'City', a.city, 130)}
+          ${f('oa-state', 'State', a.state, 60)}
+          ${f('oa-zip', 'Zip', a.postal_code, 90)}
+          <button class="btn" id="oa-save">Save address</button>
+          <span class="note" id="oa-msg"></span></div></td>`;
+      b.closest('tr').after(ed);
+      document.getElementById('oa-save').addEventListener('click', async () => {
+        const v = (id) => document.getElementById(id).value.trim();
+        const msg = document.getElementById('oa-msg');
+        msg.textContent = 'Saving…';
+        try {
+          await api(`/api/admin/orders/${b.dataset.id}/shipping`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: v('oa-name'), line1: v('oa-l1'), line2: v('oa-l2'),
+                                   city: v('oa-city'), state: v('oa-state'), postal_code: v('oa-zip') }),
+          });
+          showOrders();
+        } catch (e) { msg.textContent = 'Failed: ' + e.message; }
+      });
+    }));
     document.querySelectorAll('.drename').forEach((b) => b.addEventListener('click', async () => {
       const name = window.prompt('Batch name (this is the title shown on the buy page):', b.dataset.name || '');
       if (name === null) return; // cancelled

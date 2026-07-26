@@ -1568,20 +1568,20 @@ export function mountAdmin(app) {
       const returning = dropId
         ? (await q(
             `WITH cur AS (SELECT COALESCE(opens_at, created_at) AS t FROM drops WHERE id = $1),
-                  buyers AS (SELECT DISTINCT lower(email) e FROM orders
+                  buyers AS (SELECT DISTINCT norm_email(email) e FROM orders
                               WHERE drop_id = $1 AND status = 'paid' AND email IS NOT NULL)
              SELECT (SELECT COUNT(*)::int FROM buyers) AS buyers,
                     (SELECT COUNT(*)::int FROM buyers b
                       WHERE EXISTS (SELECT 1 FROM orders p JOIN drops pd ON pd.id = p.drop_id, cur
-                                     WHERE p.status = 'paid' AND lower(p.email) = b.e
+                                     WHERE p.status = 'paid' AND norm_email(p.email) = b.e
                                        AND p.drop_id <> $1
                                        AND COALESCE(pd.opens_at, pd.created_at) < cur.t)) AS returning`,
             [dropId])).rows[0]
         : (await q(
-            `SELECT (SELECT COUNT(DISTINCT lower(email))::int FROM orders
+            `SELECT (SELECT COUNT(DISTINCT norm_email(email))::int FROM orders
                       WHERE status = 'paid' AND email IS NOT NULL) AS buyers,
                     (SELECT COUNT(*)::int FROM (
-                       SELECT lower(email) FROM orders
+                       SELECT norm_email(email) FROM orders
                         WHERE status = 'paid' AND email IS NOT NULL
                         GROUP BY 1 HAVING COUNT(DISTINCT drop_id) >= 2) t) AS returning`)).rows[0];
       // Signup-cohort breakdown for a selected batch: each paid order's buyer is
@@ -1590,13 +1590,13 @@ export function mountAdmin(app) {
       // where did the rest come from?": e.g. Batch 62's week, Batch 61's week…
       const buyerCohorts = dropId ? (await q(
         `WITH ords AS (
-            SELECT o.id, lower(o.email) e FROM orders o
+            SELECT o.id, norm_email(o.email) e FROM orders o
              WHERE o.drop_id = $1 AND o.status = 'paid' AND o.email IS NOT NULL),
           joined AS (
             SELECT ords.id,
-                   (SELECT MIN(s.created_at) FROM subscribers s WHERE lower(s.email) = ords.e) AS joined_at
+                   (SELECT MIN(s.created_at) FROM subscribers s WHERE norm_email(s.email) = ords.e) AS joined_at
               FROM ords)
-         SELECT CASE WHEN j.joined_at IS NULL THEN 'never joined the list'
+         SELECT CASE WHEN j.joined_at IS NULL THEN 'no signup found for their checkout email'
                      WHEN d.name IS NULL THEN 'after this batch opened'
                      ELSE d.name END AS cohort,
                 COUNT(*)::int n
@@ -1618,7 +1618,7 @@ export function mountAdmin(app) {
         `SELECT COUNT(*)::int AS orders,
                 COUNT(*) FILTER (WHERE EXISTS (
                   SELECT 1 FROM subscribers s
-                   WHERE lower(s.email) = lower(o.email)
+                   WHERE norm_email(s.email) = norm_email(o.email)
                      AND s.created_at <= o.created_at
                      AND (prev.t IS NULL OR s.created_at > prev.t)))::int AS fresh
            FROM orders o

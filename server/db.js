@@ -317,6 +317,21 @@ export async function ensureSchema() {
       last_used_at TIMESTAMPTZ
     );
   `);
+  // Canonical email for cross-table identity matching (order ↔ subscriber).
+  // People sign up as ryan.kiley@gmail.com and check out via autofill as
+  // ryankiley@gmail.com or ryan.kiley+shop@gmail.com — same inbox, different
+  // string. Gmail ignores dots and +tags (and googlemail = gmail); +tags are
+  // provider-side aliases everywhere. Truly different addresses (work vs
+  // @me.com relay) can't be unified, so buckets stay honest about "no match".
+  await q(`
+    CREATE OR REPLACE FUNCTION norm_email(t TEXT) RETURNS TEXT
+    IMMUTABLE RETURNS NULL ON NULL INPUT LANGUAGE sql AS $fn$
+      SELECT CASE WHEN split_part(lower(btrim(t)), '@', 2) IN ('gmail.com', 'googlemail.com')
+        THEN replace(split_part(split_part(lower(btrim(t)), '@', 1), '+', 1), '.', '') || '@gmail.com'
+        ELSE split_part(split_part(lower(btrim(t)), '@', 1), '+', 1) || '@' || split_part(lower(btrim(t)), '@', 2)
+        END
+    $fn$;
+  `);
   console.log('[db] schema ready');
 
   // Adopt orphaned sold-out demand votes. A bug in /api/drop/current left

@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'd30', splitWin: 'today', adfitWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', adfitWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -1646,6 +1646,9 @@ async function showSplit() {
 async function showTraffic() {
   loading();
   try {
+    // First visit defaults the picker to today so the tab opens on a cheap
+    // single-day slice; "Default" still loads the full 30d/all-time view.
+    if (!state.trafficSeen) { state.trafficSeen = true; state.trafficRange = { from: todayStr(), to: todayStr() }; }
     const tr = state.trafficRange;
     const d = await api('/api/admin/traffic' + (tr ? `?from=${tr.from}&to=${tr.to}` : ''));
     const v = d.views, vis = d.visitors;
@@ -1832,9 +1835,16 @@ async function showOrders() {
         <div class="card"><div class="k">${scoped && shown ? esc(shown.name || 'Selected drop') : 'This drop'}</div><div class="v" style="font-size:22px">${shown ? num(shown.sold) + '<small>/' + num(shown.bottle_cap) + ' sold</small>' : (scoped ? '—' : 'none live')}</div></div>
         <div class="card"><div class="k">Remaining</div><div class="v">${shown ? num(shown.remaining) : '—'}</div></div>
         <div class="card"><div class="k">Missed-drop demand${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>
-        <div class="card"><div class="k">${scoped ? 'Returning customers (this drop)' : 'Repeat customers'}</div><div class="v" style="font-size:22px">${o.returning ? num(o.returning.returning) : 0}<small> ${scoped ? `of ${o.returning ? num(o.returning.buyers) : 0} buyers bought before` : `of ${o.returning ? num(o.returning.buyers) : 0} customers bought 2+ batches`}</small></div></div>
+        <div class="card"><div class="k">${scoped ? 'Returning customers (this drop)' : 'Repeat customers'}</div><div class="v">${o.returning && o.returning.buyers ? Math.round((100 * o.returning.returning) / o.returning.buyers) + '<small>%</small>' : '—'}</div><div class="k2">${o.returning && o.returning.buyers ? `${num(o.returning.returning)} of ${num(o.returning.buyers)} ${scoped ? 'buyers bought an earlier batch' : 'customers bought 2+ batches'}` : 'no buyers yet'}</div></div>
         <div class="card"><div class="k">Week-of signups who bought${scoped ? ' (this drop)' : ''}</div><div class="v">${fs.orders ? Math.round((100 * fs.fresh) / fs.orders) + '<small>%</small>' : '—'}</div><div class="k2">${fs.orders ? `${num(fs.fresh)} of ${num(fs.orders)} paid orders · joined after the previous drop` : 'no paid orders yet'}</div></div>
       </div>
+      ${scoped && o.buyerCohorts && o.buyerCohorts.length ? `
+      <h3 style="margin-top:0">When this batch's buyers joined the list <span class="note">— which drop week each paid order's customer originally signed up during</span></h3>
+      <table style="max-width:560px;margin-bottom:22px"><thead><tr><th>Joined during</th><th class="num">Orders</th><th class="num">Share</th></tr></thead>
+        <tbody>${o.buyerCohorts.map((c) => `<tr>
+          <td>${esc(c.cohort)}${shown && c.cohort === shown.name ? ' <span class="note">← this batch’s week</span>' : ''}</td>
+          <td class="num">${num(c.n)}</td>
+          <td class="num">${fs.orders ? Math.round((100 * c.n) / fs.orders) : 0}%</td></tr>`).join('')}</tbody></table>` : ''}
 
       <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">

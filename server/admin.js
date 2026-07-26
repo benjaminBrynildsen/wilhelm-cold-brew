@@ -343,6 +343,10 @@ export function mountAdmin(app) {
 
   // Since-launch day-by-day rollup cache (see the overview route).
   let overviewDailyCache = { key: '', at: 0, daily: null };
+  // Traffic tab's fixed-window view/visitor cards (24h/7d/30d/all-time) scan the
+  // whole page_views table; they move slowly, so a short cache keeps the tab
+  // snappy without noticeably stale numbers.
+  let trafficCountsCache = { at: 0, data: null };
 
   // Today's signup count (Central day) — feeds the always-visible header badge.
   app.get('/api/admin/signups-today', async (req, res) => {
@@ -431,33 +435,43 @@ export function mountAdmin(app) {
 
       // Per-Central-day snapshot since launch — the overview stats as one row per
       // day. Honors the same internal-traffic exclusions and hour slice as the
-      // cards. These scans cover everything since launch, and only today's row
-      // can change between refreshes, so the result is cached briefly.
+      // cards. History (days before today) can't change, so it's computed once
+      // per Central day and held until midnight rolls it over; only today's row
+      // — a cheap single-day index scan — is recomputed on each load. This keeps
+      // the Overview from re-scanning every event since launch on every visit.
       const dailyJob = (async () => {
-        const cached = overviewDailyCache;
-        if (cached.key === hourFrag && Date.now() - cached.at < 60000) return cached.daily;
+        const todayFrom = allWins.find((x) => x.key === 'today').from;
+        const histKey = hourFrag + '|' + todayFrom.toISOString();
         const dayExpr = `TO_CHAR(created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
-        const byDay = {};
-        const fold = (rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
-        const [s, d, j, org] = await Promise.all([
-          q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE TRUE ${EXCL_JE}${hourFrag} GROUP BY 1`),
-          q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($1) ${EXCL_JE}${hourFrag} GROUP BY 1`, [DRINK_PAGES]),
-          q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}${hourFrag} GROUP BY 1`),
-          // Organic signups per day — same classification as the overview card:
-          // tagged UTMs split ads out; untagged joins credit the visitor's first
-          // entry referrer (search) or count as direct (incl. untagged X). The
-          // 'join' tag is the /join vanity link dropped in X replies/posts — own
-          // audience, so it counts organic, not ad.
-          q(`SELECT day, COUNT(*) FILTER (WHERE b <> 'ad')::int n FROM (
-               SELECT TO_CHAR(s.created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD') AS day,
-                      CASE WHEN s.utm_source IN ('drinkup','referral','join') OR s.utm_source IS NULL THEN 'organic'
-                           ELSE 'ad' END b
-                 FROM subscribers s
-                WHERE TRUE ${EXCL_PV}${hourFrag}
-             ) t GROUP BY day`),
-        ]);
-        fold(s.rows, 'sessions'); fold(d.rows, 'drinkSessions'); fold(j.rows, 'signups'); fold(org.rows, 'organic');
-        const daily = Object.entries(byDay)
+        const fold = (byDay, rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
+        const slice = async (frag, params) => {
+          const byDay = {};
+          const [s, d, j, org] = await Promise.all([
+            q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE ${frag} ${EXCL_JE}${hourFrag} GROUP BY 1`, params),
+            q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE ${frag} AND page = ANY($${params.length + 1}) ${EXCL_JE}${hourFrag} GROUP BY 1`, [...params, DRINK_PAGES]),
+            q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE ${frag} ${EXCL_PV}${hourFrag} GROUP BY 1`, params),
+            // Organic signups per day — same classification as the overview card:
+            // tagged UTMs split ads out; untagged joins credit the visitor's first
+            // entry referrer (search) or count as direct (incl. untagged X). The
+            // 'join' tag is the /join vanity link dropped in X replies/posts — own
+            // audience, so it counts organic, not ad.
+            q(`SELECT day, COUNT(*) FILTER (WHERE b <> 'ad')::int n FROM (
+                 SELECT TO_CHAR(s.created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD') AS day,
+                        CASE WHEN s.utm_source IN ('drinkup','referral','join') OR s.utm_source IS NULL THEN 'organic'
+                             ELSE 'ad' END b
+                   FROM subscribers s
+                  WHERE ${frag.replaceAll('created_at', 's.created_at')} ${EXCL_PV}${hourFrag}
+               ) t GROUP BY day`, params),
+          ]);
+          fold(byDay, s.rows, 'sessions'); fold(byDay, d.rows, 'drinkSessions');
+          fold(byDay, j.rows, 'signups'); fold(byDay, org.rows, 'organic');
+          return byDay;
+        };
+        if (overviewDailyCache.key !== histKey) {
+          overviewDailyCache = { key: histKey, byDay: await slice('created_at < $1', [todayFrom]) };
+        }
+        const byDay = { ...overviewDailyCache.byDay, ...(await slice('created_at >= $1', [todayFrom])) };
+        return Object.entries(byDay)
           .map(([day, v]) => {
             const ds = v.drinkSessions || 0, su = v.signups || 0, og = v.organic || 0;
             return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
@@ -465,8 +479,6 @@ export function mountAdmin(app) {
                      organic: og, organicPct: su ? Math.round((100 * og) / su) : null };
           })
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
-        overviewDailyCache = { key: hourFrag, at: Date.now(), daily };
-        return daily;
       })();
 
       const [totalSubs, daily] = await Promise.all([
@@ -612,8 +624,14 @@ export function mountAdmin(app) {
         since ? `SELECT COUNT(DISTINCT ip_hash)::int n FROM page_views WHERE created_at > $1 ${EXCL_PV}`
               : `SELECT COUNT(DISTINCT ip_hash)::int n FROM page_views WHERE TRUE ${EXCL_PV}`, since ? [since] : [])).rows[0].n;
 
-      const [total, l24, l7, l30] = [await cnt(), await cnt(day), await cnt(week), await cnt(month)];
-      const [ut, u24, u7, u30] = [await uniq(), await uniq(day), await uniq(week), await uniq(month)];
+      let counts = Date.now() - trafficCountsCache.at < 300000 ? trafficCountsCache.data : null;
+      if (!counts) {
+        const [total, l24, l7, l30] = [await cnt(), await cnt(day), await cnt(week), await cnt(month)];
+        const [ut, u24, u7, u30] = [await uniq(), await uniq(day), await uniq(week), await uniq(month)];
+        counts = { total, l24, l7, l30, ut, u24, u7, u30 };
+        trafficCountsCache = { at: Date.now(), data: counts };
+      }
+      const { total, l24, l7, l30, ut, u24, u7, u30 } = counts;
       const range = custom ? (await q(
         `SELECT COUNT(*)::int views, COUNT(DISTINCT ip_hash)::int visitors
            FROM page_views WHERE created_at >= $1 AND created_at <= $2 ${EXCL_PV}`, [rF, rT])).rows[0] : null;
@@ -1566,6 +1584,32 @@ export function mountAdmin(app) {
                        SELECT lower(email) FROM orders
                         WHERE status = 'paid' AND email IS NOT NULL
                         GROUP BY 1 HAVING COUNT(DISTINCT drop_id) >= 2) t) AS returning`)).rows[0];
+      // Signup-cohort breakdown for a selected batch: each paid order's buyer is
+      // bucketed by WHICH batch week they first joined the list during (their
+      // signup's next-opening drop). Answers "the week-of signups bought X% —
+      // where did the rest come from?": e.g. Batch 62's week, Batch 61's week…
+      const buyerCohorts = dropId ? (await q(
+        `WITH ords AS (
+            SELECT o.id, lower(o.email) e FROM orders o
+             WHERE o.drop_id = $1 AND o.status = 'paid' AND o.email IS NOT NULL),
+          joined AS (
+            SELECT ords.id,
+                   (SELECT MIN(s.created_at) FROM subscribers s WHERE lower(s.email) = ords.e) AS joined_at
+              FROM ords)
+         SELECT CASE WHEN j.joined_at IS NULL THEN 'never joined the list'
+                     WHEN d.name IS NULL THEN 'after this batch opened'
+                     ELSE d.name END AS cohort,
+                COUNT(*)::int n
+           FROM joined j
+           LEFT JOIN LATERAL (
+             SELECT dd.name, COALESCE(dd.opens_at, dd.created_at) AS t
+               FROM drops dd
+              WHERE dd.status <> 'scheduled'
+                AND COALESCE(dd.opens_at, dd.created_at) >= j.joined_at
+              ORDER BY COALESCE(dd.opens_at, dd.created_at) ASC LIMIT 1) d ON TRUE
+          GROUP BY 1
+          ORDER BY MAX(COALESCE(d.t, CASE WHEN j.joined_at IS NULL THEN '-infinity'::timestamptz
+                                          ELSE 'infinity'::timestamptz END)) DESC`, [dropId])).rows : null;
       // Fresh-signup buyers: paid orders whose buyer joined the list AFTER the
       // previous drop opened (and before they bought) — i.e. this drop's email
       // blast / week-of hype converted them on their first cycle. For a drop
@@ -1614,7 +1658,7 @@ export function mountAdmin(app) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;
         else if (r.choice === 'just_looking') demand.justLooking = r.n;
       }
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups, buyerCohorts });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

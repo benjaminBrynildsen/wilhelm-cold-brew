@@ -64,6 +64,11 @@ export async function subscribe(req, res) {
   if (!EMAIL_RE.test(email) || email.length > 254) {
     return res.status(400).json({ error: 'invalid email' });
   }
+  // Synthetic-probe guard: the prod-check workflow signs up with @example.com
+  // addresses (a reserved domain no real person can own). Answer success so the
+  // probe still validates the endpoint, but never store them, never send the
+  // welcome, and never ping Ben's phone — probe runs must not move any metric.
+  if (email.endsWith('@example.com')) return res.json({ ok: true });
   // First-party ad attribution (which ad/campaign drove this signup).
   const attr = (k) => (req.body?.[k] ? String(req.body[k]).slice(0, 200) : null);
   const twclid = attr('twclid');

@@ -355,4 +355,13 @@ export async function ensureSchema() {
                         AND d.opens_at <= je.created_at)`);
     if (r.rowCount) console.log(`[db] adopted ${r.rowCount} untagged sold-out vote(s)`);
   } catch (e) { console.warn('[db] demand-vote backfill failed (non-fatal):', e?.message || e); }
+
+  // Scrub synthetic probe signups. The prod-check workflow used to insert
+  // @example.com addresses (reserved domain — no real customer possible), which
+  // ticked the signup badge and inflated list counts. The subscribe endpoint no
+  // longer stores them; this removes the ones already recorded. Idempotent.
+  try {
+    const r = await q(`DELETE FROM subscribers WHERE email LIKE '%@example.com'`);
+    if (r.rowCount) console.log(`[db] removed ${r.rowCount} probe signup(s)`);
+  } catch (e) { console.warn('[db] probe-signup cleanup failed (non-fatal):', e?.message || e); }
 }

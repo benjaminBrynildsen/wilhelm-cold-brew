@@ -49,6 +49,16 @@ function attribution() {
   return fromUrl;
 }
 
+// Bot signals, sent alongside the signup for server-side flagging (never
+// rejection): the page-load timestamp exposes impossibly-fast submits, and the
+// off-screen "website" field is a honeypot no human can see or fill.
+const PAGE_T0 = Date.now();
+function botSignals() {
+  let hp = '';
+  document.querySelectorAll('.optin-hp').forEach((el) => { if (el.value) hp = String(el.value).slice(0, 100); });
+  return { hp, elapsed_ms: Date.now() - PAGE_T0 };
+}
+
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
 async function subscribeEmail(email, variant) {
   switch (PROVIDER) {
@@ -61,7 +71,7 @@ async function subscribeEmail(email, variant) {
       const res = await fetch(CONFIG.endpoint.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, attribution())),
+        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, attribution(), botSignals())),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;

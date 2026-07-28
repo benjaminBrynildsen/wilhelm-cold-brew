@@ -74,15 +74,32 @@ export async function subscribe(req, res) {
   const twclid = attr('twclid');
   const utm_source = attr('utm_source'), utm_medium = attr('utm_medium');
   const utm_campaign = attr('utm_campaign'), utm_content = attr('utm_content'), utm_term = attr('utm_term');
+  // Bot Catcher signals — flag, never reject, so the bot learns nothing and a
+  // false positive costs nothing. honeypot = the invisible "website" field was
+  // filled (no human can see it); instant = submitted under 2s after page load
+  // (nobody reads, types, and taps that fast); dotted = gmail local part with
+  // dots scattered between nearly every character (an alias trick — gmail
+  // ignores dots — used to look like a fresh address; ≥4 dots is far beyond
+  // any real first.middle.last). Flagged rows appear in the admin Bot Catcher.
+  const hp = req.body?.hp ? String(req.body.hp).slice(0, 100) : '';
+  const elapsed = parseInt(req.body?.elapsed_ms, 10);
+  const local = email.split('@')[0].split('+')[0];
+  const domain = email.split('@')[1] || '';
+  const dots = (local.match(/\./g) || []).length;
+  const flags = [];
+  if (hp) flags.push('honeypot');
+  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) flags.push('instant');
+  if ((domain === 'gmail.com' || domain === 'googlemail.com') && dots >= 4) flags.push('dotted');
+  const botFlag = flags.length ? flags.join(',') : null;
   try {
     const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country,
-                                twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term)
-       VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10)
+                                twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag)
+       VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (email) DO NOTHING
        RETURNING id`,
       [email, variant, hashIp(getClientIp(req)), countryFrom(req),
-       twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term]
+       twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag]
     );
     res.json({ ok: true });
     // Authoritatively mark this session as "joined" in the journey log. The

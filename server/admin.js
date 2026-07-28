@@ -354,8 +354,54 @@ export function mountAdmin(app) {
     try {
       const r = await q(`SELECT COUNT(*)::int n FROM subscribers
         WHERE (created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date ${EXCL_PV}`);
-      res.json({ signups: r.rows[0].n });
+      // Piggyback the Bot Catcher unseen count on this minute-poll so the red
+      // tab badge stays live without a second timer.
+      const b = await q(`SELECT COUNT(*)::int n FROM subscribers
+        WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL`);
+      res.json({ signups: r.rows[0].n, botUnseen: b.rows[0].n });
     } catch (e) { console.error('[signups-today]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── Bot Catcher: flagged signups for review ─────────
+  // Listing marks everything as seen (clears the red badge); rows keep a
+  // was_new marker so just-arrived ones still stand out in the table.
+  app.get('/api/admin/botcatcher', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(
+        `SELECT id, email, created_at, bot_flag, variant, utm_source, utm_campaign, utm_content, country,
+                (bot_seen_at IS NULL) AS was_new
+           FROM subscribers
+          WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared'
+          ORDER BY created_at DESC LIMIT 200`)).rows;
+      await q(`UPDATE subscribers SET bot_seen_at = now()
+                WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL`);
+      const cleared = (await q(
+        `SELECT COUNT(*)::int n FROM subscribers WHERE bot_flag = 'cleared'`)).rows[0].n;
+      res.json({ rows, cleared });
+    } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // "Looks real" — keep the subscriber, stop flagging them (survives reboots).
+  app.post('/api/admin/botcatcher/:id/keep', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(`UPDATE subscribers SET bot_flag = 'cleared' WHERE id = $1 AND bot_flag IS NOT NULL RETURNING id`,
+        [parseInt(req.params.id, 10) || 0]);
+      if (!r.rows.length) return res.status(404).json({ error: 'not found' });
+      res.json({ ok: true });
+    } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Confirmed bot — off the list entirely. Only deletable while flagged.
+  app.post('/api/admin/botcatcher/:id/remove', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(`DELETE FROM subscribers WHERE id = $1 AND bot_flag IS NOT NULL AND bot_flag <> 'cleared' RETURNING email`,
+        [parseInt(req.params.id, 10) || 0]);
+      if (!r.rows.length) return res.status(404).json({ error: 'not found' });
+      res.json({ ok: true, removed: r.rows[0].email });
+    } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── overview ─────────

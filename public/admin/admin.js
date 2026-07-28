@@ -149,6 +149,9 @@ function renderApp() {
       const d = await api('/api/admin/signups-today');
       const el = document.querySelector('#signups-badge .sb-v');
       if (el) el.textContent = num(d.signups);
+      // While the Bot Catcher tab is open everything is seen by definition —
+      // don't let a poll computed just before the mark-seen repaint stale.
+      if (state.tab !== 'botcatcher') { state.botUnseen = d.botUnseen || 0; paintBotBadges(); }
     } catch {}
   };
   refreshSignups();
@@ -234,7 +237,7 @@ async function registerFaceId() {
   }
 }
 
-const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email'], ['thankyou', 'Thank you']];
+const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['adfit', 'Ad Fit'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email'], ['botcatcher', 'Bot Catcher'], ['thankyou', 'Thank you']];
 // Phone bottom bar: Journey · Split test · [logo → Overview] · Orders · More.
 // Everything else lives behind More; when a More tab is active, the More slot
 // shows its name in gold.
@@ -254,10 +257,21 @@ const ICON = (() => {
     journey: svg('<circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 6h7a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h7" transform="translate(0,-2)"/>'),
     orders: svg('<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'),
     email: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
+    botcatcher: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>'),
     thankyou: svg('<path d="M12 20.5C6.5 16.5 3.5 13.4 3.5 9.9 3.5 7.4 5.4 5.5 7.8 5.5c1.6 0 3.1.8 4.2 2.3 1.1-1.5 2.6-2.3 4.2-2.3 2.4 0 4.3 1.9 4.3 4.4 0 3.5-3 6.6-8.5 10.6z"/>'),
     more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
   };
 })();
+
+// Red unseen-count chips on the Bot Catcher tab (desktop tab, phone More dot,
+// More-sheet row). Repainted after every poll and every tab re-render.
+function paintBotBadges() {
+  const n = state.botUnseen || 0;
+  document.querySelectorAll('[data-botbadge]').forEach((el) => {
+    el.textContent = n > 99 ? '99+' : String(n);
+    el.hidden = n === 0;
+  });
+}
 
 function switchTab(k) {
   state.tab = k;
@@ -270,7 +284,7 @@ function switchTab(k) {
 
 function renderTabs() {
   document.getElementById('tabs').innerHTML = TAB_LIST.map(
-    ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}</div>`).join('')
+    ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}${k === 'botcatcher' ? '<span class="redbadge" data-botbadge hidden></span>' : ''}</div>`).join('')
     + `<span class="tab-actions">
         <button class="btn ghost sm act-faceid">Face ID</button>
         <button class="btn ghost sm act-logout">Log out</button>
@@ -293,12 +307,12 @@ function renderTabs() {
     + `<button class="bn-item bn-logo ${state.tab === 'overview' ? 'active' : ''}" data-tab="overview" aria-label="Overview">
         <img src="/drink/assets/wilhelm-circle.png" alt=""/></button>`
     + BN_RIGHT.map(item).join('')
-    + `<button class="bn-item ${inMore ? 'active' : ''}" id="bn-more">${inMore ? (ICON[state.tab] || ICON.more) : ICON.more}<span>${inMore ? esc(label(state.tab)) : 'More'}</span></button>`;
+    + `<button class="bn-item ${inMore ? 'active' : ''}" id="bn-more">${inMore ? (ICON[state.tab] || ICON.more) : ICON.more}<span>${inMore ? esc(label(state.tab)) : 'More'}</span><span class="redbadge bn-dot" data-botbadge hidden></span></button>`;
   bn.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   bn.querySelector('#bn-more').addEventListener('click', () => {
     const ms = document.getElementById('more-sheet');
     ms.querySelector('.ms-panel').innerHTML = TAB_LIST.filter(([k]) => !BN_DIRECT.includes(k)).map(
-      ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${l}</span></button>`).join('')
+      ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${l}</span>${k === 'botcatcher' ? '<span class="redbadge" data-botbadge hidden></span>' : ''}</button>`).join('')
       + `<div class="ms-actions">
           <button class="btn ghost act-faceid">Face ID</button>
           <button class="btn ghost act-logout">Log out</button>
@@ -306,7 +320,9 @@ function renderTabs() {
     ms.hidden = false;
     ms.querySelectorAll('.ms-item').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
     wireActions(ms);
+    paintBotBadges();
   });
+  paintBotBadges();
 }
 
 // "Today" per Central time (the report timezone), so the day picker + its max
@@ -477,6 +493,7 @@ function show(tab) {
   if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
   if (tab === 'orders') return showOrders();
   if (tab === 'email') return showEmail();
+  if (tab === 'botcatcher') return showBotCatcher();
   if (tab === 'thankyou') return showThankyou();
 }
 
@@ -2383,6 +2400,45 @@ function mountComposer(subs) {
   document.getElementById('sendblast').addEventListener('click', () => doSend(false));
 
   renderEditor(); updatePreview();
+}
+
+// ───────────────────────── Bot Catcher ─────────────────────────
+// Flagged-but-never-rejected signups. Opening the tab marks them seen (badge
+// clears); each row can be kept ("looks real") or removed from the list.
+const BOT_REASONS = {
+  honeypot: 'filled the invisible field',
+  instant: 'submitted in under 2s',
+  dotted: 'dot-scattered gmail alias',
+};
+async function showBotCatcher() {
+  loading();
+  try {
+    const d = await api('/api/admin/botcatcher');
+    state.botUnseen = 0;
+    paintBotBadges();
+    const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
+        <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
+        <td style="word-break:break-all">${esc(r.email)}</td>
+        <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(BOT_REASONS[f] || f)}</span>`).join('<br/>')}</td>
+        <td>${r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>'}</td>
+        <td class="num" style="white-space:nowrap">
+          <button class="btn ghost bc-keep" data-id="${r.id}" style="padding:2px 10px">Looks real</button>
+          <button class="btn ghost bc-remove" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px;color:var(--bad,#c0574f)">Remove</button>
+        </td></tr>`).join('');
+    content().innerHTML = `
+      <div class="note" style="margin:8px 0 12px">Signups that tripped a bot signal. Nothing here was rejected — they're on the list and counted until you remove them. <b>Looks real</b> keeps them and stops flagging that address; <b>Remove</b> takes them off the list (welcome email already went out, but they'll get no future sends).${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
+      <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th>Source</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td class="note" colspan="5">Nothing caught — no suspicious signups on record.</td></tr>'}</tbody></table>`;
+    document.querySelectorAll('.bc-keep').forEach((b) => b.addEventListener('click', async () => {
+      try { await api(`/api/admin/botcatcher/${b.dataset.id}/keep`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }
+      catch (e) { alert('Failed: ' + e.message); }
+    }));
+    document.querySelectorAll('.bc-remove').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm(`Remove ${b.dataset.email} from the list?\n\nThis deletes the subscriber — they get no future drop emails and disappear from signup counts.`)) return;
+      try { await api(`/api/admin/botcatcher/${b.dataset.id}/remove`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }
+      catch (e) { alert('Failed: ' + e.message); }
+    }));
+  } catch (e) { content().innerHTML = `<div class="note">Failed to load: ${esc(e.message)}</div>`; }
 }
 
 async function showEmail() {

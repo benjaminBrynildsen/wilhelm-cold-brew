@@ -364,4 +364,22 @@ export async function ensureSchema() {
     const r = await q(`DELETE FROM subscribers WHERE email LIKE '%@example.com'`);
     if (r.rowCount) console.log(`[db] removed ${r.rowCount} probe signup(s)`);
   } catch (e) { console.warn('[db] probe-signup cleanup failed (non-fatal):', e?.message || e); }
+
+  // Bot Catcher: suspicious signups are FLAGGED for review, never rejected —
+  // Ben decides. bot_flag holds comma-joined reasons ('honeypot','instant',
+  // 'dotted'), or 'cleared' once he marks one as real. bot_seen_at drives the
+  // red unseen badge. The backfill flags the dot-scattered gmail pattern
+  // (dots between nearly every character — a bot alias trick, ≥4 dots is far
+  // beyond any real first.middle.last) on rows recorded before the feature;
+  // it skips 'cleared' rows so his judgements stick across boots.
+  try {
+    await q(`ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS bot_flag TEXT;
+             ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS bot_seen_at TIMESTAMPTZ;`);
+    const r = await q(
+      `UPDATE subscribers SET bot_flag = 'dotted'
+        WHERE bot_flag IS NULL
+          AND split_part(email, '@', 2) IN ('gmail.com', 'googlemail.com')
+          AND LENGTH(split_part(email, '@', 1)) - LENGTH(REPLACE(split_part(email, '@', 1), '.', '')) >= 4`);
+    if (r.rowCount) console.log(`[db] flagged ${r.rowCount} dot-scattered signup(s) for the Bot Catcher`);
+  } catch (e) { console.warn('[db] bot-flag backfill failed (non-fatal):', e?.message || e); }
 }

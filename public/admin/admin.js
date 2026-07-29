@@ -511,7 +511,9 @@ async function showThankyou() {
       const em = (o.email || '').toLowerCase();
       const msgs = conv[em] || [];
       const addr = o.shipping_address || {};
-      const place = [addr.city, addr.state].filter(Boolean).join(', ');
+      // City/state are buyer-entered at Stripe checkout — escape before they
+      // land in innerHTML (the rest of `facts` is numeric/date, already safe).
+      const place = [addr.city, addr.state].filter(Boolean).map(esc).join(', ');
       const facts = [
         `${o.quantity || 1}× bottle`, money(o.amount_total_cents),
         fmtD(o.paid_at || o.created_at),

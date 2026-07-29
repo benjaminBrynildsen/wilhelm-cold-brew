@@ -1,6 +1,7 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { resolveSecret, safeEqual, rateLimit } from './security.js';
 import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
@@ -12,8 +13,12 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wilhelm-admin';
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'wilhelm-admin-key';
+// Credentials fail CLOSED in production: if unset, resolveSecret substitutes an
+// unguessable random value, so the committed dev defaults ('wilhelm-admin' etc.)
+// are never live on prod. If ADMIN_PASSWORD was never set, password login simply
+// can't succeed (nobody knows the random value) — configure it in Render.
+const ADMIN_PASSWORD = resolveSecret('ADMIN_PASSWORD', 'wilhelm-admin');
+const ADMIN_API_KEY = resolveSecret('ADMIN_API_KEY', 'wilhelm-admin-key');
 const COOKIE = 'wilhelm_admin';
 const DRINK_PAGES = ['/drink/', '/drink'];
 
@@ -26,7 +31,7 @@ const EXCL_EM = `AND LOWER(email) NOT IN (SELECT email FROM internal_emails) AND
 
 // ───────── auth ─────────
 function isAdmin(req) {
-  if ((req.headers['x-admin-key'] || '') === ADMIN_API_KEY) return true;
+  if (safeEqual(req.headers['x-admin-key'] || '', ADMIN_API_KEY)) return true;
   return req.signedCookies && req.signedCookies[COOKIE] === 'ok';
 }
 function requireAdmin(req, res) {
@@ -226,9 +231,11 @@ async function runBlast(blastId, recipients, subject, bodyHtml) {
 }
 
 export function mountAdmin(app) {
-  app.post('/api/admin/login', (req, res) => {
+  // Throttle password guesses per IP so the login can't be brute-forced.
+  const loginLimit = rateLimit({ windowMs: 15 * 60_000, max: 10 });
+  app.post('/api/admin/login', loginLimit, (req, res) => {
     const pw = String(req.body?.password || '');
-    if (pw && pw === ADMIN_PASSWORD) {
+    if (pw && safeEqual(pw, ADMIN_PASSWORD)) {
       setAdminCookie(res);
       return res.json({ ok: true });
     }

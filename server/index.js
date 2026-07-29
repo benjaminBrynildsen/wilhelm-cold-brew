@@ -13,19 +13,42 @@ import { mountAdmin } from './admin.js';
 import { mountPortal } from './portal.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
+import { resolveSecret, rateLimit } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const PORT = process.env.PORT || 5050;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'wilhelm-dev-session-secret';
+// In production a missing SESSION_SECRET becomes a random per-boot value (never
+// the committed default), so admin/portal cookies can't be forged offline.
+const SESSION_SECRET = resolveSecret('SESSION_SECRET', 'wilhelm-dev-session-secret');
 
 const app = express();
 app.set('trust proxy', true);
 app.use(cookieParser(SESSION_SECRET));
+
+// Baseline security headers on every response. No framing (clickjacking of the
+// admin/account UIs), no MIME sniffing, conservative referrer, and HSTS in prod.
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 // Stripe webhook needs the raw, unparsed body for signature verification — mount it
 // BEFORE express.json() so the JSON parser doesn't consume the stream.
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 app.use(express.json({ limit: '256kb' }));
+
+// Per-IP flood protection on the public write endpoints. Generous enough that no
+// real visitor is ever throttled, tight enough that a bot can't run up SMTP /
+// Mailchimp / Stripe cost or bloat the DB. In-memory (single Render instance).
+const journeyLimit = rateLimit({ windowMs: 60_000, max: 120 });   // analytics beacons are chatty
+const subscribeLimit = rateLimit({ windowMs: 60_000, max: 10 });  // a human joins once
+const payLimit = rateLimit({ windowMs: 60_000, max: 15 });        // checkout attempts
 
 // ───────── pageview middleware (top-level HTML GETs only) ─────────
 const SKIP_PREFIXES = ['/api', '/assets', '/journey.js', '/admin', '/favicon', '/healthz'];
@@ -80,12 +103,12 @@ app.use((req, _res, next) => {
 });
 
 // ───────── API ─────────
-app.post('/api/journey', receiveJourney);
-app.post('/api/beacon', receiveJourney); // sendBeacon target (same handler)
-app.post('/api/subscribe', subscribe);
+app.post('/api/journey', journeyLimit, receiveJourney);
+app.post('/api/beacon', journeyLimit, receiveJourney); // sendBeacon target (same handler)
+app.post('/api/subscribe', subscribeLimit, subscribe);
 mountAdmin(app);
 mountPortal(app);
-mountCheckout(app);
+mountCheckout(app, payLimit);
 
 // Case-insensitive redirect for the marketing routes. The static handler is
 // case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos

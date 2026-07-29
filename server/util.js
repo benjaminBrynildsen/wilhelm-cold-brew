@@ -1,7 +1,12 @@
 // Shared helpers: client IP, hashing, geo.
 import crypto from 'node:crypto';
+import { resolveSecret } from './security.js';
 
-const IP_SALT = process.env.IP_SALT || 'wilhelm-dev-salt';
+// A missing salt in production becomes random-per-boot rather than the committed
+// default, so visitor IP hashes can't be reversed with a known salt. (Hashes
+// won't correlate across a redeploy when the salt was never set — acceptable;
+// the fix is to set IP_SALT in Render.)
+const IP_SALT = resolveSecret('IP_SALT', 'wilhelm-dev-salt');
 
 export function getClientIp(req) {
   const xff = (req.headers['x-forwarded-for'] || '').toString();

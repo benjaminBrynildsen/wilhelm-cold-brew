@@ -74,7 +74,7 @@ async function nextScheduledAt() {
   return r.rows[0]?.opens_at || null;
 }
 
-export function mountCheckout(app) {
+export function mountCheckout(app, payLimit = (req, res, next) => next()) {
   // Publishable key for Stripe.js on the buy page (safe to expose).
   app.get('/api/config', (_req, res) => {
     res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
@@ -112,7 +112,7 @@ export function mountCheckout(app) {
 
   // On-page payment: reserve against the cap, create a PaymentIntent the buy page
   // confirms with Apple/Google Pay (Express Checkout Element) or card (Payment Element).
-  app.post('/api/pay/intent', async (req, res) => {
+  app.post('/api/pay/intent', payLimit, async (req, res) => {
     if (!stripe) return res.status(503).json({ error: 'payments not configured' });
     try {
       const d = await currentDrop();
@@ -160,7 +160,7 @@ export function mountCheckout(app) {
   });
 
   // Emergency fallback: hosted Stripe Checkout (Apple/Google Pay on Stripe's page).
-  app.post('/api/checkout', async (req, res) => {
+  app.post('/api/checkout', payLimit, async (req, res) => {
     if (!stripe) return res.status(503).json({ error: 'payments not configured' });
     try {
       const d = await currentDrop();
@@ -241,12 +241,20 @@ async function orderLookup(res, column, value) {
 export async function stripeWebhook(req, res) {
   if (!stripe) return res.status(503).end();
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  // Fail CLOSED in production: without the signing secret we cannot tell a real
+  // Stripe event from a forged one, so refuse rather than trust an unsigned body
+  // (which would let anyone mark orders paid). The unsigned parse stays only as a
+  // local-dev convenience when NODE_ENV isn't production.
+  if (!secret && process.env.NODE_ENV === 'production') {
+    console.error('[webhook] STRIPE_WEBHOOK_SECRET not set in production — rejecting unverifiable webhook.');
+    return res.status(503).send('Webhook not configured');
+  }
   let event;
   try {
     if (secret) {
       event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret);
     } else {
-      event = JSON.parse(req.body.toString('utf8')); // dev fallback when no secret set
+      event = JSON.parse(req.body.toString('utf8')); // dev-only fallback (never reached in production)
     }
   } catch (e) {
     console.warn('[webhook] signature verification failed:', e?.message || e);

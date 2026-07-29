@@ -51,6 +51,19 @@ jobs:
             await b.close();
           })().catch((e) => { console.log('FATAL', String(e).slice(0, 500)); process.exit(1); });
           EOF
+      - name: security — are default admin credentials live on prod? (read-only)
+        run: |
+          B='https://wilhelmcoldbrew.com'
+          # A SAFE, read-only probe: does the committed dev default password / API
+          # key still authenticate? 401 = overridden in Render (SAFE). 200 = the
+          # default is live (VULNERABLE — set a real ADMIN_PASSWORD/ADMIN_API_KEY).
+          PW=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+                 -d '{"password":"wilhelm-admin"}' "$B/api/admin/login")
+          KEY=$(curl -sS -o /dev/null -w '%{http_code}' -H 'x-admin-key: wilhelm-admin-key' \
+                 "$B/api/admin/signups-today")
+          echo "DEFAULT_PASSWORD_LOGIN=$PW  (401=safe/overridden, 200=VULNERABLE)"
+          echo "DEFAULT_API_KEY_ACCESS=$KEY (401=safe/overridden, 200=VULNERABLE)"
+          if [ "$PW" = "200" ] || [ "$KEY" = "200" ]; then echo "RESULT=DEFAULTS_LIVE_SET_SECRETS_BEFORE_DEPLOY"; else echo "RESULT=DEFAULTS_ALREADY_OVERRIDDEN_SAFE_TO_DEPLOY"; fi
       - name: time the landing route repeatedly (is /drink slow to serve?)
         run: |
           UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'

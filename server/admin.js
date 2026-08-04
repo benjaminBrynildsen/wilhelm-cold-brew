@@ -7,7 +7,7 @@ import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
-import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed } from './mailchimp.js';
+import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe } from './mailchimp.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -183,7 +183,7 @@ async function markUnsubscribed(emails, apply) {
     if (apply && marked.length) {
       await q(
         `UPDATE subscribers SET unsubscribed_at = now()
-          WHERE LOWER(email) = ANY($1) AND unsubscribed_at IS NULL`, [marked]);
+          WHERE LOWER(email) = ANY($1) AND unsubscribed_at IS NULL AND archived_at IS NULL`, [marked]);
     }
   }
   return { given: emails.length, marked, already, notFound };
@@ -535,7 +535,7 @@ export function mountAdmin(app) {
       })();
 
       const [totalSubs, daily] = await Promise.all([
-        q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}`),
+        q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
         dailyJob,
         ...winJobs,
       ]);
@@ -786,7 +786,7 @@ export function mountAdmin(app) {
       if (req.query?.format === 'csv') {
         const rows = (await q(
           `SELECT email, variant, source, country, created_at FROM subscribers
-            WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at DESC`)).rows;
+            WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV} ORDER BY created_at DESC`)).rows;
         const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
         const csv = ['email,variant,source,country,created_at']
           .concat(rows.map((r) => [r.email, r.variant, r.source, r.country, r.created_at?.toISOString?.() || r.created_at].map(esc).join(',')))
@@ -800,7 +800,7 @@ export function mountAdmin(app) {
       if (req.query?.format === 'emails') {
         const rows = (await q(
           `SELECT LOWER(email) email FROM subscribers
-            WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at DESC`)).rows;
+            WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV} ORDER BY created_at DESC`)).rows;
         const csv = ['email'].concat(rows.map((r) => r.email)).join('\n');
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-emails-for-ads.csv"');
@@ -808,13 +808,13 @@ export function mountAdmin(app) {
       }
       const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit) || 100));
       const rows = (await q(
-        `SELECT email, variant, source, country, created_at FROM subscribers
-          WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at DESC LIMIT $1`, [limit])).rows;
-      const total = (await q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}`)).rows[0].n;
+        `SELECT id, email, variant, source, country, created_at FROM subscribers
+          WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV} ORDER BY created_at DESC LIMIT $1`, [limit])).rows;
+      const total = (await q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`)).rows[0].n;
       const last7 = (await q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at > NOW() - INTERVAL '7 days' ${EXCL_PV}`)).rows[0].n;
       const byVariant = (await q(
         `SELECT COALESCE(variant,'(none)') variant, COUNT(*)::int n FROM subscribers
-          WHERE unsubscribed_at IS NULL ${EXCL_PV} GROUP BY variant ORDER BY n DESC`)).rows;
+          WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV} GROUP BY variant ORDER BY n DESC`)).rows;
       // First-party "signups by ad": which source/campaign/ad drove each subscriber.
       const byAd = (await q(
         `SELECT COALESCE(utm_source,'(direct)')   AS source,
@@ -822,7 +822,7 @@ export function mountAdmin(app) {
                 COALESCE(utm_content,'(none)')     AS content,
                 COUNT(*)::int n
            FROM subscribers
-          WHERE unsubscribed_at IS NULL ${EXCL_PV}
+          WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
           GROUP BY 1,2,3 ORDER BY n DESC`)).rows;
       // Unsubscribe visibility — counts + who (internal/test addresses excluded).
       const unsubTotal = (await q(
@@ -843,8 +843,44 @@ export function mountAdmin(app) {
            ) o ON true
           WHERE s.unsubscribed_at IS NOT NULL ${EXCL_PV.replace('AND ip_hash', 'AND s.ip_hash')} ${EXCL_EM.replace(/LOWER\(email\)/g, 'LOWER(s.email)')}
           ORDER BY s.unsubscribed_at DESC LIMIT 30`)).rows;
-      res.json({ total, last7, byVariant, byAd, recent: rows, unsubTotal, unsubLast7, unsubRecent });
+      // Archived subscribers — manually removed from the list (not the same as an
+      // opt-out). Kept for restore/audit, excluded from every active query above.
+      const archived = (await q(
+        `SELECT id, email, variant, country, created_at, archived_at FROM subscribers
+          WHERE archived_at IS NOT NULL ${EXCL_PV} ORDER BY archived_at DESC LIMIT 200`)).rows;
+      const archivedTotal = (await q(
+        `SELECT COUNT(*)::int n FROM subscribers WHERE archived_at IS NOT NULL ${EXCL_PV}`)).rows[0].n;
+      res.json({ total, last7, byVariant, byAd, recent: rows, unsubTotal, unsubLast7, unsubRecent, archived, archivedTotal });
     } catch (e) { console.error('[subscribers]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Archive a subscriber — a soft delete. They move to the archive list, stop
+  // counting, and never receive another send. Reversible via restore. The client
+  // gates this behind three confirmations; the server just needs the id.
+  app.post('/api/admin/subscribers/:id/archive', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(
+        `UPDATE subscribers SET archived_at = now()
+          WHERE id = $1 AND archived_at IS NULL RETURNING email`, [parseInt(req.params.id, 10) || 0]);
+      if (!r.rows.length) return res.status(404).json({ error: 'not found or already archived' });
+      // Keep Mailchimp in step so a restore-less archive doesn't leave them
+      // mailable there. Fire-and-forget + no-op without a key; never throws.
+      mcPushUnsubscribe(r.rows[0].email);
+      res.json({ ok: true, email: r.rows[0].email });
+    } catch (e) { console.error('[subscribers/archive]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Restore an archived subscriber back onto the active list.
+  app.post('/api/admin/subscribers/:id/restore', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(
+        `UPDATE subscribers SET archived_at = NULL
+          WHERE id = $1 AND archived_at IS NOT NULL RETURNING email`, [parseInt(req.params.id, 10) || 0]);
+      if (!r.rows.length) return res.status(404).json({ error: 'not found or not archived' });
+      res.json({ ok: true, email: r.rows[0].email });
+    } catch (e) { console.error('[subscribers/restore]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Mailchimp unsubscribe sync ─────────
@@ -899,7 +935,7 @@ export function mountAdmin(app) {
       const mcStatus = new Map((await mcMembers(listId)).map((m) => [m.email, m.status]));
       const ourActive = (await q(
         `SELECT LOWER(email) email FROM subscribers
-          WHERE unsubscribed_at IS NULL ${EXCL_PV} ${EXCL_EM} ORDER BY created_at ASC`)).rows.map((r) => r.email);
+          WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV} ${EXCL_EM} ORDER BY created_at ASC`)).rows.map((r) => r.email);
       const ourUnsubbed = (await q(
         `SELECT LOWER(email) email FROM subscribers
           WHERE unsubscribed_at IS NOT NULL ${EXCL_EM}`)).rows.map((r) => r.email);
@@ -1168,7 +1204,7 @@ export function mountAdmin(app) {
     try {
       const subject = String(req.body?.subject || '').slice(0, 300);
       const body = String(req.body?.bodyHtml || '').slice(0, 100000);
-      const rc = (await q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL`)).rows[0].n;
+      const rc = (await q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL`)).rows[0].n;
       const r = await q(
         `INSERT INTO email_blasts (subject, body_html, recipient_count, status)
          VALUES ($1,$2,$3,'draft') RETURNING id`, [subject, body, rc]);
@@ -1234,7 +1270,7 @@ export function mountAdmin(app) {
         if (variant === '(none)') { vfilter = ' AND variant IS NULL'; }
         else if (variant) { params.push(variant); vfilter = ` AND variant = $${params.length}`; }
         recipients = (await q(
-          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV}${vfilter} ORDER BY created_at ASC`, params
+          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}${vfilter} ORDER BY created_at ASC`, params
         )).rows.map((r) => r.email);
       }
       if (!recipients.length) return res.status(400).json({ error: 'no recipients' });
@@ -1288,7 +1324,7 @@ export function mountAdmin(app) {
         // A send row only exists on success, so this is exactly who never got it.
         recipients = (await q(
           `SELECT email FROM subscribers
-            WHERE unsubscribed_at IS NULL ${EXCL_PV}
+            WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
               AND LOWER(email) NOT IN (
                 SELECT LOWER(email) FROM email_sends WHERE blast_id = $1)
             ORDER BY created_at ASC`, [id])).rows.map((r) => r.email);
@@ -1297,14 +1333,14 @@ export function mountAdmin(app) {
         // Phantom/failed history rows have no open, so those people are included.
         recipients = (await q(
           `SELECT email FROM subscribers
-            WHERE unsubscribed_at IS NULL ${EXCL_PV}
+            WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
               AND LOWER(email) NOT IN (
                 SELECT LOWER(email) FROM email_sends
                  WHERE blast_id = $1 AND first_open_at IS NOT NULL)
             ORDER BY created_at ASC`, [id])).rows.map((r) => r.email);
       } else {
         recipients = (await q(
-          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ${EXCL_PV} ORDER BY created_at ASC`
+          `SELECT email FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV} ORDER BY created_at ASC`
         )).rows.map((r) => r.email);
       }
       if (!recipients.length) {

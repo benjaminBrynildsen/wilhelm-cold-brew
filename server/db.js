@@ -142,6 +142,10 @@ export async function ensureSchema() {
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_content  TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_term     TEXT;
+    -- Manual archive (soft delete) — set when Ben removes someone from the list.
+    -- Distinct from unsubscribed_at (their opt-out); archived rows are excluded
+    -- from every active query but kept for restore/audit.
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS archived_at  TIMESTAMPTZ;
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,

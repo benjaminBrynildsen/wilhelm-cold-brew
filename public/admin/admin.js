@@ -2458,7 +2458,11 @@ async function showEmail() {
     // the rest of the email tab isn't buried below a long list.
     const RECENT_PREVIEW = 10;
     const recent = subs.recent.map((r, i) =>
-      `<tr${i >= RECENT_PREVIEW ? ' class="recent-extra" hidden' : ''}><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td></tr>`).join('');
+      `<tr${i >= RECENT_PREVIEW ? ' class="recent-extra" hidden' : ''}><td>${esc(r.email)}</td><td>${esc(r.variant || '—')}</td><td>${esc(r.country || '')}</td><td>${esc((r.created_at || '').slice(0, 10))}</td><td class="num"><button class="btn ghost sub-del" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 9px;color:var(--bad,#c0574f)">Delete</button></td></tr>`).join('');
+    // Archived (soft-deleted) subscribers — restorable, never emailed.
+    const archivedRows = (subs.archived || []).length
+      ? subs.archived.map((r) => `<tr><td style="word-break:break-all">${esc(r.email)}</td><td>${esc((r.created_at || '').slice(0, 10))}</td><td>${esc(ago(r.archived_at))}</td><td class="num"><button class="btn ghost sub-restore" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 9px">Restore</button></td></tr>`).join('')
+      : '<tr><td class="note" colspan="4">Nobody archived.</td></tr>';
     const recentToggle = subs.recent.length > RECENT_PREVIEW
       ? `<button class="btn ghost" id="recent-toggle" data-expanded="0">Show all ${num(subs.recent.length)} ↓</button>`
       : '';
@@ -2534,7 +2538,7 @@ async function showEmail() {
         </div>
         <div>
           <h3>Recent signups</h3>
-          <table><thead><tr><th>Email</th><th>Variant</th><th>Country</th><th>Date</th></tr></thead><tbody>${recent || '<tr><td class="note" colspan="4">None yet.</td></tr>'}</tbody></table>
+          <table><thead><tr><th>Email</th><th>Variant</th><th>Country</th><th>Date</th><th></th></tr></thead><tbody>${recent || '<tr><td class="note" colspan="5">None yet.</td></tr>'}</tbody></table>
           ${recentToggle}
         </div>
       </div>
@@ -2544,6 +2548,9 @@ async function showEmail() {
 
       <h3>Recent unsubscribes <span class="note">(${num(subs.unsubTotal || 0)} total · who dropped off and when)</span></h3>
       <table><thead><tr><th>Email</th><th>When</th><th>Bought?</th></tr></thead><tbody>${unsubRows}</tbody></table>
+
+      <h3>Archived <span class="note">(${num(subs.archivedTotal || 0)} removed by you · off the list, never emailed — restore anytime)</span></h3>
+      <table><thead><tr><th>Email</th><th>Signed up</th><th>Archived</th><th></th></tr></thead><tbody>${archivedRows}</tbody></table>
 
       <h3>Mailchimp sync <span class="note">(keep this list and the Mailchimp audience matching, both directions)</span></h3>
       <div class="note">With MAILCHIMP_API_KEY set on the server, new signups and unsubscribes flow to Mailchimp automatically as they happen. The button below is the catch-up pass: it pulls Mailchimp's unsubscribes + bounces into this list, adds any active subscribers Mailchimp is missing, and opts out anyone who unsubscribed here but is still subscribed there. It never re-subscribes someone who opted out on either side. No API key? Paste Mailchimp's unsubscribed-contacts export below instead (Audience → All contacts → filter Email marketing = Unsubscribed → export).</div>
@@ -2641,6 +2648,28 @@ async function showEmail() {
       recentToggleBtn.dataset.expanded = expanded ? '0' : '1';
       recentToggleBtn.textContent = expanded ? `Show all ${num(subs.recent.length)} ↓` : 'Show less ↑';
     });
+    // Delete a subscriber → archive, gated behind three separate confirmations
+    // (deleting a real customer should be near-impossible to do by accident). The
+    // third is a type-the-address check, not just a click.
+    document.querySelectorAll('.sub-del').forEach((btn) => btn.addEventListener('click', async () => {
+      const email = btn.dataset.email;
+      if (!confirm(`Delete ${email} from the list?\n\nThey'll be moved to the Archived list and will never receive another email. You can restore them anytime.`)) return;
+      if (!confirm(`Second check — are you sure?\n\nThis removes ${email} from every future Friday Drop send and from your list count.`)) return;
+      const typed = window.prompt(`Final step: type the full email address to confirm you want to remove them.\n\n${email}`);
+      if (typed == null) return;
+      if (typed.trim().toLowerCase() !== email.toLowerCase()) { alert('That didn’t match — nothing was deleted.'); return; }
+      try {
+        await api(`/api/admin/subscribers/${btn.dataset.id}/archive`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        showEmail();
+      } catch (e) { alert('Failed: ' + e.message); }
+    }));
+    document.querySelectorAll('.sub-restore').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!confirm(`Restore ${btn.dataset.email} to the active list? They'll receive future drop emails again.`)) return;
+      try {
+        await api(`/api/admin/subscribers/${btn.dataset.id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        showEmail();
+      } catch (e) { alert('Failed: ' + e.message); }
+    }));
     const rmsg = document.getElementById('resend-msg');
     document.querySelectorAll('.bresend').forEach((btn) => btn.addEventListener('click', async () => {
       const id = btn.dataset.id, subj = btn.dataset.subject;

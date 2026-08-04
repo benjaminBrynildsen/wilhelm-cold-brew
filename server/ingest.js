@@ -88,7 +88,10 @@ export async function subscribe(req, res) {
   const dots = (local.match(/\./g) || []).length;
   const flags = [];
   if (hp) flags.push('honeypot');
-  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) flags.push('instant');
+  // Encode the actual elapsed ms into the flag (instant:342) so the admin can
+  // show the real speed — a script clocks tens-to-hundreds of ms (conclusively
+  // automated); a borderline-fast human sits near the 2000ms edge.
+  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) flags.push('instant:' + elapsed);
   if ((domain === 'gmail.com' || domain === 'googlemail.com') && dots >= 4) flags.push('dotted');
   const botFlag = flags.length ? flags.join(',') : null;
   try {

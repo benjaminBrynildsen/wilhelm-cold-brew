@@ -50,13 +50,17 @@ function attribution() {
 }
 
 // Bot signals, sent alongside the signup for server-side flagging (never
-// rejection): the page-load timestamp exposes impossibly-fast submits, and the
-// off-screen "website" field is a honeypot no human can see or fill.
-const PAGE_T0 = Date.now();
+// rejection): a monotonic page-open timer exposes impossibly-fast submits, and
+// the off-screen honeypot field is one no human can see or fill.
+// performance.now() is a monotonic stopwatch (counts only forward, immune to
+// device-clock corrections) — unlike Date.now(), a backward NTP/clock jump
+// between page-open and submit can never fabricate a fake "instant" time.
+const PAGE_T0 = (window.performance && performance.now) ? performance.now() : Date.now();
 function botSignals() {
   let hp = '';
   document.querySelectorAll('.optin-hp').forEach((el) => { if (el.value) hp = String(el.value).slice(0, 100); });
-  return { hp, elapsed_ms: Date.now() - PAGE_T0 };
+  const nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
+  return { hp, elapsed_ms: Math.round(nowMs - PAGE_T0) };
 }
 
 // `variant` is recorded with the subscriber so conversions are attributable per arm.

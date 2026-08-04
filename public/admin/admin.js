@@ -2412,6 +2412,16 @@ const BOT_REASONS = {
   instant: 'submitted in under 2s',
   dotted: 'dot-scattered gmail alias',
 };
+// Turn one raw flag token into human text. 'instant:342' shows the real speed —
+// a script clocks well under a second (no human types an email that fast); a
+// value near 2s is borderline and worth the benefit of the doubt.
+function botReasonLabel(f) {
+  if (f.startsWith('instant:')) {
+    const ms = parseInt(f.slice(8), 10);
+    return Number.isFinite(ms) ? `submitted in ${(ms / 1000).toFixed(ms < 1000 ? 2 : 1)}s` : 'submitted in under 2s';
+  }
+  return BOT_REASONS[f] || f;
+}
 async function showBotCatcher() {
   loading();
   try {
@@ -2421,7 +2431,7 @@ async function showBotCatcher() {
     const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
         <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
         <td style="word-break:break-all">${esc(r.email)}</td>
-        <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(BOT_REASONS[f] || f)}</span>`).join('<br/>')}</td>
+        <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(botReasonLabel(f))}</span>`).join('<br/>')}</td>
         <td>${r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>'}</td>
         <td class="num" style="white-space:nowrap">
           <button class="btn ghost bc-keep" data-id="${r.id}" style="padding:2px 10px">Looks real</button>

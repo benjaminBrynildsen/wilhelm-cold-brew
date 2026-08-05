@@ -1,5 +1,6 @@
 // Postgres pool + schema bootstrap. Raw SQL (no ORM) — mirrors theodore-web.
 import pg from 'pg';
+import { DISPOSABLE_DOMAINS } from './util.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -385,5 +386,34 @@ export async function ensureSchema() {
           AND split_part(email, '@', 2) IN ('gmail.com', 'googlemail.com')
           AND LENGTH(split_part(email, '@', 1)) - LENGTH(REPLACE(split_part(email, '@', 1), '.', '')) >= 4`);
     if (r.rowCount) console.log(`[db] flagged ${r.rowCount} dot-scattered signup(s) for the Bot Catcher`);
+
+    // Retroactive cross-check of the past 3 months. Signups predating the
+    // honeypot/timing signals only expose what's stored — the address and the
+    // signup clustering — so we use two data-only heuristics, both flag-for-
+    // review (Ben clears any false positive), idempotent (bot_flag IS NULL only):
+    //   disposable — a throwaway/temp-mail domain no real customer uses.
+    const disp = await q(
+      `UPDATE subscribers SET bot_flag = 'disposable'
+        WHERE bot_flag IS NULL
+          AND created_at > now() - interval '3 months'
+          AND lower(split_part(email, '@', 2)) = ANY($1)`, [[...DISPOSABLE_DOMAINS]]);
+    if (disp.rowCount) console.log(`[db] flagged ${disp.rowCount} disposable-domain signup(s) for the Bot Catcher`);
+
+    //   ip-burst — 5+ signups from one device (ip_hash) inside 10 minutes: a
+    //   machine-gun burst no group of real people produces, even on a drop day.
+    //   Internal test IPs excluded; window kept tight so mobile-carrier NAT
+    //   (many real phones sharing one IP) can't trip it.
+    const burst = await q(
+      `UPDATE subscribers SET bot_flag = 'ip-burst'
+        WHERE bot_flag IS NULL
+          AND created_at > now() - interval '3 months'
+          AND ip_hash IN (
+            SELECT ip_hash FROM subscribers
+             WHERE ip_hash IS NOT NULL
+               AND ip_hash NOT IN (SELECT ip_hash FROM internal_ips)
+               AND created_at > now() - interval '3 months'
+             GROUP BY ip_hash
+            HAVING COUNT(*) >= 5 AND (MAX(created_at) - MIN(created_at)) < interval '10 minutes')`);
+    if (burst.rowCount) console.log(`[db] flagged ${burst.rowCount} rapid-burst signup(s) for the Bot Catcher`);
   } catch (e) { console.warn('[db] bot-flag backfill failed (non-fatal):', e?.message || e); }
 }

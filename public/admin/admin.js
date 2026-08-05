@@ -2411,6 +2411,8 @@ const BOT_REASONS = {
   honeypot: 'filled the invisible field',
   instant: 'submitted in under 2s',
   dotted: 'dot-scattered gmail alias',
+  disposable: 'throwaway email domain',
+  'ip-burst': 'burst of signups from one device',
 };
 // Turn one raw flag token into human text. 'instant:342' shows the real speed —
 // a script clocks well under a second (no human types an email that fast); a
@@ -2431,7 +2433,7 @@ async function showBotCatcher() {
     const w = d.window || { bots: 0, real: 0, total: 0, byReason: {} };
     const botRate = w.total ? Math.round((100 * w.bots) / w.total) : 0;
     const br = w.byReason || {};
-    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias']]
+    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst']]
       .filter(([, n]) => n > 0).map(([, n, l]) => `${l} ${num(n)}`).join(' · ');
     const cards = `
       <div class="cards">

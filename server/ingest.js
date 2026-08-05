@@ -1,6 +1,6 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
-import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE } from './util.js';
+import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail } from './util.js';
 import { sendWelcome, sendSignupAlert } from './mailer.js';
 import { mcPushSignup } from './mailchimp.js';
 
@@ -92,6 +92,7 @@ export async function subscribe(req, res) {
   // show the real speed — a script clocks tens-to-hundreds of ms (conclusively
   // automated); a borderline-fast human sits near the 2000ms edge.
   if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) flags.push('instant:' + elapsed);
+  if (isDisposableEmail(email)) flags.push('disposable');
   if ((domain === 'gmail.com' || domain === 'googlemail.com') && dots >= 4) flags.push('dotted');
   const botFlag = flags.length ? flags.join(',') : null;
   try {

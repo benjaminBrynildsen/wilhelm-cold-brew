@@ -65,6 +65,8 @@
     .tab{padding:10px 16px;cursor:pointer;color:var(--dim);border-bottom:2px solid transparent;letter-spacing:1.5px;text-transform:uppercase;font-size:13px;transition:color .15s}
     /* Bot Catcher unseen count — red chip on the tab / a dot on the phone More button */
     .redbadge{display:inline-block;background:#b3362b;color:#fff;border-radius:9px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0;line-height:1;padding:3px 6px;margin-left:7px;vertical-align:2px}
+    /* the explicit display above beats the UA [hidden] rule, so hide it back when the count is 0 */
+    .redbadge[hidden]{display:none}
     .bn-item{position:relative}
     .bn-item .bn-dot{position:absolute;top:5px;right:16px;margin:0;padding:2px 5px;font-size:9px}
     .tab:hover{color:var(--parch)}

@@ -390,11 +390,13 @@ export function mountAdmin(app) {
                 COUNT(*) FILTER (WHERE bot_flag IS NULL OR bot_flag = 'cleared')::int real,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%honeypot%')::int honeypot,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%instant%')::int instant,
-                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%dotted%')::int dotted
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%dotted%')::int dotted,
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%disposable%')::int disposable,
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%ip-burst%')::int ipburst
            FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
       const window = {
         key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real,
-        byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted },
+        byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted, disposable: agg.disposable, ipburst: agg.ipburst },
       };
       const rows = (await q(
         `SELECT id, email, created_at, bot_flag, variant, utm_source, utm_campaign, utm_content, country,

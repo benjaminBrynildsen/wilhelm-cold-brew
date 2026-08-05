@@ -55,5 +55,27 @@ export function normUtm(v) {
 
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+// Known disposable / throwaway email domains — temp-mail services a real
+// customer would never use for a coffee subscription. Used to flag (for review,
+// never auto-reject) both live and historical signups in the Bot Catcher.
+// Deliberately EXCLUDES privacy relays real people legitimately use — Apple
+// Hide-My-Email (privaterelay.appleid.com), iCloud, DuckDuckGo (duck.com), etc.
+export const DISPOSABLE_DOMAINS = new Set([
+  'mailinator.com', 'guerrillamail.com', 'guerrillamail.info', 'guerrillamail.net',
+  'guerrillamailblock.com', 'sharklasers.com', 'grr.la', 'spam4.me',
+  '10minutemail.com', '10minutemail.net', 'tempmail.com', 'temp-mail.org',
+  'tempmailo.com', 'tempr.email', 'throwawaymail.com', 'trashmail.com',
+  'trashmail.net', 'getnada.com', 'nada.email', 'maildrop.cc', 'dispostable.com',
+  'mailnesia.com', 'fakeinbox.com', 'mohmal.com', 'emailondeck.com', 'yopmail.com',
+  'yopmail.net', 'mailcatch.com', 'mintemail.com', 'moakt.com', 'inboxbear.com',
+  'burnermail.io', 'discard.email', 'wegwerfemail.de', 'einrot.com', 'jetable.org',
+  'mytemp.email', 'tempmail.plus', 'fakemailgenerator.com', 'mailtemp.net',
+]);
+
+export function isDisposableEmail(email) {
+  const d = String(email || '').split('@')[1];
+  return d ? DISPOSABLE_DOMAINS.has(d.toLowerCase()) : false;
+}
+
 // Bots / link-preview crawlers / scanners — excluded from analytics.
 export const BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|preview|monitor|curl|wget|python-requests|node-fetch|axios|go-http|java\/|okhttp|headless|phantom|puppeteer|playwright|lighthouse|pagespeed|gtmetrix|pingdom|uptime|statuscake|whatsapp|telegram|slack|discord|embedly|vkshare|skype|linkedinbot|twitterbot|applebot|petalbot|gptbot|ahrefs|semrush|mj12|dotbot|dataforseo|bytespider/i;

@@ -375,17 +375,41 @@ export function mountAdmin(app) {
   app.get('/api/admin/botcatcher', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
+      // Window for the highlight cards + list (?win=today|d7|d30|all|custom via
+      // ?from&to). Defaults to 30 days. Same windows() helper as the other tabs.
+      const winKey = req.query?.win || 'd30';
+      const wins = windows(req);
+      const w = wins.find((x) => x.key === winKey) || wins.find((x) => x.key === 'd30');
+      const p = [w.from, w.to];
+      const isBot = `bot_flag IS NOT NULL AND bot_flag <> 'cleared'`;
+      // Real vs bot for the window (internal/test excluded). "real" = never
+      // flagged OR marked real; each reason counted independently (a row can trip
+      // more than one, so the reasons don't sum to the bot total).
+      const agg = (await q(
+        `SELECT COUNT(*) FILTER (WHERE ${isBot})::int bots,
+                COUNT(*) FILTER (WHERE bot_flag IS NULL OR bot_flag = 'cleared')::int real,
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%honeypot%')::int honeypot,
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%instant%')::int instant,
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%dotted%')::int dotted
+           FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
+      const window = {
+        key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real,
+        byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted },
+      };
       const rows = (await q(
         `SELECT id, email, created_at, bot_flag, variant, utm_source, utm_campaign, utm_content, country,
                 (bot_seen_at IS NULL) AS was_new
            FROM subscribers
           WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared'
-          ORDER BY created_at DESC LIMIT 200`)).rows;
+            AND created_at >= $1 AND created_at < $2
+          ORDER BY created_at DESC LIMIT 200`, p)).rows;
+      // Opening the tab clears the red badge for ALL unseen (not just this window),
+      // so a narrow window doesn't leave the badge stuck on out-of-window catches.
       await q(`UPDATE subscribers SET bot_seen_at = now()
                 WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL`);
       const cleared = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE bot_flag = 'cleared'`)).rows[0].n;
-      res.json({ rows, cleared });
+      res.json({ window, rows, cleared });
     } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
   });
 

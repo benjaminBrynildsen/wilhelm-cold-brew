@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', adfitWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', adfitWin: 'd30', botWin: 'd30', trafficRange: null, adfitAd: null, adfitPrev: { img: 'cigars', v: 'dark', h: 'on-the-list', proof: 'off' }, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -2425,9 +2425,20 @@ function botReasonLabel(f) {
 async function showBotCatcher() {
   loading();
   try {
-    const d = await api('/api/admin/botcatcher');
+    const d = await api('/api/admin/botcatcher' + funnelQuery('botWin'));
     state.botUnseen = 0;
     paintBotBadges();
+    const w = d.window || { bots: 0, real: 0, total: 0, byReason: {} };
+    const botRate = w.total ? Math.round((100 * w.bots) / w.total) : 0;
+    const br = w.byReason || {};
+    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias']]
+      .filter(([, n]) => n > 0).map(([, n, l]) => `${l} ${num(n)}`).join(' · ');
+    const cards = `
+      <div class="cards">
+        <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
+        <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}</div></div>
+        <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(w.bots)} of ${num(w.total)} signups</div></div>
+      </div>`;
     const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
         <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
         <td style="word-break:break-all">${esc(r.email)}</td>
@@ -2437,10 +2448,11 @@ async function showBotCatcher() {
           <button class="btn ghost bc-keep" data-id="${r.id}" style="padding:2px 10px">Looks real</button>
           <button class="btn ghost bc-remove" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px;color:var(--bad,#c0574f)">Remove</button>
         </td></tr>`).join('');
-    content().innerHTML = `
-      <div class="note" style="margin:8px 0 12px">Signups that tripped a bot signal. Nothing here was rejected — they're on the list and counted until you remove them. <b>Looks real</b> keeps them and stops flagging that address; <b>Remove</b> takes them off the list (welcome email already went out, but they'll get no future sends).${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
+    content().innerHTML = winbar('botWin') + cards + `
+      <div class="note" style="margin:8px 0 12px">Signups that tripped a bot signal in this window. Nothing here was rejected — they're on the list and counted until you remove them. <b>Looks real</b> keeps them and stops flagging that address; <b>Remove</b> takes them off the list (welcome email already went out, but they'll get no future sends).${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
       <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th>Source</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="5">Nothing caught — no suspicious signups on record.</td></tr>'}</tbody></table>`;
+        <tbody>${rows || '<tr><td class="note" colspan="5">Nothing caught in this window.</td></tr>'}</tbody></table>`;
+    wireWinbar(showBotCatcher, 'botWin');
     document.querySelectorAll('.bc-keep').forEach((b) => b.addEventListener('click', async () => {
       try { await api(`/api/admin/botcatcher/${b.dataset.id}/keep`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }
       catch (e) { alert('Failed: ' + e.message); }

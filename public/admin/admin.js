@@ -2413,7 +2413,7 @@ const BOT_REASONS = {
   dotted: 'dot-scattered gmail alias',
   disposable: 'throwaway email domain',
   'ip-burst': 'burst of signups from one device',
-  retry: 'passed only after a “try again” prompt',
+  retry: 'sent the retry-confirm flag',
 };
 // Turn one raw flag token into human text. 'instant:342' shows the real speed —
 // a script clocks well under a second (no human types an email that fast); a
@@ -2434,20 +2434,25 @@ async function showBotCatcher() {
     const w = d.window || { bots: 0, real: 0, total: 0, byReason: {} };
     const botRate = w.total ? Math.round((100 * w.bots) / w.total) : 0;
     const br = w.byReason || {};
-    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst'], ['retry', br.retry, 'passed the prompt']]
+    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst'], ['retry', br.retry, 'sent the retry flag']]
       .filter(([, n]) => n > 0).map(([, n, l]) => `${l} ${num(n)}`).join(' · ');
     // ms → readable seconds (2 decimals under 1s, else 1). Used for signup timing.
     const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(ms < 1000 ? 2 : 1)}s`);
     const t = d.timing || { n: 0 };
+    // Challenge activity is the REAL browser-modal record (from the beacon), not
+    // the retry flag — a bot POSTing straight to the API can send retry:true
+    // without ever loading the page, so it must not count as "hit the prompt".
     const ch = d.challenge || { abandoned: 0, confirmed: 0, rows: [] };
-    const chSaw = (ch.abandoned || 0) + (ch.confirmed || 0);
+    const chThrough = ch.confirmed || 0;   // saw the modal and tapped through
+    const chBailed = ch.abandoned || 0;    // saw the modal and walked away
+    const chSaw = chThrough + chBailed;
     const cards = `
       <div class="cards">
         <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
         <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}${w.bots ? (w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} actually replied — real</span>` : '<br/>none replied — consistent with bots') : ''}</div></div>
         <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(w.bots)} of ${num(w.total)} signups</div></div>
         <div class="card"><div class="k">Typical real signup</div><div class="v">${t.n ? secs(t.median) : '—'}</div><div class="k2">${t.n ? `median of ${num(t.n)} timed · fastest ${secs(t.fastest)}` : 'no timed signups yet'}</div></div>
-        <div class="card"><div class="k">Challenge deterred</div><div class="v"${ch.abandoned ? ' style="color:var(--bad)"' : ''}>${num(ch.abandoned)}</div><div class="k2">${chSaw ? `${num(chSaw)} saw the prompt · ${num(ch.confirmed)} tapped through` : 'nobody hit the challenge yet'}</div></div>
+        <div class="card"><div class="k">Challenge</div><div class="v"${chBailed ? ' style="color:var(--bad)"' : ''}>${chSaw ? num(chSaw) : '0'}</div><div class="k2">${chSaw ? `saw the prompt · <span style="color:var(--good)">${num(chThrough)} tapped through</span> · ${num(chBailed)} walked away` : 'no real visitor has hit the sub-2s prompt yet'}</div></div>
       </div>`;
     const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
         <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>

@@ -51,6 +51,18 @@ jobs:
             await b.close();
           })().catch((e) => { console.log('FATAL', String(e).slice(0, 500)); process.exit(1); });
           EOF
+      - name: is the latest admin build live? (deploy freshness check)
+        run: |
+          B='https://wilhelmcoldbrew.com'
+          # Grep the served admin bundle for markers of the two newest features.
+          # Present = Render has deployed the latest push; absent = still building
+          # or a deploy didn't fire.
+          curl -sS -o admin.js "$B/admin/admin.js"
+          echo "BYTES=$(wc -c < admin.js)"
+          grep -q 'actually replied' admin.js && echo 'REPLIED_FEATURE=LIVE' || echo 'REPLIED_FEATURE=NOT_YET'
+          grep -q 'redbadge\[hidden\]\|botReasonLabel' admin.js && echo 'BOTCATCHER_BUILD=LIVE' || echo 'BOTCATCHER_BUILD=OLD'
+          curl -sS -o bc.css "$B/admin/index.html"
+          grep -q 'redbadge\[hidden\]' bc.css && echo 'BADGE_FIX=LIVE' || echo 'BADGE_FIX=NOT_YET'
       - name: security — are default admin credentials live on prod? (read-only)
         run: |
           B='https://wilhelmcoldbrew.com'

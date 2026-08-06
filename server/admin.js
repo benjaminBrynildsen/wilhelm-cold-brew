@@ -385,6 +385,12 @@ export function mountAdmin(app) {
       // Real vs bot for the window (internal/test excluded). "real" = never
       // flagged OR marked real; each reason counted independently (a row can trip
       // more than one, so the reasons don't sum to the bot total).
+      // A flagged address that actually REPLIED to one of our emails is proof of
+      // a human — subscription-bomb bots never write back. Match through
+      // norm_email so alias forms (dots/+tags) still line up with the inbox.
+      const repliedExpr = `EXISTS (SELECT 1 FROM email_messages m
+                                    WHERE m.direction = 'in'
+                                      AND norm_email(m.customer_email) = norm_email(s.email))`;
       const agg = (await q(
         `SELECT COUNT(*) FILTER (WHERE ${isBot})::int bots,
                 COUNT(*) FILTER (WHERE bot_flag IS NULL OR bot_flag = 'cleared')::int real,
@@ -392,19 +398,21 @@ export function mountAdmin(app) {
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%instant%')::int instant,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%dotted%')::int dotted,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%disposable%')::int disposable,
-                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%ip-burst%')::int ipburst
-           FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%ip-burst%')::int ipburst,
+                COUNT(*) FILTER (WHERE ${isBot} AND ${repliedExpr})::int replied
+           FROM subscribers s WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
       const window = {
-        key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real,
+        key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real, replied: agg.replied,
         byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted, disposable: agg.disposable, ipburst: agg.ipburst },
       };
       const rows = (await q(
-        `SELECT id, email, created_at, bot_flag, variant, utm_source, utm_campaign, utm_content, country,
-                (bot_seen_at IS NULL) AS was_new
-           FROM subscribers
-          WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared'
-            AND created_at >= $1 AND created_at < $2
-          ORDER BY created_at DESC LIMIT 200`, p)).rows;
+        `SELECT s.id, s.email, s.created_at, s.bot_flag, s.variant, s.utm_source, s.utm_campaign, s.utm_content, s.country,
+                (s.bot_seen_at IS NULL) AS was_new,
+                ${repliedExpr} AS replied
+           FROM subscribers s
+          WHERE s.bot_flag IS NOT NULL AND s.bot_flag <> 'cleared'
+            AND s.created_at >= $1 AND s.created_at < $2
+          ORDER BY s.created_at DESC LIMIT 200`, p)).rows;
       // Opening the tab clears the red badge for ALL unseen (not just this window),
       // so a narrow window doesn't leave the badge stuck on out-of-window catches.
       await q(`UPDATE subscribers SET bot_seen_at = now()

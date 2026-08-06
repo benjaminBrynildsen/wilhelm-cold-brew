@@ -2438,12 +2438,12 @@ async function showBotCatcher() {
     const cards = `
       <div class="cards">
         <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
-        <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}</div></div>
+        <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}${w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} actually replied — real</span>` : ''}</div></div>
         <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(w.bots)} of ${num(w.total)} signups</div></div>
       </div>`;
     const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
         <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
-        <td style="word-break:break-all">${esc(r.email)}</td>
+        <td style="word-break:break-all">${esc(r.email)}${r.replied ? ' <span style="color:var(--good);font-weight:700" title="This address replied to one of your emails — a real person, not a bot">✉ replied</span>' : ''}</td>
         <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(botReasonLabel(f))}</span>`).join('<br/>')}</td>
         <td>${r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>'}</td>
         <td class="num" style="white-space:nowrap">

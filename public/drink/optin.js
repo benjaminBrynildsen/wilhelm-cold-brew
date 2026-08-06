@@ -186,7 +186,7 @@ function funnel(event, props) {
       m.style.cssText = 'position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(6,5,3,.85);padding:24px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)';
       m.innerHTML =
         '<div style="max-width:420px;width:100%;background:#17110b;border:1px solid rgba(232,194,74,.4);border-radius:18px;padding:38px 28px 30px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.65)">'
-        + '<div style="font-size:44px;line-height:1;margin-bottom:14px">☕</div>'
+        + '<img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="72" height="72" style="width:72px;height:72px;border-radius:50%;display:inline-block;margin-bottom:14px;border:1px solid rgba(232,194,74,.4)"/>'
         + '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:27px;font-weight:700;color:#f1e6c8;line-height:1.2;margin-bottom:12px">One more tap to confirm</div>'
         + '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:16.5px;color:rgba(241,230,200,.8);line-height:1.55;margin-bottom:26px">That didn’t go through the first time. Tap the button below once more and you’re on the list.</div>'
         + '<button type="button" id="challenge-retry" style="width:100%;height:56px;background:#e8c24a;color:#0c0a08;border:none;border-radius:12px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-weight:700;font-size:18px;letter-spacing:.3px;cursor:pointer">Join the List</button>'

@@ -143,10 +143,32 @@ export async function ensureSchema() {
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_content  TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_term     TEXT;
+    -- Signup timing (ms from page-open to submit) on EVERY signup, not just the
+    -- flagged fast ones — so the Bot Catcher can show the real human distribution
+    -- and prove the sub-2s challenge sits well below how long real people take.
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS elapsed_ms   INTEGER;
     -- Manual archive (soft delete) — set when Ben removes someone from the list.
     -- Distinct from unsubscribed_at (their opt-out); archived rows are excluded
     -- from every active query but kept for restore/audit.
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS archived_at  TIMESTAMPTZ;
+    -- Soft-challenge attempts: one row each time the "one more tap" modal is shown
+    -- (an impossibly-fast first submit). confirmed flips true when they tap again
+    -- and the real signup lands. Rows left confirmed=false are the ones that BAILED
+    -- after seeing the challenge — surfaced in the Bot Catcher as deterred bots.
+    -- No welcome/alert ever fires from this table; it's tracking-only.
+    CREATE TABLE IF NOT EXISTS challenge_attempts (
+      id         BIGSERIAL PRIMARY KEY,
+      session_id TEXT,
+      email      TEXT,
+      elapsed_ms INTEGER,
+      ip_hash    TEXT,
+      country    TEXT,
+      variant    TEXT,
+      confirmed  BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS challenge_created_idx ON challenge_attempts (created_at);
+    CREATE INDEX IF NOT EXISTS challenge_session_idx ON challenge_attempts (session_id);
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,

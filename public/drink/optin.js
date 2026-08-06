@@ -70,6 +70,26 @@ function botSignals() {
   return { hp, elapsed_ms: elapsedMs(), challenged: wasChallenged };
 }
 
+// Fire the moment the soft-challenge modal is shown, so the server can record
+// who saw "one more tap" and BAILED (they never confirm) vs who tapped through.
+// Uses sendBeacon/keepalive so it survives the tab closing right after. Only
+// meaningful with our own endpoint; a no-op for external providers.
+function recordChallengeAttempt(email) {
+  try {
+    if (PROVIDER !== 'endpoint') return;
+    const url = (CONFIG.endpoint.url || '/api/subscribe').replace(/\/subscribe(\?.*)?$/, '/challenge');
+    const body = JSON.stringify(Object.assign(
+      { email, variant: VARIANT, sessionId: (window.wilhelmSessionId || null), elapsed_ms: elapsedMs() },
+      attribution()
+    ));
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+    } else {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
 async function subscribeEmail(email, variant) {
   switch (PROVIDER) {
@@ -272,6 +292,7 @@ function funnel(event, props) {
       if (!wasChallenged && elapsedMs() < 2000) {
         wasChallenged = true;
         funnel('challenge_shown', { variant: VARIANT, elapsed_ms: elapsedMs() });
+        recordChallengeAttempt(email);
         showChallengeModal(form);
         return;
       }

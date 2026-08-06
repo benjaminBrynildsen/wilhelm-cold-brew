@@ -2434,13 +2434,20 @@ async function showBotCatcher() {
     const w = d.window || { bots: 0, real: 0, total: 0, byReason: {} };
     const botRate = w.total ? Math.round((100 * w.bots) / w.total) : 0;
     const br = w.byReason || {};
-    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst']]
+    const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst'], ['retry', br.retry, 'passed the prompt']]
       .filter(([, n]) => n > 0).map(([, n, l]) => `${l} ${num(n)}`).join(' · ');
+    // ms → readable seconds (2 decimals under 1s, else 1). Used for signup timing.
+    const secs = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(ms < 1000 ? 2 : 1)}s`);
+    const t = d.timing || { n: 0 };
+    const ch = d.challenge || { abandoned: 0, confirmed: 0, rows: [] };
+    const chSaw = (ch.abandoned || 0) + (ch.confirmed || 0);
     const cards = `
       <div class="cards">
         <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
         <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}${w.bots ? (w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} actually replied — real</span>` : '<br/>none replied — consistent with bots') : ''}</div></div>
         <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(w.bots)} of ${num(w.total)} signups</div></div>
+        <div class="card"><div class="k">Typical real signup</div><div class="v">${t.n ? secs(t.median) : '—'}</div><div class="k2">${t.n ? `median of ${num(t.n)} timed · fastest ${secs(t.fastest)}` : 'no timed signups yet'}</div></div>
+        <div class="card"><div class="k">Challenge deterred</div><div class="v"${ch.abandoned ? ' style="color:var(--bad)"' : ''}>${num(ch.abandoned)}</div><div class="k2">${chSaw ? `${num(chSaw)} saw the prompt · ${num(ch.confirmed)} tapped through` : 'nobody hit the challenge yet'}</div></div>
       </div>`;
     const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
         <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
@@ -2454,7 +2461,16 @@ async function showBotCatcher() {
     content().innerHTML = winbar('botWin') + cards + `
       <div class="note" style="margin:8px 0 12px">Signups that tripped a bot signal in this window. Nothing here was rejected — they're on the list and counted until you remove them. <b>Looks real</b> keeps them and stops flagging that address; <b>Remove</b> takes them off the list (welcome email already went out, but they'll get no future sends).${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
       <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th>Source</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="5">Nothing caught in this window.</td></tr>'}</tbody></table>`;
+        <tbody>${rows || '<tr><td class="note" colspan="5">Nothing caught in this window.</td></tr>'}</tbody></table>
+      <h3 style="margin:30px 0 4px;font-size:16px">Bailed after the challenge</h3>
+      <div class="note" style="margin:0 0 12px">Submitted in under 2s, saw the “one more tap” prompt, and never confirmed — so they never landed on the list. The clearest sign the challenge is working: real people tap once more, most scripts don't.</div>
+      <table><thead><tr><th>When</th><th>Email typed</th><th>Speed</th><th>Country</th></tr></thead>
+        <tbody>${(ch.rows || []).map((r) => `<tr>
+          <td>${ago(r.created_at)}</td>
+          <td style="word-break:break-all">${esc(r.email)}</td>
+          <td style="color:var(--bad)">${secs(r.elapsed_ms)}</td>
+          <td>${r.country ? esc(r.country) : '<span class="note">—</span>'}</td>
+        </tr>`).join('') || '<tr><td class="note" colspan="4">Nobody bailed the challenge in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showBotCatcher, 'botWin');
     document.querySelectorAll('.bc-keep').forEach((b) => b.addEventListener('click', async () => {
       try { await api(`/api/admin/botcatcher/${b.dataset.id}/keep`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }

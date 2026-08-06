@@ -399,12 +399,38 @@ export function mountAdmin(app) {
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%dotted%')::int dotted,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%disposable%')::int disposable,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%ip-burst%')::int ipburst,
+                COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%retry%')::int retry,
                 COUNT(*) FILTER (WHERE ${isBot} AND ${repliedExpr})::int replied
            FROM subscribers s WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
       const window = {
         key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real, replied: agg.replied,
-        byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted, disposable: agg.disposable, ipburst: agg.ipburst },
+        byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted, disposable: agg.disposable, ipburst: agg.ipburst, retry: agg.retry },
       };
+      // How long REAL humans actually take to sign up (elapsed_ms now logged on
+      // every signup). Proves the sub-2s challenge sits well below the human
+      // floor — the median real signup runs many seconds, the fastest rarely
+      // near 2s. Only real (unflagged/cleared) rows with a recorded time.
+      const timing = (await q(
+        `SELECT COUNT(*)::int n,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY elapsed_ms)::int median,
+                MIN(elapsed_ms)::int fastest
+           FROM subscribers s
+          WHERE (bot_flag IS NULL OR bot_flag = 'cleared')
+            AND elapsed_ms IS NOT NULL
+            AND created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
+      // Challenge outcomes: who saw the "one more tap" modal and BAILED (never
+      // confirmed) vs tapped through. Bailed rows are the deterred bots.
+      const abandonedCount = (await q(
+        `SELECT COUNT(*)::int n FROM challenge_attempts
+          WHERE confirmed = FALSE AND created_at >= $1 AND created_at < $2`, p)).rows[0].n;
+      const confirmedCount = (await q(
+        `SELECT COUNT(*)::int n FROM challenge_attempts
+          WHERE confirmed = TRUE AND created_at >= $1 AND created_at < $2`, p)).rows[0].n;
+      const abandoned = (await q(
+        `SELECT id, email, elapsed_ms, country, variant, created_at
+           FROM challenge_attempts
+          WHERE confirmed = FALSE AND created_at >= $1 AND created_at < $2
+          ORDER BY created_at DESC LIMIT 200`, p)).rows;
       const rows = (await q(
         `SELECT s.id, s.email, s.created_at, s.bot_flag, s.variant, s.utm_source, s.utm_campaign, s.utm_content, s.country,
                 (s.bot_seen_at IS NULL) AS was_new,
@@ -419,7 +445,8 @@ export function mountAdmin(app) {
                 WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL`);
       const cleared = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE bot_flag = 'cleared'`)).rows[0].n;
-      res.json({ window, rows, cleared });
+      const challenge = { abandoned: abandonedCount, confirmed: confirmedCount, rows: abandoned };
+      res.json({ window, rows, cleared, timing, challenge });
     } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { ensureSchema, q } from './db.js';
 import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE } from './util.js';
-import { receiveJourney, subscribe } from './ingest.js';
+import { receiveJourney, subscribe, recordChallenge } from './ingest.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin } from './admin.js';
 import { mountPortal } from './portal.js';
@@ -106,6 +106,7 @@ app.use((req, _res, next) => {
 app.post('/api/journey', journeyLimit, receiveJourney);
 app.post('/api/beacon', journeyLimit, receiveJourney); // sendBeacon target (same handler)
 app.post('/api/subscribe', subscribeLimit, subscribe);
+app.post('/api/challenge', journeyLimit, recordChallenge); // soft-challenge shown (bailed-vs-confirmed tracking)
 mountAdmin(app);
 mountPortal(app);
 mountCheckout(app, payLimit);

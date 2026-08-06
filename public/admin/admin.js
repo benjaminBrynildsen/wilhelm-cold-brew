@@ -2413,6 +2413,7 @@ const BOT_REASONS = {
   dotted: 'dot-scattered gmail alias',
   disposable: 'throwaway email domain',
   'ip-burst': 'burst of signups from one device',
+  retry: 'passed only after a “try again” prompt',
 };
 // Turn one raw flag token into human text. 'instant:342' shows the real speed —
 // a script clocks well under a second (no human types an email that fast); a

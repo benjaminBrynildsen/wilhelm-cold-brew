@@ -93,6 +93,9 @@ export async function subscribe(req, res) {
   // automated); a borderline-fast human sits near the 2000ms edge.
   if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) flags.push('instant:' + elapsed);
   if (isDisposableEmail(email)) flags.push('disposable');
+  // Soft-challenge retry: the client made this one confirm a second time after an
+  // impossibly-fast first tap. Accepted, but flagged so it surfaces for review.
+  if (req.body?.challenged === true) flags.push('retry');
   if ((domain === 'gmail.com' || domain === 'googlemail.com') && dots >= 4) flags.push('dotted');
   const botFlag = flags.length ? flags.join(',') : null;
   try {

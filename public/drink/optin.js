@@ -56,11 +56,18 @@ function attribution() {
 // device-clock corrections) — unlike Date.now(), a backward NTP/clock jump
 // between page-open and submit can never fabricate a fake "instant" time.
 const PAGE_T0 = (window.performance && performance.now) ? performance.now() : Date.now();
+// Soft bot challenge state: an impossibly-fast first submit (bot signature — or a
+// rare autofill) gets one "try again" before we accept it. Flipped true once the
+// challenge has been shown, so the accepted second submit carries challenged:true.
+let wasChallenged = false;
+function elapsedMs() {
+  const nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
+  return Math.round(nowMs - PAGE_T0);
+}
 function botSignals() {
   let hp = '';
   document.querySelectorAll('.optin-hp').forEach((el) => { if (el.value) hp = String(el.value).slice(0, 100); });
-  const nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
-  return { hp, elapsed_ms: Math.round(nowMs - PAGE_T0) };
+  return { hp, elapsed_ms: elapsedMs(), challenged: wasChallenged };
 }
 
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
@@ -227,6 +234,18 @@ function funnel(event, props) {
         }
       }
       errorEl.hidden = true;
+      // Soft bot challenge: an impossibly-fast submit (under 2s from page open —
+      // the bot signature Ben wants to gate on) gets ONE "try again" before we
+      // accept it. A real person just taps once more; the second submit goes
+      // through and is flagged (challenged:true) so it still surfaces in the Bot
+      // Catcher. Only fires once per visit.
+      if (!wasChallenged && elapsedMs() < 2000) {
+        wasChallenged = true;
+        funnel('challenge_shown', { variant: VARIANT, elapsed_ms: elapsedMs() });
+        showError('Hmm — that didn’t go through. Tap Join once more to confirm.');
+        input.focus();
+        return;
+      }
       setLoading(true);
       try {
         await subscribeEmail(email, VARIANT);

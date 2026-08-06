@@ -93,18 +93,33 @@ export async function subscribe(req, res) {
   // automated); a borderline-fast human sits near the 2000ms edge.
   if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 2000) flags.push('instant:' + elapsed);
   if (isDisposableEmail(email)) flags.push('disposable');
+  // Soft-challenge retry: the client made this one confirm a second time after an
+  // impossibly-fast first tap. Accepted, but flagged so it surfaces for review.
+  if (req.body?.challenged === true) flags.push('retry');
   if ((domain === 'gmail.com' || domain === 'googlemail.com') && dots >= 4) flags.push('dotted');
   const botFlag = flags.length ? flags.join(',') : null;
+  // Store the timing on every signup (not just flagged-fast ones) so the Bot
+  // Catcher can show how long real humans actually take.
+  const elapsedVal = (Number.isFinite(elapsed) && elapsed >= 0) ? elapsed : null;
   try {
     const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country,
-                                twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag)
-       VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                                twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag, elapsed_ms)
+       VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (email) DO NOTHING
        RETURNING id`,
       [email, variant, hashIp(getClientIp(req)), countryFrom(req),
-       twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag]
+       twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag, elapsedVal]
     );
+    // They passed the "try again" challenge — close out the matching attempt so
+    // it counts as confirmed (not abandoned) in the Bot Catcher. Match on session
+    // or email so it lines up even if one is missing. Fire-and-forget.
+    if (req.body?.challenged === true) {
+      const sid = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
+      q(`UPDATE challenge_attempts SET confirmed = TRUE
+          WHERE confirmed = FALSE AND (session_id = $1 OR lower(email) = $2)`, [sid, email])
+        .catch((e) => console.warn('[subscribe] challenge confirm failed:', e?.message || e));
+    }
     res.json({ ok: true });
     // Authoritatively mark this session as "joined" in the journey log. The
     // client also fires a 'subscribed' beacon, but that's batched (3s flush) and
@@ -134,5 +149,33 @@ export async function subscribe(req, res) {
   } catch (err) {
     console.warn('[subscribe] insert failed:', err?.message || err);
     res.status(500).json({ error: 'subscribe failed' });
+  }
+}
+
+// POST /api/challenge  body: { email, elapsed_ms, sessionId?, variant? }
+// Fired by the landing page the moment the soft-challenge modal is shown (an
+// impossibly-fast first submit). Records the attempt so the Bot Catcher can show
+// who saw the "one more tap" prompt and BAILED without confirming — the ones the
+// challenge deterred. Never sends anything, never touches the subscriber list.
+// Always answers ok so a failure can't break the signup UX.
+export async function recordChallenge(req, res) {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(email) || email.length > 254) return res.json({ ok: true });
+    // Same synthetic-probe guard as subscribe — never record @example.com.
+    if (email.endsWith('@example.com')) return res.json({ ok: true });
+    const sessionId = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
+    const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
+    const elapsed = parseInt(req.body?.elapsed_ms, 10);
+    const elapsedVal = (Number.isFinite(elapsed) && elapsed >= 0) ? elapsed : null;
+    await q(
+      `INSERT INTO challenge_attempts (session_id, email, elapsed_ms, ip_hash, country, variant)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [sessionId, email, elapsedVal, hashIp(getClientIp(req)), countryFrom(req), variant]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[challenge] insert failed:', err?.message || err);
+    res.json({ ok: true });
   }
 }

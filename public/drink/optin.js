@@ -56,11 +56,38 @@ function attribution() {
 // device-clock corrections) — unlike Date.now(), a backward NTP/clock jump
 // between page-open and submit can never fabricate a fake "instant" time.
 const PAGE_T0 = (window.performance && performance.now) ? performance.now() : Date.now();
+// Soft bot challenge state: an impossibly-fast first submit (bot signature — or a
+// rare autofill) gets one "try again" before we accept it. Flipped true once the
+// challenge has been shown, so the accepted second submit carries challenged:true.
+let wasChallenged = false;
+function elapsedMs() {
+  const nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
+  return Math.round(nowMs - PAGE_T0);
+}
 function botSignals() {
   let hp = '';
   document.querySelectorAll('.optin-hp').forEach((el) => { if (el.value) hp = String(el.value).slice(0, 100); });
-  const nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
-  return { hp, elapsed_ms: Math.round(nowMs - PAGE_T0) };
+  return { hp, elapsed_ms: elapsedMs(), challenged: wasChallenged };
+}
+
+// Fire the moment the soft-challenge modal is shown, so the server can record
+// who saw "one more tap" and BAILED (they never confirm) vs who tapped through.
+// Uses sendBeacon/keepalive so it survives the tab closing right after. Only
+// meaningful with our own endpoint; a no-op for external providers.
+function recordChallengeAttempt(email) {
+  try {
+    if (PROVIDER !== 'endpoint') return;
+    const url = (CONFIG.endpoint.url || '/api/subscribe').replace(/\/subscribe(\?.*)?$/, '/challenge');
+    const body = JSON.stringify(Object.assign(
+      { email, variant: VARIANT, sessionId: (window.wilhelmSessionId || null), elapsed_ms: elapsedMs() },
+      attribution()
+    ));
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+    } else {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    }
+  } catch (e) {}
 }
 
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
@@ -166,6 +193,36 @@ function funnel(event, props) {
     }, 500);
   }
 
+  // Big full-screen "try again" prompt for the soft bot challenge. Built once,
+  // reused. Its Join button re-submits the same form (wasChallenged is already
+  // true, so the second pass sends). Tapping the backdrop dismisses it.
+  function showChallengeModal(form) {
+    let m = document.getElementById('challenge-modal');
+    if (!m) {
+      m = document.createElement('div');
+      m.id = 'challenge-modal';
+      m.setAttribute('role', 'dialog');
+      m.setAttribute('aria-modal', 'true');
+      m.style.cssText = 'position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(6,5,3,.85);padding:24px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)';
+      m.innerHTML =
+        '<div style="max-width:420px;width:100%;background:#17110b;border:1px solid rgba(232,194,74,.4);border-radius:18px;padding:38px 28px 30px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.65)">'
+        + '<img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="72" height="72" style="width:72px;height:72px;border-radius:50%;display:inline-block;margin-bottom:14px;border:1px solid rgba(232,194,74,.4)"/>'
+        + '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:27px;font-weight:700;color:#f1e6c8;line-height:1.2;margin-bottom:12px">One more tap to confirm</div>'
+        + '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:16.5px;color:rgba(241,230,200,.8);line-height:1.55;margin-bottom:26px">That didn’t go through the first time. Tap the button below once more and you’re on the list.</div>'
+        + '<button type="button" id="challenge-retry" style="width:100%;height:56px;background:#e8c24a;color:#0c0a08;border:none;border-radius:12px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-weight:700;font-size:18px;letter-spacing:.3px;cursor:pointer">Join the List</button>'
+        + '</div>';
+      document.body.appendChild(m);
+      m.addEventListener('click', (ev) => { if (ev.target === m) m.style.display = 'none'; });
+    }
+    const btn = m.querySelector('#challenge-retry');
+    btn.onclick = () => {
+      m.style.display = 'none';
+      if (form.requestSubmit) form.requestSubmit();
+      else form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    };
+    m.style.display = 'flex';
+  }
+
   // Wire a capture form (hero + bottom). Each sits in a [data-capture] wrapper
   // holding a [data-state] (form view) and a [data-success] (confirmation).
   function wireForm(form) {
@@ -227,6 +284,18 @@ function funnel(event, props) {
         }
       }
       errorEl.hidden = true;
+      // Soft bot challenge: an impossibly-fast submit (under 2s from page open —
+      // the bot signature Ben wants to gate on) gets ONE "try again" before we
+      // accept it. A real person just taps once more; the second submit goes
+      // through and is flagged (challenged:true) so it still surfaces in the Bot
+      // Catcher. Only fires once per visit.
+      if (!wasChallenged && elapsedMs() < 2000) {
+        wasChallenged = true;
+        funnel('challenge_shown', { variant: VARIANT, elapsed_ms: elapsedMs() });
+        recordChallengeAttempt(email);
+        showChallengeModal(form);
+        return;
+      }
       setLoading(true);
       try {
         await subscribeEmail(email, VARIANT);

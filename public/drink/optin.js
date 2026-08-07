@@ -315,6 +315,19 @@ function funnel(event, props) {
     track('live_drop_cta_shown', { variant: VARIANT, dropId: liveDrop.dropId });
   }
 
+  // Persistent version of the same offer: a "batch is live — shop now" link that
+  // stays on the success screen, so anyone who dismisses the pop-up still has a
+  // one-tap path to buy. Scoped to the success block that was actually shown.
+  function revealLiveBanner(successEl) {
+    if (!liveDrop || !successEl) return;
+    const banner = successEl.querySelector('[data-live-banner]');
+    if (!banner || !banner.hidden) return;
+    const t = banner.querySelector('[data-live-banner-text]');
+    if (t && liveDrop.name) t.textContent = liveDrop.name + ' is live — shop now';
+    banner.hidden = false;
+    banner.addEventListener('click', () => track('live_drop_banner_click', { variant: VARIANT, dropId: liveDrop.dropId }), { once: true });
+  }
+
   // Wire a capture form (hero + bottom). Each sits in a [data-capture] wrapper
   // holding a [data-state] (form view) and a [data-success] (confirmation).
   function wireForm(form) {
@@ -397,7 +410,9 @@ function funnel(event, props) {
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();
-        // Peak intent: if a batch is buyable right now, offer a one-tap path to it.
+        // Peak intent: if a batch is buyable right now, surface it — a pop-up now,
+        // plus a persistent banner on the success screen if they dismiss it.
+        revealLiveBanner(successEl);
         showLiveDropModal();
       } catch (err) {
         console.error(err);

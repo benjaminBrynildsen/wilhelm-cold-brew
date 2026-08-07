@@ -90,6 +90,33 @@ function recordChallengeAttempt(email) {
   } catch (e) {}
 }
 
+// A "suspicious" email at challenge time — used only to decide how long to hold
+// the confirm button (2s vs 5s). Client-visible signals: a dot-scattered gmail
+// alias (gmail ignores dots, so ≥4 is an evasion trick), a known throwaway/temp
+// domain, or the hidden honeypot field being filled (no real person can). The
+// server still runs the full flag check; this just paces the button.
+const DISPOSABLE_HINT = new Set([
+  'mailinator.com', 'guerrillamail.com', '10minutemail.com', 'tempmail.com', 'temp-mail.org',
+  'trashmail.com', 'yopmail.com', 'sharklasers.com', 'getnada.com', 'maildrop.cc', 'dispostable.com',
+  'fakeinbox.com', 'throwawaymail.com', 'mailnesia.com', 'mohmal.com', 'tempr.email', 'emailondeck.com',
+  'moakt.com', 'mytemp.email', 'spamgourmet.com', 'guerrillamailblock.com', 'grr.la', 'trbvm.com',
+]);
+function looksSuspicious(email) {
+  try {
+    const e = String(email || '').toLowerCase();
+    const at = e.indexOf('@');
+    if (at < 0) return false;
+    const local = e.slice(0, at).split('+')[0];
+    const domain = e.slice(at + 1);
+    if ((domain === 'gmail.com' || domain === 'googlemail.com') && (local.match(/\./g) || []).length >= 4) return true;
+    if (DISPOSABLE_HINT.has(domain)) return true;
+    let hp = '';
+    document.querySelectorAll('.optin-hp').forEach((el) => { if (el.value) hp = el.value; });
+    if (hp) return true;
+    return false;
+  } catch (e) { return false; }
+}
+
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
 async function subscribeEmail(email, variant) {
   switch (PROVIDER) {
@@ -196,7 +223,8 @@ function funnel(event, props) {
   // Big full-screen "try again" prompt for the soft bot challenge. Built once,
   // reused. Its Join button re-submits the same form (wasChallenged is already
   // true, so the second pass sends). Tapping the backdrop dismisses it.
-  function showChallengeModal(form) {
+  let challengeTimer = null;
+  function showChallengeModal(form, suspicious) {
     let m = document.getElementById('challenge-modal');
     if (!m) {
       m = document.createElement('div');
@@ -216,11 +244,31 @@ function funnel(event, props) {
     }
     const btn = m.querySelector('#challenge-retry');
     btn.onclick = () => {
+      if (btn.disabled) return;   // still in the hold — ignore early/auto clicks
       m.style.display = 'none';
       if (form.requestSubmit) form.requestSubmit();
       else form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
     };
     m.style.display = 'flex';
+    // Hold the confirm button for a beat so a script can't auto-click it the
+    // instant the modal appears. 2s normally; 5s when the email looks suspicious.
+    // A real person is reading the prompt during this anyway, so it costs them
+    // nothing — but a bot that fires the click immediately hits a dead button.
+    let remaining = suspicious ? 5 : 2;
+    if (challengeTimer) clearInterval(challengeTimer);
+    btn.disabled = true;
+    btn.style.opacity = '.5';
+    btn.style.cursor = 'progress';
+    btn.textContent = 'One moment… ' + remaining;
+    challengeTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) { btn.textContent = 'One moment… ' + remaining; return; }
+      clearInterval(challengeTimer); challengeTimer = null;
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = 'pointer';
+      btn.textContent = 'Join the List';
+    }, 1000);
   }
 
   // Wire a capture form (hero + bottom). Each sits in a [data-capture] wrapper
@@ -293,7 +341,7 @@ function funnel(event, props) {
         wasChallenged = true;
         funnel('challenge_shown', { variant: VARIANT, elapsed_ms: elapsedMs() });
         recordChallengeAttempt(email);
-        showChallengeModal(form);
+        showChallengeModal(form, looksSuspicious(email));
         return;
       }
       setLoading(true);

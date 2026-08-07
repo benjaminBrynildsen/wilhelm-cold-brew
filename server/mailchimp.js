@@ -95,11 +95,26 @@ export async function mcMarkUnsubscribed(email) {
   });
 }
 
+// Friday is drop day. Mailchimp lags when contacts are added right before a
+// campaign — a signup pushed minutes before the send isn't "ready" in time, so
+// the whole send slips (~9 min late). To avoid that, the automatic new-signup
+// push is HELD for all of Friday (Central): those signups still land in our DB
+// (the source of truth) and get reconciled into Mailchimp after the drop via the
+// admin "Sync with Mailchimp" button. Unsubscribes are never held — opt-outs
+// must always propagate. now is injectable so the boundary is unit-testable.
+const SYNC_TZ = 'America/Chicago';
+export function isDropDayHold(now = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: SYNC_TZ, weekday: 'short' }).format(now) === 'Fri';
+  } catch (e) { return false; }
+}
+
 // Fire-and-forget wrappers for the hot paths (signup / unsubscribe click):
 // no-op without a key, never throw — Mailchimp being down must not affect
 // the site, and the full sync reconciles anything these miss.
 export function mcPushSignup(email) {
   if (!KEY) return;
+  if (isDropDayHold()) { console.log('[mailchimp] Friday hold — signup not pushed, reconcile after the drop:', email); return; }
   mcEnsureMember(email).catch((e) => console.warn('[mailchimp] push signup failed for', email, '—', e?.message || e));
 }
 export function mcPushUnsubscribe(email) {

@@ -358,6 +358,14 @@ export async function ensureSchema() {
         ELSE split_part(split_part(lower(btrim(t)), '@', 1), '+', 1) || '@' || split_part(lower(btrim(t)), '@', 2)
         END
     $fn$;
+
+    -- The Orders dashboard matches orders to subscribers through norm_email() on
+    -- BOTH sides. Without a functional index that defeats any plain email index,
+    -- so each paid order seq-scanned the whole subscriber list — the Orders tab
+    -- took ~20s+ once the list grew. Index norm_email(email) on both tables.
+    -- (norm_email is IMMUTABLE, so it's indexable.)
+    CREATE INDEX IF NOT EXISTS sub_norm_email_idx    ON subscribers (norm_email(email));
+    CREATE INDEX IF NOT EXISTS orders_norm_email_idx ON orders      (norm_email(email));
   `);
   console.log('[db] schema ready');
 

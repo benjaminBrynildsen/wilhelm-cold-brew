@@ -201,6 +201,15 @@ function funnel(event, props) {
   let focusFired = false;   // focus_email fires once across all forms
   let converted = false;
 
+  // Is a batch buyable right now? If so, we offer a one-tap path to it the moment
+  // someone finishes signing up (peak intent). Resolved on load; a signup takes
+  // longer than this fetch, so it's ready by the time it matters.
+  let liveDrop = null;   // { dropId, name } when available, else null
+  fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
+    .then((r) => r.json())
+    .then((dd) => { if (dd && dd.available) liveDrop = { dropId: dd.dropId, name: dd.name || null }; })
+    .catch(() => {});
+
   const sticky = document.getElementById('sticky-join');
   const nudge = document.getElementById('nudge');
 
@@ -269,6 +278,41 @@ function funnel(event, props) {
       btn.style.cursor = 'pointer';
       btn.textContent = 'Join the List';
     }, 1000);
+  }
+
+  // After a fresh signup, if a batch is buyable right now, pop a one-tap path to
+  // it. They just showed intent and the bottles are limited — this is the moment.
+  function showLiveDropModal() {
+    if (!liveDrop || document.getElementById('livedrop-modal')) return;
+    const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const name = liveDrop.name ? escHtml(liveDrop.name) : "This week’s batch";
+    if (!document.getElementById('ld-pulse-style')) {
+      const st = document.createElement('style'); st.id = 'ld-pulse-style';
+      st.textContent = '@keyframes ld-pulse{0%{box-shadow:0 0 0 0 rgba(232,54,47,.7)}70%{box-shadow:0 0 0 8px rgba(232,54,47,0)}100%{box-shadow:0 0 0 0 rgba(232,54,47,0)}}';
+      document.head.appendChild(st);
+    }
+    const m = document.createElement('div');
+    m.id = 'livedrop-modal';
+    m.setAttribute('role', 'dialog');
+    m.setAttribute('aria-modal', 'true');
+    m.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(6,5,3,.85);padding:24px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)';
+    m.innerHTML =
+      '<div style="max-width:420px;width:100%;background:#17110b;border:1px solid rgba(232,194,74,.4);border-radius:18px;padding:34px 28px 24px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.65)">'
+      + '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#e8c24a;margin-bottom:14px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e8362f;margin-right:7px;vertical-align:middle;animation:ld-pulse 1.4s infinite"></span>Live right now</div>'
+      + '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:27px;font-weight:700;color:#f1e6c8;line-height:1.2;margin-bottom:12px">' + name + ' is <em style="color:#e8c24a">live.</em></div>'
+      + '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:16.5px;color:rgba(241,230,200,.8);line-height:1.55;margin-bottom:24px">You’re on the list — and there are bottles available <strong style="color:#f1e6c8">right now.</strong> Grab yours before they’re gone.</div>'
+      + '<button type="button" id="livedrop-go" style="width:100%;height:56px;background:#e8c24a;color:#0c0a08;border:none;border-radius:12px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-weight:700;font-size:18px;letter-spacing:.3px;cursor:pointer">Shop the batch →</button>'
+      + '<button type="button" id="livedrop-dismiss" style="margin-top:13px;background:none;border:none;color:rgba(241,230,200,.55);font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:14px;cursor:pointer;text-decoration:underline">I’ll finish setting up first</button>'
+      + '</div>';
+    document.body.appendChild(m);
+    const close = () => m.remove();
+    m.querySelector('#livedrop-go').addEventListener('click', () => {
+      track('live_drop_cta_click', { variant: VARIANT, dropId: liveDrop.dropId });
+      location.href = '/buy';
+    });
+    m.querySelector('#livedrop-dismiss').addEventListener('click', close);
+    m.addEventListener('click', (ev) => { if (ev.target === m) close(); });
+    track('live_drop_cta_shown', { variant: VARIANT, dropId: liveDrop.dropId });
   }
 
   // Wire a capture form (hero + bottom). Each sits in a [data-capture] wrapper
@@ -353,6 +397,8 @@ function funnel(event, props) {
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();
+        // Peak intent: if a batch is buyable right now, offer a one-tap path to it.
+        showLiveDropModal();
       } catch (err) {
         console.error(err);
         setLoading(false);

@@ -2492,11 +2492,24 @@ async function showBotCatcher() {
 async function showEmail() {
   loading();
   try {
-    const [subs, blasts, history] = await Promise.all([
+    const [subs, blasts, history, mcStatus] = await Promise.all([
       api('/api/admin/subscribers'),
       api('/api/admin/email/blasts'),
       api('/api/admin/email/history' + historyQuery()),
+      api('/api/admin/mailchimp/status').catch(() => null),
     ]);
+    // Mailchimp freshness — when the automatic push and the manual catch-up last ran.
+    const mcS = mcStatus || {};
+    const mcMan = mcS.manual
+      ? `Last full sync (manual): <b>${ago(mcS.manual.at)}</b> — added ${num(mcS.manual.added || 0)}, opted-out ${num(mcS.manual.optedOut || 0)}`
+      : 'Last full sync (manual): <b>never</b>';
+    const mcAuto = mcS.auto
+      ? `Last automatic push: <b>${ago(mcS.auto.at)}</b>${mcS.auto.kind ? ` (${esc(mcS.auto.kind)})` : ''}`
+      : 'Last automatic push: <b>none yet</b>';
+    const mcHold = mcS.holdActive
+      ? '<br/><span style="color:var(--gold,#e8c24a)">● Friday hold is active — new signups aren’t auto-pushing right now (they’ll reconcile on the next full sync)</span>'
+      : '';
+    const mcSyncLine = `<div class="note" id="mc-sync-status" style="margin-top:10px;line-height:1.7">${mcMan}<br/>${mcAuto}${mcHold}</div>`;
     const bvRows = subs.byVariant.map((r) => `<tr><td>${esc(r.variant)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
     const byAdRows = (subs.byAd || []).map((r) =>
       `<tr><td>${esc(srcName(r.source))}</td><td>${esc(r.campaign)}</td><td>${esc(r.content)}</td><td class="num">${num(r.n)}</td></tr>`).join('');
@@ -2604,6 +2617,7 @@ async function showEmail() {
         <button class="btn" id="mc-pull">Sync with Mailchimp</button>
         <span class="note">two-way — needs MAILCHIMP_API_KEY set on the server</span>
       </div>
+      ${mcSyncLine}
       <textarea id="mc-paste" rows="4" placeholder="…or paste unsubscribed addresses / the whole Mailchimp export here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:10px;display:block"></textarea>
       <div class="row-actions" style="margin-top:8px">
         <button class="btn" id="mc-preview">Preview</button>
@@ -2681,6 +2695,12 @@ async function showEmail() {
       mcMsg.textContent = 'Syncing with Mailchimp (both directions)…'; mcApply.hidden = true;
       try {
         const r = await mcPost('/api/admin/mailchimp/sync');
+        // Reflect the fresh sync in the "last sync" line without a full reload.
+        const st = document.getElementById('mc-sync-status');
+        if (st && st.innerHTML.indexOf('<br/>') >= 0) {
+          const rest = st.innerHTML.slice(st.innerHTML.indexOf('<br/>'));
+          st.innerHTML = `Last full sync (manual): <b>just now</b> — added ${num((r.push && r.push.added) || 0)}, opted-out ${num((r.push && r.push.optedOut) || 0)}` + rest;
+        }
         await mcFinish(mcSummary(r));
       } catch (e) { mcMsg.textContent = 'Sync failed: ' + e.message; }
     });

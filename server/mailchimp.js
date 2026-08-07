@@ -5,6 +5,15 @@
 // full reconcile in both directions (admin.js). Everything no-ops cleanly when
 // MAILCHIMP_API_KEY isn't set.
 import crypto from 'node:crypto';
+import { q } from './db.js';
+
+// Stamp the "last automatic sync" marker so the admin can see freshness. Fire-
+// and-forget: a failed write must never affect a signup/unsubscribe.
+function noteAutoSync(kind, email) {
+  q(`INSERT INTO settings (key, value, updated_at) VALUES ('mc_sync_auto', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [JSON.stringify({ kind, email })]).catch(() => {});
+}
 
 const KEY = process.env.MAILCHIMP_API_KEY || '';
 // Only needed if the Mailchimp account has more than one audience.
@@ -115,9 +124,11 @@ export function isDropDayHold(now = new Date()) {
 export function mcPushSignup(email) {
   if (!KEY) return;
   if (isDropDayHold()) { console.log('[mailchimp] Friday hold — signup not pushed, reconcile after the drop:', email); return; }
+  noteAutoSync('signup', email);
   mcEnsureMember(email).catch((e) => console.warn('[mailchimp] push signup failed for', email, '—', e?.message || e));
 }
 export function mcPushUnsubscribe(email) {
   if (!KEY) return;
+  noteAutoSync('unsubscribe', email);
   mcMarkUnsubscribed(email).catch((e) => console.warn('[mailchimp] push unsubscribe failed for', email, '—', e?.message || e));
 }

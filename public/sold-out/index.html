@@ -32,8 +32,8 @@
     <div class="card">
       <!-- MISSED IT — ask for demand signal (everyone here is already on the list) -->
       <div class="missed" id="missed">
-        <div class="eyebrow">✦&nbsp;&nbsp;THIS WEEK — SOLD OUT</div>
-        <h1>Gone in <em>minutes.</em></h1>
+        <div class="eyebrow" id="so-eyebrow">✦&nbsp;&nbsp;THIS WEEK — SOLD OUT</div>
+        <h1 id="so-h1">Gone in <em>minutes.</em></h1>
         <p class="lede">You're already on the list, so next Friday's link is yours first. One quick thing before you go —</p>
         <p class="confirm-p" style="margin-bottom:20px"><strong style="color:var(--parchment)">Were you going to buy this week?</strong> Your answer tells us how many bottles to barrel for the next batch. If the demand's there, we make more.</p>
         <div class="feedback-btns">
@@ -41,6 +41,18 @@
           <button type="button" class="btn-secondary" data-fb="just_looking">Just checking it out</button>
         </div>
         <div class="meta" style="margin-top:16px">Next drop: <span id="next-date" style="color:rgba(232,217,181,0.75)">next Friday at 9AM</span></div>
+
+        <!-- What they missed — the batch's tasting card, inline (same gold card as the buy page) -->
+        <div class="notes-card" id="so-notes-card" style="margin:26px auto 0" hidden>
+          <div class="notes-emblem">✦</div>
+          <div class="notes-kicker">Tasting Notes</div>
+          <h3 class="notes-title" id="notes-title">Wilhelm Cold Brew</h3>
+          <div class="notes-rule"></div>
+          <div class="notes-spec" id="notes-spec" hidden></div>
+          <ul class="notes-list" id="notes-list"></ul>
+          <img class="notes-sig" src="/buy/assets/signature.png" alt="Signed by the maker" width="1321" height="539"/>
+          <div class="notes-by">Brewed by Benjamin Brynildsen</div>
+        </div>
       </div>
 
       <!-- THANKS — after feedback -->

@@ -132,13 +132,12 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
              SELECT (SELECT MIN(paid_at) FROM cum WHERE running >= $2) AS soldout_at,
                     (SELECT MIN(paid_at) FROM cum) AS first_paid`,
             [missedDrop.id, missedDrop.bottle_cap])).rows[0];
-          if (t && t.soldout_at) {
-            const soldoutAt = new Date(t.soldout_at);
-            // Anchor to the scheduled open when it's sane; otherwise the first sale.
-            const start = (missedDrop.opens_at && new Date(missedDrop.opens_at) <= soldoutAt)
-              ? new Date(missedDrop.opens_at)
-              : new Date(t.first_paid);
-            const secs = Math.round((soldoutAt - start) / 1000);
+          if (t && t.soldout_at && t.first_paid) {
+            // Anchor to the FIRST paid order, NOT the drop's scheduled opens_at:
+            // going live doesn't stamp a real open time, so opens_at can be days
+            // stale (it once read "14 days" for a batch that sold out in hours).
+            // First sale → cap-reaching sale is the true "how long the bottles lasted".
+            const secs = Math.round((new Date(t.soldout_at) - new Date(t.first_paid)) / 1000);
             if (secs > 0) missed.soldOutSeconds = secs;
           }
         } catch (e) { console.warn('[drop/current] sold-out timing:', e?.message || e); }

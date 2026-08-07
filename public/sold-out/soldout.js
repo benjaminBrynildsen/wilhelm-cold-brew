@@ -26,15 +26,16 @@
   var dropSettled = false;
   var notes = { name: null, notes: null, origin: null, varietal: null, elevation: null, roast: null };
 
-  // "13 minutes", "under a minute", "2 hours", "3 days" — a human sell-out speed.
+  // Exact sell-out speed, hours + minutes: "4h 40m", "12m", "1h", "1d 3h".
   function speedPhrase(secs) {
-    if (!secs || secs < 30) return 'under a minute';
-    if (secs < 90) return 'a minute';
-    if (secs < 3600) return Math.round(secs / 60) + ' minutes';
-    if (secs < 5400) return 'an hour';
-    if (secs < 86400) return Math.round(secs / 3600) + ' hours';
-    if (secs < 129600) return 'a day';
-    return Math.round(secs / 86400) + ' days';
+    if (!secs || secs < 60) return 'under a minute';
+    var totalMin = Math.round(secs / 60);
+    var d = Math.floor(totalMin / 1440);
+    var h = Math.floor((totalMin % 1440) / 60);
+    var m = totalMin % 60;
+    if (d > 0) return d + 'd' + (h > 0 ? ' ' + h + 'h' : '');
+    if (h > 0) return h + 'h' + (m > 0 ? ' ' + m + 'm' : '');
+    return m + 'm';
   }
 
   // Show the real batch identity + how fast it went, and the next-drop date.

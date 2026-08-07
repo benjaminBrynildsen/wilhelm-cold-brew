@@ -101,12 +101,49 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       // scheduled batch as soon as it's created, and that bug left sold-out
       // "would've bought" votes untagged (dropId null → invisible in the
       // admin's per-drop demand count).
-      const latest = (await q(
-        `SELECT id, status FROM drops WHERE status <> 'scheduled'
-          ORDER BY opens_at DESC NULLS LAST, created_at DESC LIMIT 1`)).rows[0];
-      const soldOut = (d && d.remaining <= 0) || latest?.status === 'soldout';
-      const dropId = (d && d.remaining <= 0) ? d.id : (latest?.id ?? null);
-      res.json({ available: false, soldOut, dropId, nextDropAt, shipCents: SHIP_CENTS });
+      const missedDrop = (d && d.remaining <= 0)
+        ? d
+        : (await q(
+            `SELECT * FROM drops WHERE status <> 'scheduled'
+              ORDER BY opens_at DESC NULLS LAST, created_at DESC LIMIT 1`)).rows[0] || null;
+      const soldOut = (d && d.remaining <= 0) || missedDrop?.status === 'soldout';
+      const dropId = missedDrop?.id ?? null;
+
+      // Identity + tasting card for the batch they missed, so repeat visitors see
+      // a real, specific batch (name, how fast it went, its notes) rather than the
+      // same static page every week. Deliberately NO bottle counts are exposed.
+      let missed = null;
+      if (missedDrop) {
+        missed = {
+          name: missedDrop.name || ('Batch № ' + missedDrop.id),
+          tastingNotes: missedDrop.tasting_notes || null,
+          origin: missedDrop.origin || null, varietal: missedDrop.varietal || null,
+          elevation: missedDrop.elevation || null, roast: missedDrop.roast || null,
+          soldOutSeconds: null,
+        };
+        // How fast it sold out: from the drop's open time to the paid order that
+        // reached the cap. Best-effort — a timing hiccup must never break the page.
+        try {
+          const t = (await q(
+            `WITH cum AS (
+               SELECT o.paid_at, SUM(o.quantity) OVER (ORDER BY o.paid_at, o.id) AS running
+                 FROM orders o
+                WHERE o.drop_id = $1 AND o.status = 'paid' AND o.paid_at IS NOT NULL)
+             SELECT (SELECT MIN(paid_at) FROM cum WHERE running >= $2) AS soldout_at,
+                    (SELECT MIN(paid_at) FROM cum) AS first_paid`,
+            [missedDrop.id, missedDrop.bottle_cap])).rows[0];
+          if (t && t.soldout_at) {
+            const soldoutAt = new Date(t.soldout_at);
+            // Anchor to the scheduled open when it's sane; otherwise the first sale.
+            const start = (missedDrop.opens_at && new Date(missedDrop.opens_at) <= soldoutAt)
+              ? new Date(missedDrop.opens_at)
+              : new Date(t.first_paid);
+            const secs = Math.round((soldoutAt - start) / 1000);
+            if (secs > 0) missed.soldOutSeconds = secs;
+          }
+        } catch (e) { console.warn('[drop/current] sold-out timing:', e?.message || e); }
+      }
+      res.json({ available: false, soldOut, dropId, nextDropAt, shipCents: SHIP_CENTS, missed });
     } catch (e) { console.error('[drop/current]', e); res.status(500).json({ error: e.message }); }
   });
 

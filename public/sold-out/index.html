@@ -32,10 +32,11 @@
     <div class="card">
       <!-- MISSED IT — ask for demand signal (everyone here is already on the list) -->
       <div class="missed" id="missed">
-        <div class="eyebrow">✦&nbsp;&nbsp;THIS WEEK — SOLD OUT</div>
-        <h1>Gone in <em>minutes.</em></h1>
+        <div class="eyebrow" id="so-eyebrow">✦&nbsp;&nbsp;THIS WEEK — SOLD OUT</div>
+        <h1 id="so-h1">Gone in <em>minutes.</em></h1>
         <p class="lede">You're already on the list, so next Friday's link is yours first. One quick thing before you go —</p>
-        <p class="confirm-p" style="margin-bottom:20px"><strong style="color:var(--parchment)">Were you going to buy this week?</strong> Your answer tells us how many bottles to barrel for the next batch. If the demand's there, we make more.</p>
+        <button class="notes-btn" id="so-notes-btn" type="button" hidden>✦&nbsp; See what you missed &nbsp;✦</button>
+        <p class="confirm-p" style="margin-top:20px;margin-bottom:20px"><strong style="color:var(--parchment)">Were you going to buy this week?</strong> Your answer tells us how many bottles to barrel for the next batch. If the demand's there, we make more.</p>
         <div class="feedback-btns">
           <button type="button" class="btn-primary" data-fb="would_buy">Yes — I would've bought</button>
           <button type="button" class="btn-secondary" data-fb="just_looking">Just checking it out</button>
@@ -56,6 +57,22 @@
       </div>
     </div>
   </section>
+
+  <!-- Tasting notes modal — same gold "designer card" as the buy page -->
+  <div class="notes-modal" id="notes-modal" hidden>
+    <div class="notes-overlay" data-close></div>
+    <div class="notes-card" role="dialog" aria-modal="true" aria-label="Tasting notes">
+      <button class="notes-close" data-close aria-label="Close">×</button>
+      <div class="notes-emblem">✦</div>
+      <div class="notes-kicker">Tasting Notes</div>
+      <h3 class="notes-title" id="notes-title">Wilhelm Cold Brew</h3>
+      <div class="notes-rule"></div>
+      <div class="notes-spec" id="notes-spec" hidden></div>
+      <ul class="notes-list" id="notes-list"></ul>
+      <img class="notes-sig" src="/buy/assets/signature.png" alt="Signed by the maker" width="1321" height="539"/>
+      <div class="notes-by">Brewed by Benjamin Brynildsen</div>
+    </div>
+  </div>
 
   <script src="/journey.js" defer></script>
   <script src="soldout.js" defer></script>

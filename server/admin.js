@@ -7,7 +7,7 @@ import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
-import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe } from './mailchimp.js';
+import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -1014,11 +1014,28 @@ export function mountAdmin(app) {
       }
       if (pushErrors.length) console.warn('[mailchimp-sync] push errors:', pushErrors.slice(0, 10));
 
+      // Stamp "last manual sync" so the admin can see when the catch-up last ran.
+      await q(`INSERT INTO settings (key, value, updated_at) VALUES ('mc_sync_manual', $1, now())
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+        [JSON.stringify({ added, optedOut: optedOutInMc, pulledOptOuts: optedOut.size })]).catch(() => {});
+
       res.json({
         ok: true, applied: true, audiences, ...result,
         push: { audience: listName, added, optedOut: optedOutInMc, errors: pushErrors.slice(0, 5), errorCount: pushErrors.length },
       });
     } catch (e) { console.error('[mailchimp-sync]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // When Mailchimp last synced — both the automatic per-signup push and the
+  // manual catch-up — so the admin can see freshness at a glance.
+  app.get('/api/admin/mailchimp/status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(`SELECT key, value, updated_at FROM settings WHERE key IN ('mc_sync_manual','mc_sync_auto')`)).rows;
+      const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+      const fmt = (r) => (r ? { at: r.updated_at, ...(r.value || {}) } : null);
+      res.json({ manual: fmt(byKey.mc_sync_manual), auto: fmt(byKey.mc_sync_auto), holdActive: isDropDayHold() });
+    } catch (e) { console.error('[mailchimp-status]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test arm config (which versions are live) ─────────

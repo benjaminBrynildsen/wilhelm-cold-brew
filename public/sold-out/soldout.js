@@ -10,8 +10,7 @@
   var fbP = document.getElementById('fb-p');
   var eyebrow = document.getElementById('so-eyebrow');
   var h1 = document.getElementById('so-h1');
-  var notesBtn = document.getElementById('so-notes-btn');
-  var notesModal = document.getElementById('notes-modal');
+  var notesCard = document.getElementById('so-notes-card');
   var notesTitle = document.getElementById('notes-title');
   var notesList = document.getElementById('notes-list');
   var notesSpec = document.getElementById('notes-spec');
@@ -51,8 +50,12 @@
           if (m.soldOutSeconds) h1.innerHTML = 'Gone in <em>' + esc(speedPhrase(m.soldOutSeconds)) + '.</em>';
           else h1.innerHTML = 'Gone in <em>minutes.</em>';
         }
-        // Reveal the tasting card once we know there's something to show.
-        if (notesBtn && (m.tastingNotes || m.origin || m.varietal || m.elevation || m.roast)) notesBtn.hidden = false;
+        // Show the inline tasting card once we know there's something to show.
+        if (notesCard && (m.tastingNotes || m.origin || m.varietal || m.elevation || m.roast)) {
+          renderNotes();
+          notesCard.hidden = false;
+          fund('soldout_tasting_shown', { dropId: soldOutDropId });
+        }
       }
       if (d && d.nextDropAt && nextDate) {
         var dt = new Date(d.nextDropAt);
@@ -90,11 +93,6 @@
       return '<li><span>' + esc(l) + '</span></li>';
     }).join('');
   }
-  function openNotes() { renderNotes(); if (notesModal) notesModal.hidden = false; document.body.style.overflow = 'hidden'; fund('tasting_notes_open', { dropId: soldOutDropId, where: 'sold-out' }); }
-  function closeNotes() { if (notesModal) notesModal.hidden = true; document.body.style.overflow = ''; }
-  if (notesBtn) notesBtn.addEventListener('click', openNotes);
-  if (notesModal) Array.prototype.forEach.call(notesModal.querySelectorAll('[data-close]'), function (el) { el.addEventListener('click', closeNotes); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNotes(); });
 
   // A fast tap can beat the drop lookup — hold the vote until the batch id is
   // known (2s cap so a hung request can never lose the vote entirely).

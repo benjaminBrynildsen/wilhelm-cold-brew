@@ -1765,6 +1765,50 @@ async function showTraffic() {
 
 // ───────── Orders ─────────
 const FLD_DARK = 'background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:7px 9px;color-scheme:dark';
+
+// US tile-grid layout [row, col] — an abstract map (each state a square in a
+// roughly geographic grid) so the shipping map needs no geodata or projection.
+const STATE_GRID = {
+  AK: [0, 0], ME: [0, 10],
+  VT: [1, 9], NH: [1, 10],
+  WA: [2, 0], ID: [2, 1], MT: [2, 2], ND: [2, 3], MN: [2, 4], WI: [2, 5], MI: [2, 7], NY: [2, 9], MA: [2, 10],
+  OR: [3, 0], NV: [3, 1], WY: [3, 2], SD: [3, 3], IA: [3, 4], IL: [3, 5], IN: [3, 6], OH: [3, 7], PA: [3, 8], NJ: [3, 9], CT: [3, 10],
+  CA: [4, 0], UT: [4, 1], CO: [4, 2], NE: [4, 3], MO: [4, 4], KY: [4, 5], WV: [4, 6], VA: [4, 7], MD: [4, 8], DE: [4, 9], RI: [4, 10],
+  AZ: [5, 1], NM: [5, 2], KS: [5, 3], AR: [5, 4], TN: [5, 5], NC: [5, 6], SC: [5, 7], DC: [5, 8],
+  OK: [6, 3], LA: [6, 4], MS: [6, 5], AL: [6, 6], GA: [6, 7],
+  HI: [7, 0], TX: [7, 3], FL: [7, 7],
+};
+
+// Renders the shipping map for the Orders tab from o.shipMap.
+function renderShipMap(sm, scoped) {
+  if (!sm) return '';
+  const counts = {};
+  (sm.byState || []).forEach((s) => { counts[s.state] = s; });
+  const max = Math.max(1, ...(sm.byState || []).map((s) => s.bottles));
+  const cells = Object.keys(STATE_GRID).map((ab) => {
+    const rc = STATE_GRID[ab];
+    const pos = `grid-row:${rc[0] + 1};grid-column:${rc[1] + 1};`;
+    const s = counts[ab];
+    if (!s) return `<div class="ship-cell empty" style="${pos}"><span class="ab">${ab}</span></div>`;
+    const t = 0.18 + 0.82 * Math.sqrt(s.bottles / max);
+    const col = t > 0.52 ? '#1a1206' : 'var(--parch)';
+    const title = `${ab} — ${num(s.bottles)} bottle${s.bottles === 1 ? '' : 's'} · ${num(s.orders)} order${s.orders === 1 ? '' : 's'}`;
+    return `<div class="ship-cell" style="${pos}background:rgba(232,194,74,${t.toFixed(3)});color:${col}" title="${title}"><span class="ab">${ab}</span><span class="ct">${num(s.bottles)}</span></div>`;
+  }).join('');
+  const cities = (sm.topCities || []).filter((c) => c.city).map((c) =>
+    `<span class="ship-city"><b>${num(c.bottles)}</b> ${esc(c.city)}${c.state ? ', ' + esc(c.state) : ''}</span>`).join('');
+  const sub = sm.totalBottles
+    ? `${num(sm.totalBottles)} bottle${sm.totalBottles === 1 ? '' : 's'} to ${num(sm.statesCount)} state${sm.statesCount === 1 ? '' : 's'}`
+    : 'No shipping destinations yet';
+  return `
+    <h3 style="margin-bottom:2px">Where the bottles are going${scoped ? ' <span class="note">— this drop</span>' : ' <span class="note">— all drops</span>'}</h3>
+    <div class="note" style="margin-bottom:12px">${sub}${sm.noState ? ` · ${num(sm.noState)} order${sm.noState === 1 ? '' : 's'} pending an address` : ''}</div>
+    <div class="ship-map-wrap">
+      <div class="ship-grid">${cells}</div>
+      <div class="ship-legend"><span>fewer</span><span class="bar"></span><span>more</span></div>
+      ${cities ? `<div class="ship-cities">${cities}</div>` : ''}
+    </div>`;
+}
 // ArrayBuffer -> base64 (chunked so big files don't blow the call stack).
 function abToBase64(buf) {
   const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000;
@@ -1857,6 +1901,9 @@ async function showOrders() {
         <div class="card"><div class="k">${scoped ? 'Returning customers (this drop)' : 'Repeat customers'}</div><div class="v">${o.returning && o.returning.buyers ? Math.round((100 * o.returning.returning) / o.returning.buyers) + '<small>%</small>' : '—'}</div><div class="k2">${o.returning && o.returning.buyers ? `${num(o.returning.returning)} of ${num(o.returning.buyers)} ${scoped ? 'buyers bought an earlier batch' : 'customers bought 2+ batches'}` : 'no buyers yet'}</div></div>
         <div class="card"><div class="k">Week-of signups who bought${scoped ? ' (this drop)' : ''}</div><div class="v">${fs.orders ? Math.round((100 * fs.fresh) / fs.orders) + '<small>%</small>' : '—'}</div><div class="k2">${fs.orders ? `${num(fs.fresh)} of ${num(fs.orders)} paid orders · joined after the previous drop` : 'no paid orders yet'}</div></div>
       </div>
+
+      ${renderShipMap(o.shipMap, scoped)}
+
       ${scoped && o.buyerCohorts && o.buyerCohorts.length ? `
       <h3 style="margin-top:0">When this batch's buyers joined the list <span class="note">— which drop week each paid order's customer originally signed up during</span></h3>
       <table style="max-width:560px;margin-bottom:22px"><thead><tr><th>Joined during</th><th class="num">Orders</th><th class="num">Share</th></tr></thead>

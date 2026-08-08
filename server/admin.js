@@ -1825,7 +1825,32 @@ export function mountAdmin(app) {
         if (r.choice === 'would_buy') demand.wouldBuy = r.n;
         else if (r.choice === 'just_looking') demand.justLooking = r.n;
       }
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups, buyerCohorts });
+      // ── Where the bottles are going — paid orders by shipping state (checkout
+      // is US-only, so state is the 2-letter code). Powers the Orders-tab map. ──
+      const shipRows = (await q(
+        `SELECT NULLIF(UPPER(TRIM(shipping_address->>'state')),'') AS state,
+                COALESCE(SUM(quantity),0)::int AS bottles, COUNT(*)::int AS orders
+           FROM orders
+          WHERE status='paid' AND ($1::int IS NULL OR drop_id = $1)
+          GROUP BY 1`, [dropId])).rows;
+      const byState = [];
+      let noState = 0, mapBottles = 0, mapStates = 0;
+      for (const r of shipRows) {
+        if (!r.state) { noState += r.orders; continue; }   // address not saved yet
+        byState.push({ state: r.state, bottles: r.bottles, orders: r.orders });
+        mapBottles += r.bottles; mapStates += 1;
+      }
+      const topCities = (await q(
+        `SELECT INITCAP(TRIM(shipping_address->>'city')) AS city,
+                NULLIF(UPPER(TRIM(shipping_address->>'state')),'') AS state,
+                COALESCE(SUM(quantity),0)::int AS bottles
+           FROM orders
+          WHERE status='paid' AND NULLIF(TRIM(shipping_address->>'city'),'') IS NOT NULL
+            AND ($1::int IS NULL OR drop_id = $1)
+          GROUP BY 1,2 ORDER BY bottles DESC, city ASC LIMIT 8`, [dropId])).rows;
+      const shipMap = { byState, topCities, noState, totalBottles: mapBottles, statesCount: mapStates };
+
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups, buyerCohorts, shipMap });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

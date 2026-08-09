@@ -324,6 +324,8 @@ export async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- Link to the live ad on X, so the Traffic channel table can open it directly.
+    ALTER TABLE ads ADD COLUMN IF NOT EXISTS x_url TEXT;
 
     -- Editable app settings (key → JSON). Used for the shipping-email template.
     CREATE TABLE IF NOT EXISTS settings (

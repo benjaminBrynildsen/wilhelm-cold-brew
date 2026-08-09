@@ -809,6 +809,9 @@ export function mountAdmin(app) {
         `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
       const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.joined, 0);
       const directJoined = (joinersByUtm.find((r) => r.channel === 'direct') || {}).joined || 0;
+      // Each ad's live X link (set in Ad Fit) so a channel row can open the ad itself.
+      const adUrls = Object.fromEntries((await q(
+        `SELECT name, x_url FROM ads WHERE x_url IS NOT NULL AND x_url <> ''`)).rows.map((r) => [r.name, r.x_url]));
       const daily = (await q(
         custom
           ? `SELECT to_char(date_trunc('day', created_at AT TIME ZONE '${REPORT_TZ}'), 'YYYY-MM-DD') AS day,
@@ -836,7 +839,7 @@ export function mountAdmin(app) {
         topCountries: countries.map((r) => ({ country: r.k || '??', count: r.n })),
         topPaths: paths.map((r) => ({ path: r.k, count: r.n })),
         topCampaigns: campaigns.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, content: r.content, count: r.n })),
-        joinersByUtm: joinersByUtm.map((r) => ({ channel: r.channel, ad: r.ad, landed: r.landed, joined: r.joined, conv: r.conv })),
+        joinersByUtm: joinersByUtm.map((r) => ({ channel: r.channel, ad: r.ad, adUrl: r.ad ? (adUrls[r.ad] || null) : null, landed: r.landed, joined: r.joined, conv: r.conv })),
         joiners: { total: joinersTotalRow.n, attributed: joinersAttributed, direct: directJoined },
         topCities: cities.map((r) => ({ city: r.city, region: r.region, country: r.country, count: r.n })),
         daily: daily.map((r) => ({ day: r.bucket, views: r.views, visitors: r.visitors })),
@@ -1597,7 +1600,7 @@ export function mountAdmin(app) {
   app.get('/api/admin/adfit/ads', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const rows = (await q(`SELECT id, name, post_text, image_data, covers, updated_at FROM ads ORDER BY name`)).rows;
+      const rows = (await q(`SELECT id, name, post_text, image_data, covers, x_url, updated_at FROM ads ORDER BY name`)).rows;
       res.json({ ads: rows });
     } catch (e) { console.error('[adfit/ads]', e); res.status(500).json({ error: e.message }); }
   });
@@ -1615,15 +1618,25 @@ export function mountAdmin(app) {
       if (image !== undefined && image !== '' && !/^data:image\/(jpeg|png|webp|gif);base64,/.test(image)) {
         return res.status(400).json({ error: 'image must be a data: URL' });
       }
+      // Link to the live ad on X (optional). Tolerate a missing scheme; only
+      // touch the stored value when the field is actually sent.
+      const xUrlProvided = req.body?.x_url !== undefined;
+      let xUrl = xUrlProvided ? String(req.body.x_url).trim().slice(0, 500) : null;
+      if (xUrl) {
+        if (!/^https?:\/\//i.test(xUrl)) xUrl = 'https://' + xUrl;
+        if (!/^https?:\/\/\S+$/i.test(xUrl)) return res.status(400).json({ error: 'X ad link must be a URL' });
+      }
       const row = (await q(
-        `INSERT INTO ads (name, post_text, image_data, covers, updated_at)
-         VALUES ($1,$2,$3,$4,now())
+        `INSERT INTO ads (name, post_text, image_data, covers, x_url, updated_at)
+         VALUES ($1,$2,$3,$4,$5,now())
          ON CONFLICT (name) DO UPDATE SET
            post_text = EXCLUDED.post_text,
-           image_data = CASE WHEN $5 THEN EXCLUDED.image_data ELSE ads.image_data END,
-           covers = EXCLUDED.covers, updated_at = now()
+           image_data = CASE WHEN $6 THEN EXCLUDED.image_data ELSE ads.image_data END,
+           covers = EXCLUDED.covers,
+           x_url = CASE WHEN $7 THEN EXCLUDED.x_url ELSE ads.x_url END,
+           updated_at = now()
          RETURNING id`,
-        [name, postText, image || null, JSON.stringify(covers), image !== undefined]
+        [name, postText, image || null, JSON.stringify(covers), xUrl || null, image !== undefined, xUrlProvided]
       )).rows[0];
       res.json({ ok: true, id: row.id });
     } catch (e) { console.error('[adfit/ads]', e); res.status(500).json({ error: e.message }); }

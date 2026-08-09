@@ -762,6 +762,8 @@ async function showAdFit() {
             <label class="note">Ad name — must match the ad URL's <code>utm_content</code></label>
             <input class="fld" id="ed-name" list="ed-contents" value="${esc(reg ? reg.name : (sel.startsWith('(') ? '' : sel))}" placeholder="e.g. barrel-dusk-v2"/>
             <datalist id="ed-contents">${(an.contents || []).map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+            <label class="note">X ad link — the live post's URL (so the Traffic table can open it)</label>
+            <input class="fld" id="ed-xurl" type="url" inputmode="url" value="${esc(reg && reg.x_url ? reg.x_url : '')}" placeholder="https://x.com/…/status/…"/>
             <label class="note">Post text — the exact copy on the ad</label>
             <textarea id="ed-text" rows="5" placeholder="Paste the ad's text…">${esc(reg ? reg.post_text || '' : '')}</textarea>
             <label class="note">Creative image (downscaled locally before upload)</label>
@@ -836,7 +838,7 @@ async function showAdFit() {
       const name = document.getElementById('ed-name').value.trim();
       if (!name) { msg.textContent = 'Name is required (use the utm_content of the ad URL).'; return; }
       const covers = [...document.querySelectorAll('input[name="covers"]:checked')].map((c) => c.value);
-      const body = { name, post_text: document.getElementById('ed-text').value, covers };
+      const body = { name, post_text: document.getElementById('ed-text').value, covers, x_url: document.getElementById('ed-xurl').value.trim() };
       if (pendingImage !== undefined) body.image_data = pendingImage;
       msg.textContent = 'Saving…';
       try {
@@ -1711,8 +1713,11 @@ async function showTraffic() {
     const juBody = juTotalRow + (ju.map((r, i) => {
       const ch = String(r.channel || '').split(' / '); ch[0] = srcName(ch[0]);
       const label = esc(ch.join(' / '));
-      // Tagged rows (r.ad = utm_content) deep-link to that ad's Ad Fit view.
-      const cell = r.ad ? `<a class="ju-adlink" data-ad="${esc(r.ad)}" href="#" title="View this ad in Ad Fit">${label}</a>` : label;
+      // With an X link saved (in Ad Fit) the row opens the live ad; otherwise it
+      // deep-links to Ad Fit so you can paste the ad's link there.
+      const cell = r.adUrl
+        ? `<a href="${esc(r.adUrl)}" target="_blank" rel="noopener" title="Open this ad on X">${label} ↗</a>`
+        : (r.ad ? `<a class="ju-adlink" data-ad="${esc(r.ad)}" href="#" title="No X link yet — click to add one in Ad Fit">${label}</a>` : label);
       return `<tr class="ju-row"${i >= JU_PAGE ? ' style="display:none"' : ''}><td>${cell}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`;
     }).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>');
     content().innerHTML = rangeBar + `

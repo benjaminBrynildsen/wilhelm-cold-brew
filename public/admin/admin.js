@@ -598,7 +598,10 @@ async function showAdFit() {
     const names = [...registered.map((a) => a.name)];
     traffic.forEach((t) => { if (!names.includes(t.ad)) names.push(t.ad); });
     if (!names.length) names.push('(direct / untagged)');
-    if (!names.includes(state.adfitAd)) state.adfitAd = names[0];
+    // A deep-link from the Traffic channel table can name an ad with no traffic
+    // in the current Ad Fit window — keep it selectable instead of snapping away.
+    if (state.adfitAd && !names.includes(state.adfitAd)) names.push(state.adfitAd);
+    if (!state.adfitAd || !names.includes(state.adfitAd)) state.adfitAd = names[0];
     const sel = state.adfitAd;
     const reg = registered.find((a) => a.name === sel) || null;
     const stats = trafficBy[sel] || null;
@@ -1707,7 +1710,10 @@ async function showTraffic() {
     const JU_PAGE = 25;
     const juBody = juTotalRow + (ju.map((r, i) => {
       const ch = String(r.channel || '').split(' / '); ch[0] = srcName(ch[0]);
-      return `<tr class="ju-row"${i >= JU_PAGE ? ' style="display:none"' : ''}><td>${esc(ch.join(' / '))}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`;
+      const label = esc(ch.join(' / '));
+      // Tagged rows (r.ad = utm_content) deep-link to that ad's Ad Fit view.
+      const cell = r.ad ? `<a class="ju-adlink" data-ad="${esc(r.ad)}" href="#" title="View this ad in Ad Fit">${label}</a>` : label;
+      return `<tr class="ju-row"${i >= JU_PAGE ? ' style="display:none"' : ''}><td>${cell}</td><td class="num">${num(r.landed)}</td><td class="num">${num(r.joined)}</td><td class="num"><b>${r.conv != null ? r.conv + '%' : '—'}</b></td></tr>`;
     }).join('') || '<tr><td class="note">—</td><td></td><td></td><td></td></tr>');
     content().innerHTML = rangeBar + `
       <div class="cards">
@@ -1730,6 +1736,13 @@ async function showTraffic() {
         <div>${tbl(`Top cities (${esc(w('30d'))})`, (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
       </div>
       <h3>${rlab ? esc(rlab) : 'Last 14 days'}</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>`;
+
+    // Click a tagged channel → jump to that ad's Ad Fit view.
+    document.querySelectorAll('.ju-adlink').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      state.adfitAd = a.dataset.ad;
+      switchTab('adfit');
+    }));
 
     // reveal hidden channel rows 25 at a time
     const juMore = document.getElementById('ju-more');

@@ -240,6 +240,13 @@ export async function ensureSchema() {
     -- keeps the first for anything that expects a single value.
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_numbers JSONB;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_notified_at TIMESTAMPTZ;
+    -- USPS delivery tracking (Shipping tab). delivered_at is set once the carrier
+    -- reports delivery; tracking_status is the latest human-readable status;
+    -- tracking_checked_at throttles how often we re-poll USPS per package.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at        TIMESTAMPTZ;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_status     TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_checked_at TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS orders_delivery_idx ON orders (drop_id, delivered_at);
 
     -- Autopilot bookkeeping on split arms: set when the bandit turns an arm off
     -- (vs a manual pause). Re-enabling an arm clears both.

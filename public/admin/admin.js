@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', botWin: 'd30', trafficRange: null, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', botWin: 'd30', trafficRange: null, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, shipDrop: null, editDrop: '' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -237,7 +237,7 @@ async function registerFaceId() {
   }
 }
 
-const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['email', 'Email'], ['botcatcher', 'Bot Catcher'], ['thankyou', 'Thank you']];
+const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['shipping', 'Shipping'], ['email', 'Email'], ['botcatcher', 'Bot Catcher'], ['thankyou', 'Thank you']];
 // Phone bottom bar: Journey · Split test · [logo → Overview] · Orders · More.
 // Everything else lives behind More; when a More tab is active, the More slot
 // shows its name in gold.
@@ -255,6 +255,7 @@ const ICON = (() => {
     traffic: svg('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'),
     journey: svg('<circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 6h7a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h7" transform="translate(0,-2)"/>'),
     orders: svg('<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'),
+    shipping: svg('<path d="M1 4h13v11H1z"/><path d="M14 8h4l3 3v4h-7z"/><circle cx="5.5" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/>'),
     email: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
     botcatcher: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>'),
     thankyou: svg('<path d="M12 20.5C6.5 16.5 3.5 13.4 3.5 9.9 3.5 7.4 5.4 5.5 7.8 5.5c1.6 0 3.1.8 4.2 2.3 1.1-1.5 2.6-2.3 4.2-2.3 2.4 0 4.3 1.9 4.3 4.4 0 3.5-3 6.6-8.5 10.6z"/>'),
@@ -490,6 +491,7 @@ function show(tab) {
   if (tab === 'traffic') return showTraffic();
   if (tab === 'journey') return state.journeySid ? showJourneyDetail(state.journeySid) : showJourney();
   if (tab === 'orders') return showOrders();
+  if (tab === 'shipping') return showShipping();
   if (tab === 'email') return showEmail();
   if (tab === 'botcatcher') return showBotCatcher();
   if (tab === 'thankyou') return showThankyou();
@@ -1495,6 +1497,81 @@ function dropActions(d) {
   const resched = `<button class="btn ghost dopens" data-id="${d.id}" data-opens="${esc(d.opens_at || '')}">Reschedule</button>`;
   const del = `<button class="btn ghost ddelete" data-id="${d.id}" data-name="${esc(d.name || '')}" style="color:var(--bad)">Delete</button>`;
   return status + ' ' + rename + ' ' + dup + ' ' + resched + ' ' + del;
+}
+
+// ───────── Shipping ─────────
+function shipStatus(s) {
+  if (s.delivered_at) return { label: 'Delivered', cls: 'sb-del' };
+  if (s.shipped_at) {
+    if ((s.tracking_status || '').toLowerCase().includes('out for delivery')) return { label: 'Out for delivery', cls: 'sb-out' };
+    return { label: s.tracking_status || 'In transit', cls: 'sb-tr' };
+  }
+  return { label: 'To ship', cls: 'sb-toship' };
+}
+
+async function showShipping() {
+  loading();
+  try {
+    const d = await api('/api/admin/shipping' + (state.shipDrop ? '?dropId=' + encodeURIComponent(state.shipDrop) : ''));
+    const batches = d.batches || [];
+    const cards = batches.length ? batches.map((b) => {
+      const p = b.paid ? Math.round((100 * b.delivered) / b.paid) : 0;
+      const inTransit = Math.max(0, b.shipped - b.delivered);
+      const toShip = Math.max(0, b.paid - b.shipped);
+      return `<div class="ship-b">
+        <div class="bn">${esc(b.name || 'Batch ' + b.id)}</div>
+        <div class="bd">${num(b.bottles)} bottle${b.bottles === 1 ? '' : 's'} · ${num(b.paid)} package${b.paid === 1 ? '' : 's'}</div>
+        <div class="big">${num(b.delivered)}<small>/${num(b.paid)} delivered</small></div>
+        <div class="ship-bar" title="${p}% delivered"><i style="width:${p}%"></i></div>
+        <div class="ship-legend2"><span>✓ ${num(b.delivered)} delivered</span><span>🚚 ${num(inTransit)} in transit</span><span>📦 ${num(toShip)} to ship</span></div>
+      </div>`;
+    }).join('') : '<div class="note">No paid orders yet.</div>';
+
+    const opts = `<option value="">All batches</option>` + batches.map((b) =>
+      `<option value="${b.id}" ${String(state.shipDrop) === String(b.id) ? 'selected' : ''}>${esc(b.name || 'Batch ' + b.id)}</option>`).join('');
+
+    const rows = (d.shipments || []).map((s) => {
+      const st = shipStatus(s);
+      const dest = [s.city, s.state].filter(Boolean).join(', ') || '—';
+      const track = s.tracking_number
+        ? `<a href="${esc(trackUrl(s.tracking_number, s.tracking_carrier))}" target="_blank" rel="noopener">${esc(String(s.tracking_number).slice(0, 14))}${String(s.tracking_number).length > 14 ? '…' : ''}</a>`
+        : '<span class="note">—</span>';
+      const when = s.delivered_at ? esc(fmtWhen(s.delivered_at)) : (s.shipped_at ? esc(fmtWhen(s.shipped_at)) : '<span class="note">—</span>');
+      return `<tr>
+        <td>${esc(s.shipping_name || s.email || '—')}</td>
+        <td>${esc(dest)}</td>
+        <td>${esc(s.drop_name || '—')}</td>
+        <td class="num">${num(s.quantity)}</td>
+        <td><span class="sb ${st.cls}">${esc(st.label)}</span></td>
+        <td>${track}</td>
+        <td>${when}</td></tr>`;
+    }).join('') || '<tr><td class="note" colspan="7">No shipments here yet.</td></tr>';
+
+    const refreshCtrl = d.uspsEnabled
+      ? `<button class="btn" id="ship-refresh">Refresh delivery status</button><span class="note" id="ship-refresh-msg">${d.lastChecked ? 'Last checked ' + esc(ago(d.lastChecked)) : 'Not checked yet'}</span>`
+      : `<span class="note">⚠️ Delivery status is off — add <code>USPS_CLIENT_ID</code> / <code>USPS_CLIENT_SECRET</code> in Render to turn on automatic “delivered” tracking. Everything else here works now.</span>`;
+
+    content().innerHTML = `
+      <h3 style="margin-top:0">Delivery by batch</h3>
+      <div class="ship-batches">${cards}</div>
+      <div class="row-actions" style="align-items:center;margin-bottom:14px">${refreshCtrl}</div>
+      <h3>Shipments <span class="note">— <select id="shipDrop" style="${FLD_DARK}">${opts}</select></span></h3>
+      <table><thead><tr><th>Customer</th><th>Destination</th><th>Batch</th><th class="num">Qty</th><th>Status</th><th>Tracking</th><th>Updated</th></tr></thead>
+        <tbody>${rows}</tbody></table>`;
+
+    const sel = document.getElementById('shipDrop');
+    if (sel) sel.addEventListener('change', () => { state.shipDrop = sel.value || null; showShipping(); });
+    const rf = document.getElementById('ship-refresh');
+    if (rf) rf.addEventListener('click', async () => {
+      const msg = document.getElementById('ship-refresh-msg');
+      rf.disabled = true; if (msg) msg.textContent = 'Checking USPS…';
+      try {
+        const r = await api('/api/admin/shipping/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }) });
+        if (msg) msg.textContent = `Checked ${num(r.checked)} · ${num(r.delivered)} newly delivered`;
+        setTimeout(showShipping, 800);
+      } catch (e) { if (msg) msg.textContent = 'Refresh failed: ' + e.message; rf.disabled = false; }
+    });
+  } catch (e) { content().innerHTML = `<div class="note">Failed to load shipping: ${esc(e.message)}</div>`; }
 }
 
 async function showOrders() {

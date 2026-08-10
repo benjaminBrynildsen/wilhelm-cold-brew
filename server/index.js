@@ -13,6 +13,7 @@ import { mountAdmin } from './admin.js';
 import { mountPortal } from './portal.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
+import { uspsEnabled, refreshUspsStatuses } from './usps.js';
 import { resolveSecret, rateLimit } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -304,6 +305,13 @@ ensureSchema()
       const warm = () => getBanditWeights().catch(() => {});
       warm();
       setInterval(warm, 4 * 60 * 1000).unref();
+      // Keep USPS delivery status current for the Shipping tab (no-op until the
+      // USPS keys are set). Bounded per pass; spread over time so it's gentle.
+      if (uspsEnabled()) {
+        const poll = () => refreshUspsStatuses({ limit: 30 }).catch(() => {});
+        setTimeout(poll, 20 * 1000);
+        setInterval(poll, 30 * 60 * 1000).unref();
+      }
     });
   })
   .catch((err) => {

@@ -8,7 +8,7 @@ import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
-import { uspsEnabled, refreshUspsStatuses } from './usps.js';
+import { uspsEnabled, refreshUspsStatuses, uspsProbe } from './usps.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -1933,6 +1933,13 @@ export function mountAdmin(app) {
       const result = await refreshUspsStatuses({ limit: force ? 80 : 40, force });
       res.json(result);
     } catch (e) { console.error('[shipping/refresh]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Diagnostic: raw USPS response + our reading of it, for one tracking number.
+  app.get('/api/admin/shipping/probe', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { res.json(await uspsProbe(req.query?.tracking)); }
+    catch (e) { console.error('[shipping/probe]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Pirate Ship export: paid orders → bulk-import CSV ─────────

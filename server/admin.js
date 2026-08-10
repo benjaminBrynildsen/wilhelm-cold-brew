@@ -1935,11 +1935,20 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[shipping/refresh]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // Diagnostic: raw USPS response + our reading of it, for one tracking number.
+  // Diagnostic: raw USPS response + our reading of it. With no ?tracking=, it
+  // pulls a real, FULL tracking number from the DB (avoids on-screen truncation).
   app.get('/api/admin/shipping/probe', async (req, res) => {
     if (!requireAdmin(req, res)) return;
-    try { res.json(await uspsProbe(req.query?.tracking)); }
-    catch (e) { console.error('[shipping/probe]', e); res.status(500).json({ error: e.message }); }
+    try {
+      let tracking = req.query?.tracking ? String(req.query.tracking).trim() : '';
+      if (!tracking) {
+        tracking = (await q(
+          `SELECT tracking_number FROM orders
+            WHERE status='paid' AND NULLIF(tracking_number,'') IS NOT NULL
+            ORDER BY shipped_at DESC NULLS LAST LIMIT 1`)).rows[0]?.tracking_number || '';
+      }
+      res.json({ trackingUsed: tracking, trackingLength: tracking.length, ...(await uspsProbe(tracking)) });
+    } catch (e) { console.error('[shipping/probe]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Pirate Ship export: paid orders → bulk-import CSV ─────────

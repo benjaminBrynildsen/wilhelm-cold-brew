@@ -791,15 +791,11 @@ export function mountAdmin(app) {
              WHEN referrer_host IN ('google.com','www.google.com','bing.com','duckduckgo.com','search.brave.com','search.yahoo.com') THEN 'Search'
              WHEN referrer_host = 'instagram.com' THEN 'Instagram (untagged)'
              WHEN referrer_host IS NULL OR referrer_host = '' THEN 'direct'
-             ELSE referrer_host END channel,
-             -- the ad (utm_content) on well-tagged rows, so the Traffic table can
-             -- deep-link each channel to its Ad Fit view. NULL for untagged/direct.
-             CASE WHEN utm_source IS NOT NULL AND utm_source NOT LIKE '%{{%' AND COALESCE(utm_campaign,'') NOT LIKE '%{{%' AND COALESCE(utm_content,'') NOT LIKE '%{{%'
-                  THEN NULLIF(utm_content,'') END ad
+             ELSE referrer_host END channel
            FROM entry
          ),
          joined_ips AS (SELECT DISTINCT ip_hash FROM subscribers WHERE ip_hash IS NOT NULL AND created_at >= $1)
-         SELECT c.channel, MAX(c.ad) ad, COUNT(*)::int landed, COUNT(ji.ip_hash)::int joined,
+         SELECT c.channel, COUNT(*)::int landed, COUNT(ji.ip_hash)::int joined,
                 ROUND(100.0 * COUNT(ji.ip_hash) / NULLIF(COUNT(*),0), 1)::float conv
            FROM classified c LEFT JOIN joined_ips ji ON ji.ip_hash = c.ip_hash
           GROUP BY c.channel
@@ -809,9 +805,6 @@ export function mountAdmin(app) {
         `SELECT COUNT(*)::int n FROM subscribers WHERE TRUE ${EXCL_PV}`)).rows[0];
       const joinersAttributed = joinersByUtm.reduce((sum, r) => sum + r.joined, 0);
       const directJoined = (joinersByUtm.find((r) => r.channel === 'direct') || {}).joined || 0;
-      // Each ad's live X link (set in Ad Fit) so a channel row can open the ad itself.
-      const adUrls = Object.fromEntries((await q(
-        `SELECT name, x_url FROM ads WHERE x_url IS NOT NULL AND x_url <> ''`)).rows.map((r) => [r.name, r.x_url]));
       const daily = (await q(
         custom
           ? `SELECT to_char(date_trunc('day', created_at AT TIME ZONE '${REPORT_TZ}'), 'YYYY-MM-DD') AS day,
@@ -839,7 +832,7 @@ export function mountAdmin(app) {
         topCountries: countries.map((r) => ({ country: r.k || '??', count: r.n })),
         topPaths: paths.map((r) => ({ path: r.k, count: r.n })),
         topCampaigns: campaigns.map((r) => ({ source: r.source, medium: r.medium, campaign: r.campaign, content: r.content, count: r.n })),
-        joinersByUtm: joinersByUtm.map((r) => ({ channel: r.channel, ad: r.ad, adUrl: r.ad ? (adUrls[r.ad] || null) : null, landed: r.landed, joined: r.joined, conv: r.conv })),
+        joinersByUtm: joinersByUtm.map((r) => ({ channel: r.channel, landed: r.landed, joined: r.joined, conv: r.conv })),
         joiners: { total: joinersTotalRow.n, attributed: joinersAttributed, direct: directJoined },
         topCities: cities.map((r) => ({ city: r.city, region: r.region, country: r.country, count: r.n })),
         daily: daily.map((r) => ({ day: r.bucket, views: r.views, visitors: r.visitors })),

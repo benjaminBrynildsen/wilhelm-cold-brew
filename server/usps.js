@@ -61,7 +61,14 @@ export async function uspsTrack(trackingNumber) {
   });
   if (r.status === 404) return { ok: true, found: false, status: 'No tracking data yet' };
   if (!r.ok || !r.json) return { ok: false, status: r.status, error: r.text?.slice(0, 200) || `HTTP ${r.status}` };
-  const d = r.json;
+  return { ok: true, found: true, ...parseTracking(r.json) };
+}
+
+// Turn a USPS tracking response into { delivered, deliveredAt, status, category }.
+// Deliberately tolerant of field-name variants so a schema tweak can't silently
+// break delivered detection. Exported so the diagnostic can show its verdict.
+export function parseTracking(d) {
+  if (!d || typeof d !== 'object') return { delivered: false, deliveredAt: null, status: 'Unknown', category: '' };
   const category = String(d.statusCategory || '');
   const statusText = String(d.status || d.statusSummary || category || '').trim();
   const events = Array.isArray(d.trackingEvents) ? d.trackingEvents : [];
@@ -73,7 +80,20 @@ export async function uspsTrack(trackingNumber) {
     deliveredAt = eventDate(ev) || (d.expectedDeliveryDate ? new Date(d.expectedDeliveryDate) : null) || new Date();
     if (deliveredAt && isNaN(deliveredAt.getTime())) deliveredAt = new Date();
   }
-  return { ok: true, found: true, delivered: isDelivered, deliveredAt, status: statusText || category || 'Unknown', category };
+  return { delivered: isDelivered, deliveredAt, status: statusText || category || 'Unknown', category };
+}
+
+// Diagnostic: fetch USPS's raw response for one tracking number plus how we read
+// it, so a real number can confirm/repair the delivered-detection mapping.
+export async function uspsProbe(trackingNumber) {
+  const num = String(trackingNumber || '').replace(/\s+/g, '');
+  if (!uspsEnabled()) return { enabled: false };
+  if (!num) return { enabled: true, error: 'no tracking number' };
+  let tok; try { tok = await getToken(); } catch (e) { return { enabled: true, tokenError: e.message }; }
+  const r = await fetchJson(`${BASE}/tracking/v3/tracking/${encodeURIComponent(num)}?expand=DETAIL`, {
+    headers: { Authorization: `Bearer ${tok}`, Accept: 'application/json' },
+  });
+  return { enabled: true, httpStatus: r.status, raw: r.json || (r.text || '').slice(0, 2000), parsed: r.json ? parseTracking(r.json) : null };
 }
 
 // Poll USPS for shipped-but-not-delivered packages that haven't been checked

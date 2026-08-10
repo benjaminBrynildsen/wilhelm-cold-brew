@@ -1514,6 +1514,14 @@ async function showShipping() {
   try {
     const d = await api('/api/admin/shipping' + (state.shipDrop ? '?dropId=' + encodeURIComponent(state.shipDrop) : ''));
     const batches = d.batches || [];
+    // First open: focus the list on the most recent batch that actually has
+    // shipments (so tracking shows), instead of "All batches" where the newest
+    // un-shipped batch buries everything. '' = the user explicitly picked All.
+    if (state.shipDrop === null) {
+      const def = batches.find((b) => b.shipped > 0) || batches[0];
+      if (def) { state.shipDrop = String(def.id); return showShipping(); }
+      state.shipDrop = '';
+    }
     const cards = batches.length ? batches.map((b) => {
       const p = b.paid ? Math.round((100 * b.delivered) / b.paid) : 0;
       const inTransit = Math.max(0, b.shipped - b.delivered);
@@ -1527,7 +1535,7 @@ async function showShipping() {
       </div>`;
     }).join('') : '<div class="note">No paid orders yet.</div>';
 
-    const opts = `<option value="">All batches</option>` + batches.map((b) =>
+    const opts = `<option value="" ${state.shipDrop === '' ? 'selected' : ''}>All batches</option>` + batches.map((b) =>
       `<option value="${b.id}" ${String(state.shipDrop) === String(b.id) ? 'selected' : ''}>${esc(b.name || 'Batch ' + b.id)}</option>`).join('');
 
     const rows = (d.shipments || []).map((s) => {
@@ -1560,7 +1568,7 @@ async function showShipping() {
         <tbody>${rows}</tbody></table>`;
 
     const sel = document.getElementById('shipDrop');
-    if (sel) sel.addEventListener('change', () => { state.shipDrop = sel.value || null; showShipping(); });
+    if (sel) sel.addEventListener('change', () => { state.shipDrop = sel.value; showShipping(); });
     const rf = document.getElementById('ship-refresh');
     if (rf) rf.addEventListener('click', async () => {
       const msg = document.getElementById('ship-refresh-msg');

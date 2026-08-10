@@ -1556,9 +1556,9 @@ async function showShipping() {
         <td>${when}</td></tr>`;
     }).join('') || '<tr><td class="note" colspan="7">No shipments here yet.</td></tr>';
 
-    const refreshCtrl = d.uspsEnabled
+    const refreshCtrl = d.deliveryEnabled
       ? `<button class="btn" id="ship-refresh">Refresh delivery status</button><span class="note" id="ship-refresh-msg">${d.lastChecked ? 'Last checked ' + esc(ago(d.lastChecked)) : 'Not checked yet'}</span>`
-      : `<span class="note">⚠️ Delivery status is off — add <code>USPS_CLIENT_ID</code> / <code>USPS_CLIENT_SECRET</code> in Render to turn on automatic “delivered” tracking. Everything else here works now.</span>`;
+      : `<span class="note">⚠️ Delivery status is off — add <code>EASYPOST_API_KEY</code> in Render to turn on automatic “delivered” tracking. Everything else here works now.</span>`;
 
     content().innerHTML = `
       <h3 style="margin-top:0">Delivery by batch</h3>

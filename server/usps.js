@@ -2,8 +2,6 @@
 // from the environment (set in Render), gets a token, and looks up each shipped
 // package's status by tracking number. Everything here no-ops cleanly when the
 // keys aren't set, so the rest of the app is unaffected until USPS is connected.
-import { q } from './db.js';
-
 const CLIENT_ID = process.env.USPS_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.USPS_CLIENT_SECRET || '';
 const BASE = process.env.USPS_API_BASE || 'https://apis.usps.com';
@@ -96,32 +94,5 @@ export async function uspsProbe(trackingNumber) {
   return { enabled: true, httpStatus: r.status, raw: r.json || (r.text || '').slice(0, 2000), parsed: r.json ? parseTracking(r.json) : null };
 }
 
-// Poll USPS for shipped-but-not-delivered packages that haven't been checked
-// recently, and write the results back. Bounded per call so we never hammer the
-// API or block a request for long.
-export async function refreshUspsStatuses({ limit = 40, force = false } = {}) {
-  if (!uspsEnabled()) return { enabled: false, checked: 0, delivered: 0, updated: 0 };
-  const staleClause = force ? '' : `AND (tracking_checked_at IS NULL OR tracking_checked_at < now() - interval '2 hours')`;
-  const rows = (await q(
-    `SELECT id, tracking_number FROM orders
-      WHERE status='paid' AND delivered_at IS NULL
-        AND NULLIF(tracking_number,'') IS NOT NULL ${staleClause}
-      ORDER BY tracking_checked_at ASC NULLS FIRST
-      LIMIT $1`, [limit])).rows;
-  let delivered = 0, updated = 0;
-  for (const o of rows) {
-    let res;
-    try { res = await uspsTrack(o.tracking_number); } catch (e) { res = { ok: false, error: e.message }; }
-    if (!res.ok) {
-      // Still stamp checked_at so one bad number doesn't get retried every pass.
-      await q(`UPDATE orders SET tracking_checked_at = now() WHERE id=$1`, [o.id]).catch(() => {});
-      continue;
-    }
-    await q(
-      `UPDATE orders SET tracking_status=$1, delivered_at=$2, tracking_checked_at=now() WHERE id=$3`,
-      [res.status || null, res.delivered ? (res.deliveredAt || new Date()) : null, o.id]).catch(() => {});
-    updated += 1;
-    if (res.delivered) delivered += 1;
-  }
-  return { enabled: true, checked: rows.length, delivered, updated };
-}
+// (The bounded refresh loop that writes results back now lives in delivery.js,
+// which picks the active provider — EasyPost or USPS.)

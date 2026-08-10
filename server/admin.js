@@ -8,7 +8,7 @@ import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
-import { uspsEnabled, refreshUspsStatuses, uspsProbe } from './usps.js';
+import { deliveryEnabled, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -1920,7 +1920,7 @@ export function mountAdmin(app) {
           ORDER BY (o.shipped_at IS NOT NULL), (o.delivered_at IS NOT NULL), o.paid_at DESC
           LIMIT 1000`, [dropId])).rows;
       const lastChecked = (await q(`SELECT MAX(tracking_checked_at) t FROM orders WHERE status='paid'`)).rows[0].t;
-      res.json({ uspsEnabled: uspsEnabled(), lastChecked, batches, shipments });
+      res.json({ deliveryEnabled: deliveryEnabled(), lastChecked, batches, shipments });
     } catch (e) { console.error('[shipping]', e); res.status(500).json({ error: e.message }); }
   });
 
@@ -1928,9 +1928,9 @@ export function mountAdmin(app) {
   app.post('/api/admin/shipping/refresh', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      if (!uspsEnabled()) return res.json({ enabled: false, checked: 0, delivered: 0, updated: 0 });
+      if (!deliveryEnabled()) return res.json({ enabled: false, checked: 0, delivered: 0, updated: 0 });
       const force = req.body?.force === true;
-      const result = await refreshUspsStatuses({ limit: force ? 80 : 40, force });
+      const result = await refreshDeliveryStatuses({ limit: force ? 80 : 40, force });
       res.json(result);
     } catch (e) { console.error('[shipping/refresh]', e); res.status(500).json({ error: e.message }); }
   });
@@ -1947,7 +1947,7 @@ export function mountAdmin(app) {
             WHERE status='paid' AND NULLIF(tracking_number,'') IS NOT NULL
             ORDER BY shipped_at DESC NULLS LAST LIMIT 1`)).rows[0]?.tracking_number || '';
       }
-      res.json({ trackingUsed: tracking, trackingLength: tracking.length, ...(await uspsProbe(tracking)) });
+      res.json({ trackingUsed: tracking, trackingLength: tracking.length, ...(await deliveryProbe(tracking)) });
     } catch (e) { console.error('[shipping/probe]', e); res.status(500).json({ error: e.message }); }
   });
 

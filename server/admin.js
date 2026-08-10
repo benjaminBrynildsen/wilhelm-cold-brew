@@ -8,6 +8,7 @@ import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
+import { uspsEnabled, refreshUspsStatuses } from './usps.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -1890,6 +1891,48 @@ export function mountAdmin(app) {
       if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
       res.json({ ok: true });
     } catch (e) { console.error('[orders] shipping update', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── Shipping tracker: per-batch delivery overview + per-shipment list ─────────
+  app.get('/api/admin/shipping', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const dropId = parseInt(req.query?.dropId, 10) || null;
+      // Per-batch rollup (packages = paid orders). Every batch that has any paid order.
+      const batches = (await q(
+        `SELECT d.id, d.name,
+                COUNT(*)::int AS paid,
+                COALESCE(SUM(o.quantity),0)::int AS bottles,
+                COUNT(*) FILTER (WHERE o.shipped_at IS NOT NULL)::int AS shipped,
+                COUNT(*) FILTER (WHERE o.delivered_at IS NOT NULL)::int AS delivered
+           FROM orders o JOIN drops d ON d.id = o.drop_id
+          WHERE o.status='paid'
+          GROUP BY d.id, d.name
+          ORDER BY MAX(o.paid_at) DESC NULLS LAST`)).rows;
+      // Per-shipment list: unshipped first, then in-transit, delivered last.
+      const shipments = (await q(
+        `SELECT o.id, o.shipping_name, o.email, o.quantity, o.paid_at, o.shipped_at, o.delivered_at,
+                o.tracking_number, o.tracking_carrier, o.tracking_status,
+                o.shipping_address->>'city' AS city, UPPER(o.shipping_address->>'state') AS state,
+                d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE o.status='paid' AND ($1::int IS NULL OR o.drop_id = $1)
+          ORDER BY (o.shipped_at IS NOT NULL), (o.delivered_at IS NOT NULL), o.paid_at DESC
+          LIMIT 1000`, [dropId])).rows;
+      const lastChecked = (await q(`SELECT MAX(tracking_checked_at) t FROM orders WHERE status='paid'`)).rows[0].t;
+      res.json({ uspsEnabled: uspsEnabled(), lastChecked, batches, shipments });
+    } catch (e) { console.error('[shipping]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Poll USPS now for pending packages and write back delivery status.
+  app.post('/api/admin/shipping/refresh', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!uspsEnabled()) return res.json({ enabled: false, checked: 0, delivered: 0, updated: 0 });
+      const force = req.body?.force === true;
+      const result = await refreshUspsStatuses({ limit: force ? 80 : 40, force });
+      res.json(result);
+    } catch (e) { console.error('[shipping/refresh]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Pirate Ship export: paid orders → bulk-import CSV ─────────

@@ -1767,7 +1767,16 @@ export function mountAdmin(app) {
       // signup's next-opening drop). Answers "the week-of signups bought X% —
       // where did the rest come from?": e.g. Batch 62's week, Batch 61's week…
       const buyerCohorts = dropId ? (await q(
-        `WITH ords AS (
+        `WITH drop_opens AS (
+            -- Anchor each drop to when it ACTUALLY sold (first paid order), not the
+            -- scheduled opens_at, which "go live" never updates and is often days
+            -- stale — that stale value was dumping pre-drop signups into the
+            -- "joined after this drop opened" bucket and inflating it.
+            SELECT d.name,
+                   COALESCE((SELECT MIN(o.paid_at) FROM orders o WHERE o.drop_id = d.id AND o.status = 'paid'),
+                            d.opens_at, d.created_at) AS t
+              FROM drops d WHERE d.status <> 'scheduled'),
+          ords AS (
             SELECT o.id, norm_email(o.email) e FROM orders o
              WHERE o.drop_id = $1 AND o.status = 'paid' AND o.email IS NOT NULL),
           joined AS (
@@ -1780,11 +1789,10 @@ export function mountAdmin(app) {
                 COUNT(*)::int n
            FROM joined j
            LEFT JOIN LATERAL (
-             SELECT dd.name, COALESCE(dd.opens_at, dd.created_at) AS t
-               FROM drops dd
-              WHERE dd.status <> 'scheduled'
-                AND COALESCE(dd.opens_at, dd.created_at) >= j.joined_at
-              ORDER BY COALESCE(dd.opens_at, dd.created_at) ASC LIMIT 1) d ON TRUE
+             SELECT dp.name, dp.t
+               FROM drop_opens dp
+              WHERE dp.t >= j.joined_at
+              ORDER BY dp.t ASC LIMIT 1) d ON TRUE
           GROUP BY 1
           ORDER BY MAX(COALESCE(d.t, CASE WHEN j.joined_at IS NULL THEN '-infinity'::timestamptz
                                           ELSE 'infinity'::timestamptz END)) DESC`, [dropId])).rows : null;

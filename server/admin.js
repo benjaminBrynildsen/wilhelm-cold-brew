@@ -1775,7 +1775,7 @@ export function mountAdmin(app) {
                    (SELECT MIN(s.created_at) FROM subscribers s WHERE norm_email(s.email) = ords.e) AS joined_at
               FROM ords)
          SELECT CASE WHEN j.joined_at IS NULL THEN 'no signup found for their checkout email'
-                     WHEN d.name IS NULL THEN 'after this batch opened'
+                     WHEN d.name IS NULL THEN 'joined after this drop opened'
                      ELSE d.name END AS cohort,
                 COUNT(*)::int n
            FROM joined j

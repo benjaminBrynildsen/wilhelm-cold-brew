@@ -1619,7 +1619,7 @@ async function showOrders() {
           <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
           <td>${r.tracking_number
             ? `<a href="${esc(trackUrl(r.tracking_number, r.tracking_carrier))}" target="_blank" rel="noopener">${esc(String(r.tracking_number).slice(0, 14))}${String(r.tracking_number).length > 14 ? '…' : ''}</a>${r.ship_notified_at ? ' <span style="color:var(--good)" title="purchaser emailed">✓</span>' : ' <span class="note" title="tracking on file, not yet emailed">·</span>'}`
-            : '<span class="note">—</span>'}</td></tr>`).join('')
+            : '<span class="note">—</span>'}${r.status === 'paid' ? ` <button class="btn ghost otrack" data-id="${r.id}" style="padding:0 7px" title="Edit tracking number">✎</button>` : ''}</td></tr>`).join('')
       : '<tr><td class="note" colspan="7">No orders yet.</td></tr>';
     const dropRows = dd.drops.length
       ? dd.drops.map((d) => `<tr>
@@ -1940,6 +1940,42 @@ async function showOrders() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: v('oa-name'), line1: v('oa-l1'), line2: v('oa-l2'),
                                    city: v('oa-city'), state: v('oa-state'), postal_code: v('oa-zip') }),
+          });
+          showOrders();
+        } catch (e) { msg.textContent = 'Failed: ' + e.message; }
+      });
+    }));
+    // Inline tracking editor: ✎ in the Tracking cell opens a one-row form to set,
+    // fix, or clear an order's tracking number(s) for one-off cases (refund reship,
+    // wrong number). Multiple numbers (split shipment) can be comma-separated.
+    document.querySelectorAll('.otrack').forEach((b) => b.addEventListener('click', () => {
+      const open = document.getElementById('track-editor');
+      const wasMine = open && open.dataset.for === b.dataset.id;
+      if (open) open.remove();
+      if (wasMine) return;
+      const ord = o.orders.find((x) => String(x.id) === b.dataset.id) || {};
+      const nums = Array.isArray(ord.tracking_numbers) && ord.tracking_numbers.length
+        ? ord.tracking_numbers.map((t) => t.tracking).filter(Boolean).join(', ')
+        : (ord.tracking_number || '');
+      const cur = ord.tracking_number
+        ? `<a href="${esc(trackUrl(ord.tracking_number, ord.tracking_carrier))}" target="_blank" rel="noopener" style="margin-left:4px">open on ${esc(ord.tracking_carrier || 'USPS')} ↗</a>` : '';
+      const ed = document.createElement('tr');
+      ed.id = 'track-editor';
+      ed.dataset.for = b.dataset.id;
+      ed.innerHTML = `<td colspan="7"><div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0">
+          <input id="ot-num" placeholder="Tracking number(s) — comma-separate split shipments" value="${esc(nums)}" style="${FLD_DARK};width:360px"/>
+          <input id="ot-carrier" placeholder="Carrier" value="${esc(ord.tracking_carrier || 'USPS')}" style="${FLD_DARK};width:80px"/>
+          <button class="btn" id="ot-save">Save tracking</button>
+          <span class="note">${cur} · empty = clear (marks un-shipped)</span>
+          <span class="note" id="ot-msg"></span></div></td>`;
+      b.closest('tr').after(ed);
+      document.getElementById('ot-save').addEventListener('click', async () => {
+        const msg = document.getElementById('ot-msg');
+        msg.textContent = 'Saving…';
+        try {
+          await api(`/api/admin/orders/${b.dataset.id}/tracking`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tracking: document.getElementById('ot-num').value, carrier: document.getElementById('ot-carrier').value.trim() }),
           });
           showOrders();
         } catch (e) { msg.textContent = 'Failed: ' + e.message; }

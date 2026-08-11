@@ -2085,6 +2085,34 @@ export function mountAdmin(app) {
     if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
     try {
       const commit = req.body?.commit === true;
+      // Committing edited preview rows: use the (possibly hand-corrected) list
+      // directly instead of re-parsing the file, so one-off tracking fixes made in
+      // the preview stick. The recipient (email/name) always comes from the DB by
+      // order id — the admin can edit the tracking number/carrier, never who's
+      // emailed. Editing resets delivery status so the tracker re-checks the number.
+      if (commit && Array.isArray(req.body?.matched)) {
+        const results = [];
+        for (const m of req.body.matched.slice(0, 3000)) {
+          const oid = parseInt(m.orderId, 10);
+          if (!oid) continue;
+          const nums = String(m.tracking || '').split(/[\s,]+/).map((s) => s.trim().replace(/[^A-Za-z0-9]/g, '')).filter(Boolean).slice(0, 20);
+          if (!nums.length) continue;
+          const carrier = m.carrier ? String(m.carrier).slice(0, 40) : 'USPS';
+          const ord = (await q(
+            `SELECT o.id, o.email, o.shipping_name, (SELECT name FROM drops d WHERE d.id = o.drop_id) drop_name
+               FROM orders o WHERE o.id = $1 AND o.status = 'paid'`, [oid])).rows[0];
+          if (!ord) continue;
+          const trackings = nums.map((t) => ({ tracking: t, carrier }));
+          await q(`UPDATE orders SET tracking_number=$1, tracking_carrier=$2, tracking_numbers=$3,
+                          shipped_at=COALESCE(shipped_at, now()),
+                          tracking_status=NULL, delivered_at=NULL, tracking_checked_at=NULL
+                     WHERE id=$4`,
+            [nums[0], carrier, JSON.stringify(trackings), oid]).catch((e) => console.warn('[import-tracking] edited update failed:', e?.message));
+          results.push({ orderId: oid, email: ord.email, name: ord.shipping_name, dropName: ord.drop_name, carrier, trackings });
+        }
+        runShipNotices(results);
+        return res.json({ ok: true, recorded: results.length, emailing: results.length, skipped: 0, unmatched: 0 });
+      }
       let rows;
       if (req.body?.xlsx) {
         // Excel (.xlsx/.xls) — SheetJS to an array-of-arrays. raw:false keeps long

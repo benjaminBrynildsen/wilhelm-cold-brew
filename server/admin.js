@@ -1731,7 +1731,7 @@ export function mountAdmin(app) {
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
                 o.shipping_address, o.variant, o.created_at, o.paid_at, o.shipped_at,
-                o.tracking_number, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name
+                o.tracking_number, o.tracking_numbers, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ($1::int IS NULL OR o.drop_id = $1)
           ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;
@@ -1899,6 +1899,38 @@ export function mountAdmin(app) {
       if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
       res.json({ ok: true });
     } catch (e) { console.error('[orders] shipping update', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Manually set/clear an order's tracking number(s) — one-off fixes (a refund
+  // reship, a wrong number, a hand-created label). Accepts one or several numbers
+  // (comma/space separated). Editing the number resets the delivery status so the
+  // tracker re-checks the new one; clearing it marks the order un-shipped again.
+  app.post('/api/admin/orders/:id/tracking', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'bad order id' });
+    const carrier = req.body?.carrier ? String(req.body.carrier).trim().slice(0, 40) : 'USPS';
+    const nums = String(req.body?.tracking || '')
+      .split(/[\s,]+/).map((s) => s.trim().replace(/[^A-Za-z0-9]/g, '')).filter(Boolean).slice(0, 20);
+    try {
+      if (!nums.length) {
+        const r = await q(
+          `UPDATE orders SET tracking_number=NULL, tracking_numbers=NULL, tracking_carrier=NULL,
+                  tracking_status=NULL, delivered_at=NULL, tracking_checked_at=NULL, shipped_at=NULL
+            WHERE id=$1 RETURNING id`, [id]);
+        if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
+        return res.json({ ok: true, cleared: true });
+      }
+      const list = nums.map((t) => ({ tracking: t, carrier }));
+      const r = await q(
+        `UPDATE orders SET tracking_number=$1, tracking_carrier=$2, tracking_numbers=$3,
+                shipped_at=COALESCE(shipped_at, now()),
+                tracking_status=NULL, delivered_at=NULL, tracking_checked_at=NULL
+          WHERE id=$4 RETURNING id`,
+        [nums[0], carrier, JSON.stringify(list), id]);
+      if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
+      res.json({ ok: true, count: nums.length });
+    } catch (e) { console.error('[orders] tracking update', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Shipping tracker: per-batch delivery overview + per-shipment list ─────────

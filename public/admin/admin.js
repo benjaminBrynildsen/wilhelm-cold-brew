@@ -1823,18 +1823,19 @@ async function showOrders() {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, dropId: state.ordersDrop || null, commit: false }),
         });
         tmsg.textContent = '';
-        const matchRows = (r.matched || []).map((m) => `<tr>
+        const matchRows = (r.matched || []).map((m) => `<tr data-oid="${esc(m.orderId)}">
             <td>${esc(m.orderId)}</td><td>${esc(m.name || '—')}</td><td>${esc(m.email)}</td>
-            <td>${esc(m.dropName || '—')}</td><td>${esc(m.carrier || '—')}</td>
-            <td><a href="${esc(trackUrl(m.tracking, m.carrier))}" target="_blank" rel="noopener">${esc(m.tracking)}</a></td></tr>`).join('');
+            <td>${esc(m.dropName || '—')}</td>
+            <td><input class="tk-carrier" value="${esc(m.carrier || 'USPS')}" style="${FLD_DARK};width:64px"/></td>
+            <td><input class="tk-num" value="${esc(m.tracking)}" spellcheck="false" style="${FLD_DARK};width:300px"/></td></tr>`).join('');
         const um = (r.unmatched || []).slice(0, 12).map((u) =>
           `<li>${esc(u.tracking)} — ${esc(u.orderId ? 'Order ' + u.orderId : (u.email || 'no id/email'))}</li>`).join('');
         tres.innerHTML = `
           <div class="note" style="margin:6px 0">
             <b style="color:var(--good)">${num(r.willEmail)}</b> will be emailed${r.skipped.length ? ` · ${num(r.skipped.length)} already notified (skipped)` : ''}${r.unmatched.length ? ` · <span style="color:var(--bad)">${num(r.unmatched.length)} unmatched</span>` : ''}.
           </div>
-          ${r.willEmail ? `<h4 style="margin:12px 0 4px">Who will be emailed <span class="note">— verify these before sending</span></h4>
-            <table><thead><tr><th>Order</th><th>Name</th><th>Email</th><th>Drop</th><th>Carrier</th><th>Tracking</th></tr></thead><tbody>${matchRows}</tbody></table>` : ''}
+          ${r.willEmail ? `<h4 style="margin:12px 0 4px">Who will be emailed <span class="note">— verify these before sending; edit a tracking number to fix a one-off</span></h4>
+            <table id="tkmatch"><thead><tr><th>Order</th><th>Name</th><th>Email</th><th>Drop</th><th>Carrier</th><th>Tracking</th></tr></thead><tbody>${matchRows}</tbody></table>` : ''}
           ${r.unmatched.length ? `<div class="note" style="margin-top:8px;color:var(--bad)">Unmatched (won't be emailed — fix the Order ID/email in the export, or these orders aren't paid):<ul style="margin:4px 0 0">${um}${r.unmatched.length > 12 ? '<li>…</li>' : ''}</ul></div>` : ''}
           ${r.sampleEmail ? `<h4 style="margin:16px 0 4px">Email preview <span class="note">— exactly what ${esc(r.sampleEmail.name || r.sampleEmail.to)} receives · subject: "${esc(r.sampleEmail.subject)}"</span></h4>
             <iframe id="trackemailframe" title="shipping email preview" style="width:100%;max-width:600px;height:540px;border:1px solid rgba(232,217,181,0.2);border-radius:6px;background:#fff"></iframe>
@@ -1854,7 +1855,7 @@ async function showOrders() {
           try {
             const rr = await api('/api/admin/orders/tracking-test-send', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ shippingName: m.name, tracking: m.tracking, carrier: m.carrier, dropName: m.dropName }),
+              body: JSON.stringify({ shippingName: m.name, tracking: document.querySelector('#tkmatch .tk-num')?.value || m.tracking, carrier: document.querySelector('#tkmatch .tk-carrier')?.value || m.carrier, dropName: m.dropName }),
             });
             document.getElementById('tracktestmsg').textContent = ` Sent to ${rr.sentTo} — check your inbox.`;
           } catch (e) { document.getElementById('tracktestmsg').textContent = ' Failed: ' + e.message; }
@@ -1862,11 +1863,18 @@ async function showOrders() {
         });
         const tsend = document.getElementById('tracksend');
         if (tsend) tsend.addEventListener('click', async () => {
-          if (!confirm(`Send tracking emails to ${r.willEmail} purchaser(s) now?`)) return;
+          // Send the (possibly edited) rows from the preview, not the raw file.
+          const edited = [...document.querySelectorAll('#tkmatch tr[data-oid]')].map((tr) => ({
+            orderId: tr.dataset.oid,
+            tracking: (tr.querySelector('.tk-num')?.value || '').trim(),
+            carrier: (tr.querySelector('.tk-carrier')?.value || 'USPS').trim(),
+          })).filter((x) => x.tracking);
+          if (!edited.length) { document.getElementById('tracksendmsg').textContent = ' No tracking numbers to send.'; return; }
+          if (!confirm(`Send tracking emails to ${edited.length} purchaser(s) now?`)) return;
           tsend.disabled = true; document.getElementById('tracksendmsg').textContent = ' Sending…';
           try {
             const rr = await api('/api/admin/orders/import-tracking', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...trackPayload, dropId: state.ordersDrop || null, commit: true }),
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matched: edited, commit: true }),
             });
             document.getElementById('tracksendmsg').textContent = ` Recorded ${rr.recorded}, emailing ${rr.emailing} in the background — refresh shortly to see who's notified.`;
             setTimeout(showOrders, 2500);

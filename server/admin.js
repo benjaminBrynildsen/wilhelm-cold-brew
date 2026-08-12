@@ -1004,14 +1004,23 @@ export function mountAdmin(app) {
       const toAdd = ourActive.filter((e) => !mcStatus.has(e));
       const toOptOut = ourUnsubbed.filter((e) => ['subscribed', 'pending'].includes(mcStatus.get(e)));
       let added = 0, optedOutInMc = 0;
-      const pushErrors = [];
+      // Turn Mailchimp's verbose 400s into a one-word reason so the sync summary
+      // reads as a clean list of rejected addresses, not a wall of API JSON.
+      const mcReason = (err) => {
+        const d = String(err?.mcDetail || err?.message || '').toLowerCase();
+        if (/fake or invalid|looks fake|real email|valid email/.test(d)) return 'invalid / looks fake';
+        if (/could not be validated|not be validated/.test(d)) return 'unverifiable';
+        if (/compliance|permanently deleted|signed up to a lot|abuse/.test(d)) return 'blocked by Mailchimp';
+        return err?.status ? `Mailchimp ${err.status}` : 'rejected';
+      };
+      const pushErrors = [];   // clean "email (reason)" strings
       for (const e of toAdd) {
         try { await mcEnsureMember(e); added++; }
-        catch (err) { pushErrors.push(`${e}: ${err.message}`); }
+        catch (err) { pushErrors.push(`${e} (${mcReason(err)})`); }
       }
       for (const e of toOptOut) {
         try { await mcMarkUnsubscribed(e); optedOutInMc++; }
-        catch (err) { pushErrors.push(`${e}: ${err.message}`); }
+        catch (err) { pushErrors.push(`${e} (${mcReason(err)})`); }
       }
       if (pushErrors.length) console.warn('[mailchimp-sync] push errors:', pushErrors.slice(0, 10));
 
@@ -1022,7 +1031,7 @@ export function mountAdmin(app) {
 
       res.json({
         ok: true, applied: true, audiences, ...result,
-        push: { audience: listName, added, optedOut: optedOutInMc, errors: pushErrors.slice(0, 5), errorCount: pushErrors.length },
+        push: { audience: listName, added, optedOut: optedOutInMc, errors: pushErrors.slice(0, 100), errorCount: pushErrors.length },
       });
     } catch (e) { console.error('[mailchimp-sync]', e); res.status(500).json({ error: e.message }); }
   });

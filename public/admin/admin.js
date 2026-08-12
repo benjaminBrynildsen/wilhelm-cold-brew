@@ -2504,7 +2504,7 @@ async function showEmail() {
       if (r.audiences) lines.push('Checked Mailchimp audience' + (r.audiences.length > 1 ? 's' : '') + ': ' + r.audiences.map((a) => `${a.name} (${num(a.fetched)} opted out/bounced)`).join(', '));
       if (r.push) {
         lines.push(`Pushed to Mailchimp (${r.push.audience}): ${num(r.push.added)} missing signups added, ${num(r.push.optedOut)} of our unsubscribes opted out there.`);
-        if (r.push.errorCount) lines.push(`⚠ ${num(r.push.errorCount)} pushes failed — first few: ${r.push.errors.join('; ')}`);
+        if (r.push.errorCount) lines.push(`⚠ ${num(r.push.errorCount)} address${r.push.errorCount === 1 ? '' : 'es'} Mailchimp wouldn't accept (invalid or fake — they stay on your Wilhelm list, they just can't sync to Mailchimp): ${mcList(r.push.errors)}`);
       }
       return lines.join('\n');
     };

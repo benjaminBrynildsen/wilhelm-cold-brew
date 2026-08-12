@@ -44,7 +44,11 @@ export async function mcFetch(path, opts = {}) {
   });
   if (!r.ok) {
     const body = await r.text().catch(() => '');
-    throw new Error(`Mailchimp API ${r.status}${body ? ': ' + body.slice(0, 200) : ''}`);
+    let detail = '';
+    try { const j = JSON.parse(body); detail = j.detail || j.title || ''; } catch (e) { /* non-JSON */ }
+    const err = new Error(`Mailchimp API ${r.status}${detail ? ': ' + detail : (body ? ': ' + body.slice(0, 200) : '')}`);
+    err.status = r.status; err.mcDetail = detail;
+    throw err;
   }
   return r.json();
 }

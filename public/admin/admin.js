@@ -1612,7 +1612,7 @@ async function showOrders() {
     const orderRows = o.orders.length
       ? o.orders.map((r) => `<tr>
           <td>${esc((r.created_at || '').slice(0, 10))}</td>
-          <td>${esc(r.email || '—')}</td>
+          <td>${esc(r.email || '—')}${r.buyer_drops > 1 ? ` <span title="Repeat customer — bought ${r.buyer_drops} batches" style="color:var(--gold);font-weight:700;cursor:default">↻${r.buyer_drops > 2 ? '<sup style="font-size:.7em">' + num(r.buyer_drops) + '</sup>' : ''}</span>` : ''}</td>
           <td>${esc(r.drop_name || '—')}</td>
           <td>${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
           <td class="num">${money(r.amount_total_cents)}</td>

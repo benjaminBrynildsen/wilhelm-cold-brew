@@ -1740,7 +1740,11 @@ export function mountAdmin(app) {
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
                 o.shipping_address, o.variant, o.created_at, o.paid_at, o.shipped_at,
-                o.tracking_number, o.tracking_numbers, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name
+                o.tracking_number, o.tracking_numbers, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name,
+                -- how many distinct batches this buyer has paid for (>1 = recurring)
+                (SELECT COUNT(DISTINCT p.drop_id) FROM orders p
+                  WHERE p.status='paid' AND p.email IS NOT NULL
+                    AND norm_email(p.email) = norm_email(o.email))::int AS buyer_drops
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ($1::int IS NULL OR o.drop_id = $1)
           ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;

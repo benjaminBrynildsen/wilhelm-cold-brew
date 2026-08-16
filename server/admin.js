@@ -1760,21 +1760,35 @@ export function mountAdmin(app) {
         ? (await q(
             `WITH cur AS (SELECT COALESCE(opens_at, created_at) AS t FROM drops WHERE id = $1),
                   buyers AS (SELECT DISTINCT norm_email(email) e FROM orders
-                              WHERE drop_id = $1 AND status = 'paid' AND email IS NOT NULL)
+                              WHERE drop_id = $1 AND status = 'paid' AND email IS NOT NULL),
+                  returning_buyers AS (
+                    SELECT b.e FROM buyers b
+                     WHERE EXISTS (SELECT 1 FROM orders p JOIN drops pd ON pd.id = p.drop_id, cur
+                                    WHERE p.status = 'paid' AND norm_email(p.email) = b.e
+                                      AND p.drop_id <> $1
+                                      AND COALESCE(pd.opens_at, pd.created_at) < cur.t))
              SELECT (SELECT COUNT(*)::int FROM buyers) AS buyers,
-                    (SELECT COUNT(*)::int FROM buyers b
-                      WHERE EXISTS (SELECT 1 FROM orders p JOIN drops pd ON pd.id = p.drop_id, cur
-                                     WHERE p.status = 'paid' AND norm_email(p.email) = b.e
-                                       AND p.drop_id <> $1
-                                       AND COALESCE(pd.opens_at, pd.created_at) < cur.t)) AS returning`,
+                    (SELECT COUNT(*)::int FROM returning_buyers) AS returning,
+                    -- bottles this batch, total vs. from returning buyers
+                    (SELECT COALESCE(SUM(quantity),0)::int FROM orders
+                      WHERE drop_id = $1 AND status = 'paid' AND email IS NOT NULL) AS bottles,
+                    (SELECT COALESCE(SUM(quantity),0)::int FROM orders
+                      WHERE drop_id = $1 AND status = 'paid' AND email IS NOT NULL
+                        AND norm_email(email) IN (SELECT e FROM returning_buyers)) AS returning_bottles`,
             [dropId])).rows[0]
         : (await q(
-            `SELECT (SELECT COUNT(DISTINCT norm_email(email))::int FROM orders
+            `WITH returning_buyers AS (
+               SELECT norm_email(email) e FROM orders
+                WHERE status = 'paid' AND email IS NOT NULL
+                GROUP BY 1 HAVING COUNT(DISTINCT drop_id) >= 2)
+             SELECT (SELECT COUNT(DISTINCT norm_email(email))::int FROM orders
                       WHERE status = 'paid' AND email IS NOT NULL) AS buyers,
-                    (SELECT COUNT(*)::int FROM (
-                       SELECT norm_email(email) FROM orders
-                        WHERE status = 'paid' AND email IS NOT NULL
-                        GROUP BY 1 HAVING COUNT(DISTINCT drop_id) >= 2) t) AS returning`)).rows[0];
+                    (SELECT COUNT(*)::int FROM returning_buyers) AS returning,
+                    (SELECT COALESCE(SUM(quantity),0)::int FROM orders
+                      WHERE status = 'paid' AND email IS NOT NULL) AS bottles,
+                    (SELECT COALESCE(SUM(quantity),0)::int FROM orders
+                      WHERE status = 'paid' AND email IS NOT NULL
+                        AND norm_email(email) IN (SELECT e FROM returning_buyers)) AS returning_bottles`)).rows[0];
       // Signup-cohort breakdown for a selected batch: each paid order's buyer is
       // bucketed by WHICH batch week they first joined the list during (their
       // signup's next-opening drop). Answers "the week-of signups bought X% —
@@ -1882,7 +1896,10 @@ export function mountAdmin(app) {
           GROUP BY 1,2 ORDER BY bottles DESC, city ASC LIMIT 8`, [dropId])).rows;
       const shipMap = { byState, topCities, noState, totalBottles: mapBottles, statesCount: mapStates };
 
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning, freshSignups, buyerCohorts, shipMap });
+      const returningOut = returning
+        ? { ...returning, returningBottles: returning.returning_bottles }
+        : returning;
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning: returningOut, freshSignups, buyerCohorts, shipMap });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

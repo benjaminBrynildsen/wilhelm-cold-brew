@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Wilhelm · How to Brew It</title>
+  <link rel="icon" href="/favicon.ico" sizes="any"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <meta name="description" content="How to cut Wilhelm Cold Brew concentrate — the ratio, the reasoning, and a word on caffeine."/>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/bodoni-moda-normal-400-latin.woff2" crossorigin/>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/lora-normal-400-latin.woff2" crossorigin/>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css"/>
+  <style>
+    :root{
+      --gold:#e8c24a; --gold-deep:#b8922f; --gold-ink:#8a6914; --ink:#0c0a08;
+      --parchment:#f6efda; --card:#fffcf1; --line:rgba(184,146,47,.32); --line-soft:rgba(184,146,47,.18);
+      --body:#3c3324; --dim:rgba(60,51,36,.62);
+      --serif:'Bodoni Moda',Georgia,serif; --text:'Lora',Georgia,serif; --mono:'DM Mono',monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;color:var(--body);font-family:var(--text);font-size:17px;line-height:1.65;
+      background:radial-gradient(ellipse at 50% 0%, #fffdf6 0%, var(--parchment) 62%) fixed, var(--parchment)}
+    .wrap{max-width:660px;margin:0 auto;padding:44px 20px 70px}
+    header{text-align:center;margin-bottom:34px}
+    header img{width:92px;height:92px;border-radius:50%;border:1.5px solid var(--gold-deep);background:var(--ink)}
+    h1{font-family:var(--serif);font-weight:700;color:var(--gold-ink);font-size:34px;letter-spacing:1px;margin:18px 0 6px}
+    .sub{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:2.5px;text-transform:uppercase}
+    .intro{color:var(--body);font-size:16.5px;font-style:italic;margin:16px auto 0;max-width:460px}
+
+    .ratio{background:var(--card);border:1px solid var(--gold-deep);border-radius:16px;padding:30px 26px 26px;margin:0 0 20px;
+      text-align:center;box-shadow:0 0 0 1px rgba(184,146,47,.18), 0 14px 40px rgba(96,72,16,.13)}
+    .ratio .lead{font-family:var(--mono);font-size:10.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:14px}
+    .ratio .big{font-family:var(--serif);font-weight:700;color:#241c0d;font-size:60px;line-height:1;letter-spacing:2px}
+    .ratio .big small{font-size:26px;color:var(--gold-deep);vertical-align:middle;padding:0 6px}
+    .ratio .legend{display:flex;justify-content:center;gap:34px;margin-top:16px;flex-wrap:wrap}
+    .ratio .legend div{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)}
+    .ratio .legend b{display:block;font-family:var(--text);font-size:15px;letter-spacing:0;text-transform:none;color:#241c0d;margin-top:3px;font-weight:600}
+
+    .card{background:var(--card);border:1px solid var(--line-soft);border-radius:16px;padding:24px 26px 22px;margin:0 0 18px;
+      box-shadow:0 8px 26px rgba(96,72,16,.07)}
+    .card h2{font-family:var(--serif);font-weight:600;color:#241c0d;font-size:21px;margin:0 0 12px}
+    .card p{margin:0 0 12px}
+    .card p:last-child{margin-bottom:0}
+    .steps{list-style:none;counter-reset:s;margin:0;padding:0}
+    .steps li{counter-increment:s;position:relative;padding:0 0 14px 40px;margin:0}
+    .steps li:last-child{padding-bottom:0}
+    .steps li::before{content:counter(s);position:absolute;left:0;top:-2px;width:26px;height:26px;border-radius:50%;
+      background:var(--gold);color:var(--ink);font-family:var(--mono);font-size:13px;font-weight:500;
+      display:flex;align-items:center;justify-content:center}
+    .note{border-left:3px solid var(--gold-deep);padding:2px 0 2px 16px;color:var(--body)}
+    .note b{color:var(--gold-ink)}
+
+    .cta{margin-top:40px;text-align:center;border:1px solid var(--line);border-radius:16px;padding:30px 22px;background:var(--card);
+      box-shadow:0 8px 26px rgba(96,72,16,.07)}
+    .cta p{margin:0 0 16px;font-size:16.5px}
+    .cta a.btn{display:inline-block;background:var(--gold);color:var(--ink);font-family:var(--text);font-weight:700;
+      font-size:16px;text-decoration:none;padding:13px 28px;border-radius:10px;box-shadow:0 4px 14px rgba(184,146,47,.35)}
+    .cta .alt{margin-top:14px;font-size:13.5px;color:var(--dim)}
+    .cta .alt a{color:var(--gold-ink)}
+    footer{text-align:center;margin-top:36px;color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:2px;text-transform:uppercase}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
+      <h1>How to Brew It</h1>
+      <div class="sub">The cut · Over ice · Small batch</div>
+      <p class="intro">Wilhelm ships as a concentrate, so it's meant to be cut before you drink it. Here's the ratio, and why it lands where it does.</p>
+    </header>
+
+    <div class="ratio">
+      <div class="lead">Ratio to cut</div>
+      <div class="big">3<small>:</small>2</div>
+      <div class="legend">
+        <div>Cold brew<b>3 parts</b></div>
+        <div>Water<b>2 parts</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Why 3:2 and not 1:1</h2>
+      <p>A medium roast usually cuts one-to-one. This one is a <b>light roast</b>, and the flavor works out a little better when it's left a touch stronger on the cold brew side — so we lean it to three parts concentrate, two parts water.</p>
+      <p>Treat it as a starting line, not a law. Pull it back toward 1:1 if you want it lighter; the barrel does the rest.</p>
+    </div>
+
+    <div class="card">
+      <h2>The pour</h2>
+      <ol class="steps">
+        <li>Fill a glass with ice.</li>
+        <li>Add 3 parts Wilhelm concentrate to 2 parts cold water — or milk, if that's your morning.</li>
+        <li>Stir once, taste, and adjust to your own liking.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>A word on caffeine</h2>
+      <p class="note">About <b>3 oz of the concentrate</b> carries roughly <b>150–175 mg of caffeine</b> — a full cup's worth before you cut it. Be mindful of how much you're pouring.</p>
+    </div>
+
+    <div class="cta">
+      <p>Bottles go up every Friday at 9AM and sell out in minutes.<br/>The list hears first.</p>
+      <a class="btn" href="/drink/?utm_source=recipe&utm_medium=label">Join the Friday Drop</a>
+      <div class="alt">Curious what's in this batch? <a href="/batches/">Read the batch notes</a></div>
+    </div>
+    <footer>Wilhelm Cold Brew · Est. on a handshake</footer>
+  </div>
+</body>
+</html>

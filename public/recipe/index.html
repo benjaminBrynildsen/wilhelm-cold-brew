@@ -86,7 +86,7 @@
       <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
       <h1>Recipes</h1>
       <div class="sub">Wilhelm ships as a concentrate — here's how to pour it</div>
-      <p class="intro">Start with the classic cut. Once you've got that, everything else is a variation on it.</p>
+      <p class="intro">Pour it straight over ice, or cut it long with water. Both start here.</p>
     </header>
 
     <nav class="jump" id="jump"></nav>
@@ -118,11 +118,28 @@
        ────────────────────────────────────────────────────────────── */
     var RECIPES = [
       {
+        slug: 'on-the-rocks',
+        name: 'On the Rocks',
+        kicker: 'The simplest pour — start here',
+        tagline: 'The barrel, undiluted, softening as the ice melts.',
+        feature: true,
+        pills: ['1 min', 'Serves 1', 'Neat'],
+        ingredients: [
+          '3 oz Wilhelm concentrate, straight',
+          'One large ice cube — the bigger the slower'
+        ],
+        steps: [
+          'Drop one big cube into a rocks glass.',
+          'Pour the concentrate straight over — no water.',
+          'Sip slow and let the melt open it up.'
+        ],
+        note: 'This is the concentrate uncut, so it drinks bold and hits harder — about **3 oz is 150–175 mg of caffeine**. One pour is plenty.'
+      },
+      {
         slug: 'the-cut',
         name: 'The Classic Cut',
-        kicker: 'The foundation — master this first',
-        tagline: 'Cold brew, water, ice. The way it’s meant to be poured.',
-        feature: true,
+        kicker: 'When you want it longer',
+        tagline: 'Cold brew, water, ice. Cut to an everyday glass.',
         pills: ['2 min', 'Serves 1', 'Over ice'],
         ratio: { lead: 'Ratio to cut', a: '3', b: '2', aLabel: 'Cold brew', bLabel: 'Water' },
         ingredients: [
@@ -135,24 +152,7 @@
           'Add 3 parts Wilhelm concentrate to 2 parts cold water (or milk).',
           'Stir once, taste, and adjust to your own liking.'
         ],
-        note: 'A medium roast usually cuts **1:1**. This one’s a **light roast**, so the flavor lands better left a touch stronger on the cold-brew side — hence 3:2. And mind the caffeine: about **3 oz of concentrate** carries roughly **150–175 mg**, a full cup’s worth before you cut it.'
-      },
-      {
-        slug: 'on-the-rocks',
-        name: 'On the Rocks',
-        kicker: 'A variation — straight, no cut',
-        tagline: 'The barrel, undiluted, softening as the ice melts.',
-        pills: ['1 min', 'Serves 1', 'Neat'],
-        ingredients: [
-          '3 oz Wilhelm concentrate, straight',
-          'One large ice cube — the bigger the slower'
-        ],
-        steps: [
-          'Drop one big cube into a rocks glass.',
-          'Pour the concentrate straight over — no water.',
-          'Sip slow and let the melt open it up.'
-        ],
-        note: 'This is the concentrate uncut, so it drinks bold and hits harder — that same **3 oz is 150–175 mg of caffeine**. One pour is plenty.'
+        note: 'A medium roast usually cuts **1:1**. This one’s a **light roast**, so the flavor lands better left a touch stronger on the cold-brew side — hence 3:2.'
       }
       /* , { slug: '', name: '', steps: [] }  ← next recipe goes here */
     ];

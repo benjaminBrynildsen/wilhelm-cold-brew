@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Wilhelm · How to Brew It</title>
+  <title>Wilhelm · Recipes</title>
   <link rel="icon" href="/favicon.ico" sizes="any"/>
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
   <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
-  <meta name="description" content="How to cut Wilhelm Cold Brew concentrate — the ratio, the reasoning, and a word on caffeine."/>
+  <meta name="description" content="Ways to pour Wilhelm Cold Brew — start with the classic cut, then build from there."/>
   <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/bodoni-moda-normal-400-latin.woff2" crossorigin/>
   <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/lora-normal-400-latin.woff2" crossorigin/>
   <link rel="stylesheet" href="/assets/fonts/fonts.css"/>
@@ -22,33 +22,52 @@
     body{margin:0;color:var(--body);font-family:var(--text);font-size:17px;line-height:1.65;
       background:radial-gradient(ellipse at 50% 0%, #fffdf6 0%, var(--parchment) 62%) fixed, var(--parchment)}
     .wrap{max-width:660px;margin:0 auto;padding:44px 20px 70px}
-    header{text-align:center;margin-bottom:34px}
+    header{text-align:center;margin-bottom:26px}
     header img{width:92px;height:92px;border-radius:50%;border:1.5px solid var(--gold-deep);background:var(--ink)}
     h1{font-family:var(--serif);font-weight:700;color:var(--gold-ink);font-size:34px;letter-spacing:1px;margin:18px 0 6px}
     .sub{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:2.5px;text-transform:uppercase}
     .intro{color:var(--body);font-size:16.5px;font-style:italic;margin:16px auto 0;max-width:460px}
 
-    .ratio{background:var(--card);border:1px solid var(--gold-deep);border-radius:16px;padding:30px 26px 26px;margin:0 0 20px;
-      text-align:center;box-shadow:0 0 0 1px rgba(184,146,47,.18), 0 14px 40px rgba(96,72,16,.13)}
-    .ratio .lead{font-family:var(--mono);font-size:10.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:14px}
-    .ratio .big{font-family:var(--serif);font-weight:700;color:#241c0d;font-size:60px;line-height:1;letter-spacing:2px}
-    .ratio .big small{font-size:26px;color:var(--gold-deep);vertical-align:middle;padding:0 6px}
-    .ratio .legend{display:flex;justify-content:center;gap:34px;margin-top:16px;flex-wrap:wrap}
-    .ratio .legend div{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)}
-    .ratio .legend b{display:block;font-family:var(--text);font-size:15px;letter-spacing:0;text-transform:none;color:#241c0d;margin-top:3px;font-weight:600}
+    /* jump nav — one chip per recipe, generated from the data */
+    .jump{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:24px 0 30px}
+    .jump a{font-family:var(--mono);font-size:11px;letter-spacing:1.2px;text-transform:uppercase;text-decoration:none;
+      color:var(--gold-ink);background:var(--card);border:1px solid var(--line-soft);border-radius:20px;padding:7px 15px}
+    .jump a:hover{border-color:var(--gold-deep)}
 
-    .card{background:var(--card);border:1px solid var(--line-soft);border-radius:16px;padding:24px 26px 22px;margin:0 0 18px;
-      box-shadow:0 8px 26px rgba(96,72,16,.07)}
-    .card h2{font-family:var(--serif);font-weight:600;color:#241c0d;font-size:21px;margin:0 0 12px}
-    .card p{margin:0 0 12px}
-    .card p:last-child{margin-bottom:0}
+    /* ── recipe card template ── */
+    .recipe{background:var(--card);border:1px solid var(--line-soft);border-radius:16px;padding:26px 26px 24px;margin:0 0 22px;
+      box-shadow:0 8px 26px rgba(96,72,16,.07);scroll-margin-top:16px}
+    .recipe.feature{border-color:var(--gold-deep);box-shadow:0 0 0 1px rgba(184,146,47,.18), 0 14px 40px rgba(96,72,16,.13)}
+    .kicker{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px}
+    .recipe h2{font-family:var(--serif);font-weight:600;color:#241c0d;font-size:25px;margin:0 0 4px}
+    .tagline{color:var(--body);font-style:italic;margin:0 0 14px}
+    .pills{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 16px}
+    .pill{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+      border:1px solid var(--line-soft);border-radius:6px;padding:4px 9px}
+
+    .ratio{text-align:center;border:1px solid var(--line);border-radius:12px;padding:20px 16px 16px;margin:0 0 18px;background:rgba(232,194,74,.06)}
+    .ratio .lead{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px}
+    .ratio .big{font-family:var(--serif);font-weight:700;color:#241c0d;font-size:52px;line-height:1;letter-spacing:2px}
+    .ratio .big small{font-size:24px;color:var(--gold-deep);vertical-align:middle;padding:0 6px}
+    .ratio .legend{display:flex;justify-content:center;gap:30px;margin-top:12px;flex-wrap:wrap}
+    .ratio .legend div{font-family:var(--mono);font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}
+    .ratio .legend b{display:block;font-family:var(--text);font-size:14.5px;letter-spacing:0;text-transform:none;color:#241c0d;margin-top:2px;font-weight:600}
+
+    .block{margin:0 0 16px}
+    .block:last-child{margin-bottom:0}
+    .block h3{font-family:var(--mono);font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--gold-ink);
+      margin:0 0 10px;border-bottom:1px solid var(--line-soft);padding-bottom:7px}
+    .ingredients{list-style:none;margin:0;padding:0}
+    .ingredients li{position:relative;padding:0 0 7px 20px}
+    .ingredients li:last-child{padding-bottom:0}
+    .ingredients li::before{content:'';position:absolute;left:2px;top:11px;width:6px;height:6px;border-radius:50%;background:var(--gold-deep)}
     .steps{list-style:none;counter-reset:s;margin:0;padding:0}
-    .steps li{counter-increment:s;position:relative;padding:0 0 14px 40px;margin:0}
+    .steps li{counter-increment:s;position:relative;padding:0 0 13px 40px}
     .steps li:last-child{padding-bottom:0}
     .steps li::before{content:counter(s);position:absolute;left:0;top:-2px;width:26px;height:26px;border-radius:50%;
       background:var(--gold);color:var(--ink);font-family:var(--mono);font-size:13px;font-weight:500;
       display:flex;align-items:center;justify-content:center}
-    .note{border-left:3px solid var(--gold-deep);padding:2px 0 2px 16px;color:var(--body)}
+    .note{border-left:3px solid var(--gold-deep);padding:2px 0 2px 16px;color:var(--body);margin:16px 0 0}
     .note b{color:var(--gold-ink)}
 
     .cta{margin-top:40px;text-align:center;border:1px solid var(--line);border-radius:16px;padding:30px 22px;background:var(--card);
@@ -65,39 +84,13 @@
   <div class="wrap">
     <header>
       <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
-      <h1>How to Brew It</h1>
-      <div class="sub">The cut · Over ice · Small batch</div>
-      <p class="intro">Wilhelm ships as a concentrate, so it's meant to be cut before you drink it. Here's the ratio, and why it lands where it does.</p>
+      <h1>Recipes</h1>
+      <div class="sub">Wilhelm ships as a concentrate — here's how to pour it</div>
+      <p class="intro">Start with the classic cut. Once you've got that, everything else is a variation on it.</p>
     </header>
 
-    <div class="ratio">
-      <div class="lead">Ratio to cut</div>
-      <div class="big">3<small>:</small>2</div>
-      <div class="legend">
-        <div>Cold brew<b>3 parts</b></div>
-        <div>Water<b>2 parts</b></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Why 3:2 and not 1:1</h2>
-      <p>A medium roast usually cuts one-to-one. This one is a <b>light roast</b>, and the flavor works out a little better when it's left a touch stronger on the cold brew side — so we lean it to three parts concentrate, two parts water.</p>
-      <p>Treat it as a starting line, not a law. Pull it back toward 1:1 if you want it lighter; the barrel does the rest.</p>
-    </div>
-
-    <div class="card">
-      <h2>The pour</h2>
-      <ol class="steps">
-        <li>Fill a glass with ice.</li>
-        <li>Add 3 parts Wilhelm concentrate to 2 parts cold water — or milk, if that's your morning.</li>
-        <li>Stir once, taste, and adjust to your own liking.</li>
-      </ol>
-    </div>
-
-    <div class="card">
-      <h2>A word on caffeine</h2>
-      <p class="note">About <b>3 oz of the concentrate</b> carries roughly <b>150–175 mg of caffeine</b> — a full cup's worth before you cut it. Be mindful of how much you're pouring.</p>
-    </div>
+    <nav class="jump" id="jump"></nav>
+    <div id="book"></div>
 
     <div class="cta">
       <p>Bottles go up every Friday at 9AM and sell out in minutes.<br/>The list hears first.</p>
@@ -106,5 +99,98 @@
     </div>
     <footer>Wilhelm Cold Brew · Est. on a handshake</footer>
   </div>
+
+  <script>
+    /* ──────────────────────────────────────────────────────────────
+       RECIPES — add a new one by dropping another object in this list.
+       Every field except `slug`, `name` and `steps` is optional; the
+       template only renders the sections a recipe actually fills in.
+         slug        url anchor + jump-nav id (unique, kebab-case)
+         name        heading
+         kicker      small label above the name (e.g. "The foundation")
+         tagline     one italic line under the name
+         feature     true = gold-bordered highlight (use for the hero)
+         pills       array of short meta tags (time, serves, caffeine…)
+         ratio       {lead, a, b, aLabel, bLabel} for the big X:Y block
+         ingredients array of strings
+         steps       array of strings (rendered as numbered method)
+         note        closing tip / caution (supports **bold**)
+       ────────────────────────────────────────────────────────────── */
+    var RECIPES = [
+      {
+        slug: 'the-cut',
+        name: 'The Classic Cut',
+        kicker: 'The foundation — master this first',
+        tagline: 'Cold brew, water, ice. The way it’s meant to be poured.',
+        feature: true,
+        pills: ['2 min', 'Serves 1', 'Over ice'],
+        ratio: { lead: 'Ratio to cut', a: '3', b: '2', aLabel: 'Cold brew', bLabel: 'Water' },
+        ingredients: [
+          '3 parts Wilhelm concentrate',
+          '2 parts cold water — or milk, if that’s your morning',
+          'A glass of ice'
+        ],
+        steps: [
+          'Fill a glass with ice.',
+          'Add 3 parts Wilhelm concentrate to 2 parts cold water (or milk).',
+          'Stir once, taste, and adjust to your own liking.'
+        ],
+        note: 'A medium roast usually cuts **1:1**. This one’s a **light roast**, so the flavor lands better left a touch stronger on the cold-brew side — hence 3:2. And mind the caffeine: about **3 oz of concentrate** carries roughly **150–175 mg**, a full cup’s worth before you cut it.'
+      }
+      /* , { slug: '', name: '', steps: [] }  ← next recipe goes here */
+    ];
+
+    (function () {
+      var book = document.getElementById('book');
+      var jump = document.getElementById('jump');
+
+      function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+      // minimal **bold** support for notes, applied AFTER escaping
+      function rich(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); }
+
+      function ratioBlock(r) {
+        if (!r.ratio) return '';
+        var q = r.ratio;
+        return '<div class="ratio">'
+          + '<div class="lead">' + esc(q.lead || 'Ratio') + '</div>'
+          + '<div class="big">' + esc(q.a) + '<small>:</small>' + esc(q.b) + '</div>'
+          + '<div class="legend">'
+          + '<div>' + esc(q.aLabel || '') + '<b>' + esc(q.a) + ' parts</b></div>'
+          + '<div>' + esc(q.bLabel || '') + '<b>' + esc(q.b) + ' parts</b></div>'
+          + '</div></div>';
+      }
+      function listBlock(title, items, cls) {
+        if (!items || !items.length) return '';
+        return '<div class="block"><h3>' + esc(title) + '</h3>'
+          + '<' + (cls === 'steps' ? 'ol' : 'ul') + ' class="' + cls + '">'
+          + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('')
+          + '</' + (cls === 'steps' ? 'ol' : 'ul') + '></div>';
+      }
+      function pills(r) {
+        if (!r.pills || !r.pills.length) return '';
+        return '<div class="pills">' + r.pills.map(function (p) { return '<span class="pill">' + esc(p) + '</span>'; }).join('') + '</div>';
+      }
+      function card(r) {
+        return '<article class="recipe' + (r.feature ? ' feature' : '') + '" id="' + esc(r.slug) + '">'
+          + (r.kicker ? '<div class="kicker">' + esc(r.kicker) + '</div>' : '')
+          + '<h2>' + esc(r.name) + '</h2>'
+          + (r.tagline ? '<p class="tagline">' + esc(r.tagline) + '</p>' : '')
+          + pills(r)
+          + ratioBlock(r)
+          + listBlock('Ingredients', r.ingredients, 'ingredients')
+          + listBlock('Method', r.steps, 'steps')
+          + (r.note ? '<p class="note">' + rich(r.note) + '</p>' : '')
+          + '</article>';
+      }
+
+      book.innerHTML = RECIPES.map(card).join('');
+      // Only show the jump nav once there's more than one recipe to jump between.
+      if (RECIPES.length > 1) {
+        jump.innerHTML = RECIPES.map(function (r) {
+          return '<a href="#' + esc(r.slug) + '">' + esc(r.name) + '</a>';
+        }).join('');
+      }
+    })();
+  </script>
 </body>
 </html>

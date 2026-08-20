@@ -208,10 +208,15 @@
     .wheel path{cursor:pointer;transition:opacity .12s}
     .wheel path:hover{opacity:.9}
     .wheel text{pointer-events:none;font-family:var(--sans)}
-    .wheel .wlbl{fill:#fff;font-size:10px;font-weight:700;letter-spacing:.2px;
-      paint-order:stroke;stroke:rgba(12,9,4,.6);stroke-width:2.4px;stroke-linejoin:round}
-    .wheel .wcat{font-family:var(--display);font-weight:800;font-size:12px;fill:#fff;
-      paint-order:stroke;stroke:rgba(12,9,4,.55);stroke-width:2.6px;stroke-linejoin:round}
+    .wheel .wlbl{fill:#fff;font-size:8.5px;font-weight:600;letter-spacing:.2px}
+    .wheel .wcat{font-family:var(--display);font-weight:700;font-size:10px;fill:rgba(255,255,255,.95)}
+    /* vertical rotate slider beside the wheel */
+    .wheel-stage{display:flex;align-items:center;justify-content:center;gap:14px;width:100%}
+    .wrot-col{display:flex;flex-direction:column;align-items:center;gap:8px}
+    .wrot-col .cap{font-family:var(--mono);font-size:8.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim)}
+    .wrot{writing-mode:vertical-lr;direction:rtl;-webkit-appearance:slider-vertical;width:26px;height:300px;
+      accent-color:var(--gold-deep);cursor:pointer;background:transparent}
+    @media(max-width:520px){ .wrot{height:220px} }
     .wheel .wctr{font-family:var(--mono);letter-spacing:1px;fill:var(--gold-ink)}
     .wheel-hint{text-align:center}
     .drawer{width:100%;background:rgba(232,194,74,.07);border:1px solid var(--line-soft);border-radius:14px;padding:12px 13px}

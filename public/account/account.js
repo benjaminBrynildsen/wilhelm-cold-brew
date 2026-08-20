@@ -248,7 +248,7 @@
   }
   // Is any of a group's flavors currently selected? (terminal group = its own name)
   function groupSelected(g, sel) { return g.subs ? g.subs.some((s) => sel.has(s)) : sel.has(g.name); }
-  function buildWheel(sel, active) {
+  function buildWheel(sel, active, rot) {
     const cx = 200, cy = 200, rHole = 52, rInner = 112, rOut = 195;
     const N = WHEEL.length, span = 360 / N;
     let paths = '', labels = '';
@@ -272,10 +272,12 @@
       });
     });
     const n = sel.size;
+    // The rings + labels rotate together (via the slider); the center stays put.
+    const ring = `<g class="wheel-rot" transform="rotate(${rot || 0} ${cx} ${cy})">${paths}${labels}</g>`;
     const center = `<circle cx="${cx}" cy="${cy}" r="${rHole}" fill="#17110a" stroke="rgba(232,194,74,.3)" stroke-width="1"/>
       <text x="${cx}" y="${cy - 3}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="21" fill="#e8c24a">${n || '☕'}</text>
       <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" letter-spacing="1.4" fill="rgba(246,239,218,.6)">${n ? 'SELECTED' : 'TASTE'}</text>`;
-    return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Coffee tasting wheel">${paths}${center}${labels}</svg>`;
+    return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Coffee tasting wheel">${ring}${center}</svg>`;
   }
   // The chips for the currently open group (its specific flavors).
   function groupDrawer(active, sel) {
@@ -313,7 +315,13 @@
         <div class="lbl">Your rating</div>
         ${starsInput(draft.rating)}
         <div class="lbl">While you sip — tap what you taste</div>
-        <div class="wheel-wrap">${buildWheel(draft.flavors, draft.activeGroup)}${groupDrawer(draft.activeGroup, draft.flavors)}${tasteTags(draft.flavors)}</div>
+        <div class="wheel-wrap">
+          <div class="wheel-stage">
+            ${buildWheel(draft.flavors, draft.activeGroup, draft.rot)}
+            <div class="wrot-col"><span class="cap">Rotate</span><input type="range" class="wrot" min="0" max="360" step="1" value="${draft.rot || 0}" orient="vertical" aria-label="Rotate the wheel"/></div>
+          </div>
+          ${groupDrawer(draft.activeGroup, draft.flavors)}${tasteTags(draft.flavors)}
+        </div>
         <div class="lbl">Notes (optional)</div>
         <textarea data-role="body" placeholder="How did it drink? How did you pour it?">${esc(draft.body || '')}</textarea>
         <div class="rev-actions">
@@ -592,7 +600,7 @@
   // ── Reviews + tasting wheel interactions (delegated on #reviews) ──
   function openReview(dropId) {
     const rev = REVIEWS[dropId];
-    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '', activeGroup: null };
+    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '', activeGroup: null, rot: 0 };
     renderReviews(DATA.orders || []);
   }
   // Terminal group (no subs) = its name is a selectable flavor.
@@ -618,6 +626,14 @@
       draft = null; renderReviews(DATA.orders || []); refreshPoints();
     } catch (err) { if (errEl) errEl.textContent = err.message; if (btn) { btn.disabled = false; btn.textContent = 'Save review'; } }
   }
+  // Vertical slider spins the wheel — update the transform live (no re-render).
+  $('reviews').addEventListener('input', (e) => {
+    const sl = e.target.closest('.wrot');
+    if (!sl || !draft) return;
+    draft.rot = parseInt(sl.value, 10) || 0;
+    const g = $('reviews').querySelector('.wheel-rot');
+    if (g) g.setAttribute('transform', `rotate(${draft.rot} 200 200)`);
+  });
   $('reviews').addEventListener('click', (e) => {
     const start = e.target.closest('.rev-start, .rev-edit');
     if (start) { openReview(parseInt(start.dataset.id, 10)); return; }

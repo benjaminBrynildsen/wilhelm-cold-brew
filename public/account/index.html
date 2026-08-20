@@ -14,7 +14,9 @@
     :root{
       --gold:#e8c24a; --gold-deep:#b8922f; --gold-ink:#8a6914; --ink:#0c0a08;
       --parchment:#f6efda; --card:#fffcf1; --line:rgba(184,146,47,.32); --line-soft:rgba(184,146,47,.18);
-      --body:rgba(12,10,8,.85); --dim:rgba(12,10,8,.55);
+      --body:rgba(20,15,6,.82); --dim:rgba(20,15,6,.55);
+      --side:#17110a; --side-2:#0f0b05; --side-line:rgba(232,194,74,.16);
+      --side-txt:rgba(246,239,218,.72); --side-dim:rgba(246,239,218,.42);
       --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
       --display:'Bodoni Moda',Georgia,serif; --mono:'DM Mono',monospace;
     }
@@ -22,11 +24,15 @@
     body{margin:0;color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;
       background:radial-gradient(ellipse at 50% 0%, #fffdf6 0%, var(--parchment) 62%) fixed, var(--parchment)}
     a{color:var(--gold-ink)}
-    .wrap{max-width:620px;margin:0 auto;padding:28px clamp(18px,5vw,40px) 80px}
-    .mast{text-align:center;margin:6px 0 26px}
-    .mast img{width:92px;height:92px;border-radius:50%;box-shadow:0 10px 30px rgba(60,45,10,.22);border:2px solid rgba(184,146,47,.4)}
-    .mast h1{font-family:'Cinzel',var(--display);font-weight:800;font-size:25px;letter-spacing:3.5px;color:var(--gold-ink);margin:16px 0 4px;text-transform:uppercase}
+    [hidden]{display:none !important}
+
+    /* ───────── pre-auth (login / check inbox) ───────── */
+    .wrap{max-width:520px;margin:0 auto;padding:36px clamp(18px,5vw,40px) 80px}
+    .mast{text-align:center;margin:10px 0 26px}
+    .mast img{width:88px;height:88px;border-radius:50%;box-shadow:0 10px 30px rgba(60,45,10,.22);border:2px solid rgba(184,146,47,.4)}
+    .mast h1{font-family:'Cinzel',var(--display);font-weight:800;font-size:24px;letter-spacing:3.5px;color:var(--gold-ink);margin:16px 0 4px;text-transform:uppercase}
     .mast .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:2.5px;color:var(--dim);text-transform:uppercase}
+
     .card{background:var(--card);border:1px solid var(--line-soft);border-radius:18px;padding:22px 24px;margin:0 0 18px;
       box-shadow:0 10px 32px rgba(96,72,16,.09), 0 1px 3px rgba(96,72,16,.06)}
     h2{font-family:var(--display);font-weight:700;color:var(--gold-ink);font-size:21px;margin:0 0 10px;letter-spacing:.2px}
@@ -35,13 +41,66 @@
     input[type=email]{width:100%;height:50px;padding:0 14px;background:#fff;border:1.5px solid var(--line);border-radius:12px;color:var(--ink);font:inherit;text-align:center;margin:12px 0}
     input[type=email]::placeholder{color:rgba(12,10,8,.4)}
     input[type=email]:focus{border-color:var(--gold-deep);outline:none}
-    .btn{display:inline-block;background:var(--gold);color:var(--ink);border:none;min-height:46px;padding:12px 24px;font-weight:700;cursor:pointer;font-family:inherit;font-size:14.5px;border-radius:12px;text-decoration:none;text-align:center;
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:var(--gold);color:var(--ink);border:none;min-height:46px;padding:12px 24px;font-weight:700;cursor:pointer;font-family:inherit;font-size:14.5px;border-radius:12px;text-decoration:none;text-align:center;
       box-shadow:0 4px 14px rgba(184,146,47,.35);transition:filter .15s}
     .btn:hover{filter:brightness(1.05)}
     .btn.ghost{background:transparent;color:var(--body);border:1.5px solid var(--line);box-shadow:none}
     .btn.ghost:hover{border-color:var(--gold-deep);color:var(--gold-ink);filter:none}
     .btn.block{width:100%}
     .err{color:#b23c17;font-size:13px;min-height:18px;margin-top:8px}
+
+    /* ───────── app shell (dashboard) ───────── */
+    .app{min-height:100vh}
+    @media(min-width:860px){ .app{display:grid;grid-template-columns:250px 1fr} }
+
+    .side{background:linear-gradient(180deg,var(--side),var(--side-2));color:var(--side-txt);
+      display:flex;flex-direction:column;border-right:1px solid var(--side-line)}
+    @media(min-width:860px){ .side{position:sticky;top:0;height:100vh} }
+    @media(max-width:859px){
+      .side{position:fixed;top:0;left:0;bottom:0;width:270px;transform:translateX(-100%);
+        transition:transform .26s cubic-bezier(.3,.7,.3,1);z-index:40;box-shadow:0 0 60px rgba(0,0,0,.4)}
+      .app.drawer-open .side{transform:none}
+    }
+    .brand{display:flex;align-items:center;gap:12px;padding:22px 20px 20px;border-bottom:1px solid var(--side-line)}
+    .brand img{width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(232,194,74,.5)}
+    .brand b{display:block;font-family:'Cinzel',var(--display);font-weight:800;font-size:15px;letter-spacing:2px;color:var(--parchment);text-transform:uppercase;line-height:1.1}
+    .brand span{font-family:var(--mono);font-size:9.5px;letter-spacing:2px;color:var(--gold);text-transform:uppercase}
+    .nav{display:flex;flex-direction:column;gap:3px;padding:16px 12px;flex:1}
+    .navitem{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;cursor:pointer;
+      color:var(--side-txt);font-family:inherit;font-size:14.5px;font-weight:600;text-align:left;
+      padding:12px 14px;border-radius:12px;transition:background .15s,color .15s}
+    .navitem svg{width:19px;height:19px;flex:none;opacity:.8}
+    .navitem:hover{background:rgba(246,239,218,.06);color:var(--parchment)}
+    .navitem.active{background:rgba(232,194,74,.14);color:#fff}
+    .navitem.active svg{color:var(--gold);opacity:1}
+    .side-foot{padding:16px 16px 22px;border-top:1px solid var(--side-line)}
+    .side-foot .who{font-family:var(--mono);font-size:11px;letter-spacing:.4px;color:var(--side-dim);margin-bottom:12px;word-break:break-all}
+    .side-foot .btn.ghost{color:var(--side-txt);border-color:rgba(246,239,218,.22);width:100%}
+    .side-foot .btn.ghost:hover{border-color:var(--gold);color:var(--gold)}
+
+    .backdrop{position:fixed;inset:0;background:rgba(12,10,8,.5);z-index:30}
+    .main{min-width:0;display:flex;flex-direction:column}
+    .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+      padding:14px clamp(16px,4vw,30px);background:rgba(246,239,218,.86);backdrop-filter:blur(9px);
+      border-bottom:1px solid var(--line-soft)}
+    .hamb{display:none;background:none;border:0;cursor:pointer;color:var(--gold-ink);padding:4px;margin:-4px 0 -4px -4px}
+    .hamb svg{width:24px;height:24px;display:block}
+    @media(max-width:859px){ .hamb{display:inline-flex} }
+    .topttl{font-family:var(--display);font-weight:700;color:var(--gold-ink);font-size:20px;margin:0;flex:1}
+    .userchip{display:flex;align-items:center;gap:9px}
+    .userchip .av{width:34px;height:34px;border-radius:50%;background:var(--gold);color:var(--ink);
+      display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:none}
+    .userchip .em{font-family:var(--mono);font-size:12px;color:var(--dim)}
+    @media(max-width:600px){ .userchip .em{display:none} }
+
+    .content{width:100%;max-width:720px;margin:0 auto;padding:24px clamp(16px,4vw,32px) 90px}
+    .hello{margin:2px 0 20px}
+    .hello h3{font-family:var(--display);font-weight:700;font-size:26px;color:var(--ink);margin:0 0 3px}
+    .hello p{margin:0;color:var(--dim);font-size:14px}
+    .preview-banner{background:rgba(232,194,74,.16);border:1px solid var(--line);border-radius:12px;
+      padding:10px 14px;margin:0 0 16px;font-family:var(--mono);font-size:11.5px;letter-spacing:1px;
+      text-transform:uppercase;color:var(--gold-ink);text-align:center}
+
     /* countdown */
     .count{display:flex;gap:10px;justify-content:center;margin:16px 0 8px}
     .count div{min-width:64px;text-align:center;border:1px solid var(--line-soft);background:#fff;border-radius:14px;padding:11px 6px 9px;box-shadow:0 3px 10px rgba(96,72,16,.07)}
@@ -49,14 +108,14 @@
     .count span{font-family:var(--mono);font-size:9px;letter-spacing:1.6px;color:var(--dim);text-transform:uppercase}
     .live{display:inline-block;background:var(--gold);color:var(--ink);font-family:var(--mono);font-size:11px;letter-spacing:2px;padding:5px 14px;font-weight:700;border-radius:20px}
     /* stats */
-    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
-    .stat{border:1px solid var(--line-soft);background:#fff;border-radius:14px;padding:14px 8px 12px;text-align:center;box-shadow:0 3px 10px rgba(96,72,16,.06)}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 14px}
+    .stat{border:1px solid var(--line-soft);background:var(--card);border-radius:14px;padding:16px 8px 13px;text-align:center;box-shadow:0 3px 10px rgba(96,72,16,.06)}
     .stat b{display:block;font-family:var(--display);font-weight:800;font-size:27px;color:var(--gold-ink)}
     .stat span{font-family:var(--mono);font-size:9px;letter-spacing:1.4px;color:var(--dim);text-transform:uppercase}
     /* orders */
-    .order{border:1px solid var(--line-soft);border-radius:14px;padding:15px 17px;margin:10px 0;background:#fff;box-shadow:0 3px 10px rgba(96,72,16,.05)}
+    .order{border:1px solid var(--line-soft);border-radius:14px;padding:16px 18px;margin:0 0 14px;background:var(--card);box-shadow:0 3px 10px rgba(96,72,16,.05)}
     .order .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
-    .order b{font-family:var(--display);font-size:17.5px;color:var(--ink)}
+    .order b{font-family:var(--display);font-size:18px;color:var(--ink)}
     .chip{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;border:1px solid var(--line);padding:4px 11px;border-radius:20px;color:var(--dim);white-space:nowrap;background:rgba(184,146,47,.06)}
     .chip.good{color:#2f7d46;border-color:rgba(47,125,70,.4);background:rgba(47,125,70,.07)}
     .trackrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
@@ -71,24 +130,25 @@
     .addrform .af-row{display:grid;grid-template-columns:1fr 76px 100px;gap:9px}
     .addrform .af-actions{display:flex;gap:8px;margin-top:2px}
     .addrform .af-actions .btn{min-height:42px;padding:9px 18px;font-size:13.5px;border-radius:11px}
-    @media(max-width:420px){.addrform .af-row{grid-template-columns:1fr 1fr;grid-auto-flow:row}}
-    /* referral */
-    .reflink{display:flex;gap:8px;margin:12px 0 8px}
-    .reflink input{flex:1;height:46px;padding:0 12px;background:#fff;border:1.5px solid var(--line);border-radius:12px;color:var(--gold-ink);font-family:var(--mono);font-size:13px;min-width:0}
-    .footer{text-align:center;margin-top:26px}
-    [hidden]{display:none !important}
-    @media(prefers-reduced-motion:no-preference){.card{animation:rise .4s cubic-bezier(.2,.7,.3,1)}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
+    @media(max-width:420px){.addrform .af-row{grid-template-columns:1fr 1fr}}
+    /* account section rows */
+    .rows{display:flex;flex-direction:column;gap:2px}
+    .row{display:flex;justify-content:space-between;gap:14px;padding:13px 2px;border-bottom:1px solid var(--line-soft)}
+    .row:last-child{border-bottom:0}
+    .row .rk{color:var(--dim);font-size:13.5px}
+    .row .rv{color:var(--ink);font-size:14.5px;font-weight:600;text-align:right;word-break:break-word}
+    @media(prefers-reduced-motion:no-preference){.sec{animation:rise .35s cubic-bezier(.2,.7,.3,1)}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <!-- PRE-AUTH: login + check-inbox -->
+  <div class="wrap" id="preauth" hidden>
     <div class="mast">
       <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
       <h1>Your Cellar</h1>
       <div class="sub">Wilhelm Cold Brew · Members</div>
     </div>
 
-    <!-- LOGIN -->
     <div class="card" id="v-login" hidden>
       <h2>Step inside.</h2>
       <p class="note" style="font-size:14.5px;color:var(--body)">Enter the email you use with Wilhelm and we'll send you a one-tap sign-in link — no password to remember.</p>
@@ -99,40 +159,77 @@
       <div class="err" id="loginerr"></div>
     </div>
 
-    <!-- CHECK INBOX -->
     <div class="card" id="v-sent" hidden>
       <h2>Check your inbox.</h2>
       <p class="note" style="font-size:14.5px;color:var(--body)">If that email is on our books, your key is on its way — <b>“Your Wilhelm sign-in link.”</b> It works once and expires in 30 minutes. (Check spam if it's shy.)</p>
     </div>
+  </div>
 
-    <!-- DASHBOARD -->
-    <div id="v-dash" hidden>
-      <div class="card" id="dropcard" hidden>
-        <h2>Next drop</h2>
-        <div id="dropbody"></div>
+  <!-- DASHBOARD -->
+  <div class="app" id="v-dash" hidden>
+    <div class="backdrop" id="backdrop" hidden></div>
+    <aside class="side" id="side">
+      <div class="brand">
+        <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
+        <div><b>Wilhelm</b><span>Your Cellar</span></div>
       </div>
-
-      <div class="card">
-        <h2>Your orders</h2>
-        <div id="orders"></div>
+      <nav class="nav">
+        <button class="navitem" data-sec="overview" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg>
+          Overview
+        </button>
+        <button class="navitem" data-sec="orders" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21 3 16.5z"/><path d="M3 7.5 12 12l9-4.5"/><path d="M12 12v9"/></svg>
+          Orders
+        </button>
+        <button class="navitem" data-sec="account" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
+          Account
+        </button>
+      </nav>
+      <div class="side-foot">
+        <div class="who" id="who"></div>
+        <button class="btn ghost" id="logout" type="button">Sign out</button>
       </div>
+    </aside>
 
-      <div class="card">
-        <h2>Cellar record</h2>
-        <div class="stats" id="stats"></div>
-        <div class="note" id="liststate" style="margin-top:10px"></div>
-      </div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamb" id="hamb" type="button" aria-label="Open menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <h2 class="topttl" id="topttl">Overview</h2>
+        <div class="userchip" id="userchip"></div>
+      </header>
 
-      <div class="card">
-        <h2>Bring a friend</h2>
-        <p class="note" style="font-size:14.5px;color:var(--body)">Your personal link. When a friend joins the list through it, it counts on your record.</p>
-        <div class="reflink"><input id="refurl" readonly/><button class="btn" id="refcopy">Copy</button></div>
-        <div class="note" id="refcount"></div>
-      </div>
+      <div class="content">
+        <div class="preview-banner" id="previewbanner" hidden>Preview · sample data — not a real account</div>
 
-      <div class="footer">
-        <span class="note" id="who"></span><br/><br/>
-        <button class="btn ghost" id="logout">Sign out</button>
+        <section class="sec" data-sec="overview" id="sec-overview">
+          <div class="hello" id="hello"></div>
+          <div class="card" id="dropcard" hidden>
+            <h2>Next drop</h2>
+            <div id="dropbody"></div>
+          </div>
+          <div class="stats" id="stats"></div>
+          <div class="note" id="liststate"></div>
+        </section>
+
+        <section class="sec" data-sec="orders" id="sec-orders" hidden>
+          <div id="orders"></div>
+        </section>
+
+        <section class="sec" data-sec="account" id="sec-account" hidden>
+          <div class="card">
+            <h2>Account</h2>
+            <div class="rows" id="acctrows"></div>
+          </div>
+          <div class="card">
+            <h2>The list</h2>
+            <div class="note" id="liststate2" style="font-size:14px;color:var(--body)"></div>
+          </div>
+          <button class="btn ghost block" id="logout2" type="button">Sign out</button>
+        </section>
       </div>
     </div>
   </div>

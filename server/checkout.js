@@ -147,7 +147,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       // batch that just sold out (its card, how fast it went, the demand vote).
       // After that window the batch is old news — switch to a clean countdown to
       // the NEXT batch, with no reference to the last one.
-      const WINDOW_DAYS = 5;
+      const WINDOW_DAYS = 4;
       let phase = 'countdown';
       if (missedDrop) {
         const a = (await q(`SELECT MAX(paid_at) m FROM orders WHERE drop_id = $1 AND status = 'paid'`, [missedDrop.id])).rows[0]?.m;

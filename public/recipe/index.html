@@ -15,18 +15,18 @@
     :root{
       --gold:#e8c24a; --gold-deep:#b8922f; --gold-ink:#8a6914; --ink:#0c0a08;
       --parchment:#f6efda; --card:#fffcf1; --line:rgba(184,146,47,.32); --line-soft:rgba(184,146,47,.18);
-      --body:#3c3324; --dim:rgba(60,51,36,.62);
+      --body:#2a2113; --dim:#6a5730;
       --serif:'Bodoni Moda',Georgia,serif; --text:'Lora',Georgia,serif; --mono:'DM Mono',monospace;
     }
     *{box-sizing:border-box}
-    body{margin:0;color:var(--body);font-family:var(--text);font-size:17px;line-height:1.65;
+    body{margin:0;color:var(--body);font-family:var(--text);font-size:18px;line-height:1.72;
       background:radial-gradient(ellipse at 50% 0%, #fffdf6 0%, var(--parchment) 62%) fixed, var(--parchment)}
-    .wrap{max-width:660px;margin:0 auto;padding:44px 20px 70px}
+    .wrap{max-width:640px;margin:0 auto;padding:44px 20px 70px}
     header{text-align:center;margin-bottom:26px}
     header img{width:92px;height:92px;border-radius:50%;border:1.5px solid var(--gold-deep);background:var(--ink)}
     h1{font-family:var(--serif);font-weight:700;color:var(--gold-ink);font-size:34px;letter-spacing:1px;margin:18px 0 6px}
-    .sub{color:var(--dim);font-family:var(--mono);font-size:11.5px;letter-spacing:2.5px;text-transform:uppercase}
-    .intro{color:var(--body);font-size:16.5px;font-style:italic;margin:16px auto 0;max-width:460px}
+    .sub{color:#6a5730;font-family:var(--mono);font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase}
+    .intro{color:var(--body);font-size:17px;font-style:italic;margin:16px auto 0;max-width:460px}
 
     /* jump nav — one chip per recipe, generated from the data */
     .jump{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:24px 0 30px}
@@ -38,24 +38,24 @@
     .recipe{background:var(--card);border:1px solid var(--line-soft);border-radius:16px;padding:26px 26px 24px;margin:0 0 22px;
       box-shadow:0 8px 26px rgba(96,72,16,.07);scroll-margin-top:16px}
     .recipe.feature{border-color:var(--gold-deep);box-shadow:0 0 0 1px rgba(184,146,47,.18), 0 14px 40px rgba(96,72,16,.13)}
-    .kicker{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px}
-    .recipe h2{font-family:var(--serif);font-weight:600;color:#241c0d;font-size:25px;margin:0 0 4px}
+    .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px}
+    .recipe h2{font-family:var(--serif);font-weight:600;color:#1c1508;font-size:26px;margin:0 0 4px}
     .tagline{color:var(--body);font-style:italic;margin:0 0 14px}
     .pills{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 16px}
-    .pill{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);
+    .pill{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#5f4d29;
       border:1px solid var(--line-soft);border-radius:6px;padding:4px 9px}
 
     .ratio{text-align:center;border:1px solid var(--line);border-radius:12px;padding:20px 16px 16px;margin:0 0 18px;background:rgba(232,194,74,.06)}
-    .ratio .lead{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px}
+    .ratio .lead{font-family:var(--mono);font-size:11.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--gold-ink);margin-bottom:8px}
     .ratio .big{font-family:var(--serif);font-weight:700;color:#241c0d;font-size:52px;line-height:1;letter-spacing:2px}
     .ratio .big small{font-size:24px;color:var(--gold-deep);vertical-align:middle;padding:0 6px}
     .ratio .legend{display:flex;justify-content:center;gap:30px;margin-top:12px;flex-wrap:wrap}
-    .ratio .legend div{font-family:var(--mono);font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}
-    .ratio .legend b{display:block;font-family:var(--text);font-size:14.5px;letter-spacing:0;text-transform:none;color:#241c0d;margin-top:2px;font-weight:600}
+    .ratio .legend div{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#5f4d29}
+    .ratio .legend b{display:block;font-family:var(--text);font-size:15px;letter-spacing:0;text-transform:none;color:#1c1508;margin-top:2px;font-weight:600}
 
     .block{margin:0 0 16px}
     .block:last-child{margin-bottom:0}
-    .block h3{font-family:var(--mono);font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--gold-ink);
+    .block h3{font-family:var(--mono);font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--gold-ink);
       margin:0 0 10px;border-bottom:1px solid var(--line-soft);padding-bottom:7px}
     .ingredients{list-style:none;margin:0;padding:0}
     .ingredients li{position:relative;padding:0 0 7px 20px}

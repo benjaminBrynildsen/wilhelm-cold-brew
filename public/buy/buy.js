@@ -103,10 +103,14 @@
   // Between-batches countdown, shown right on the buy page until the next drop
   // is live. No reference to the batch that just passed.
   var cdTimer = null;
+  function bump(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  function setCell(el, val) { if (!el) return; var s = String(val); if (el.textContent !== s) { el.textContent = s; bump(el); } }
   function showCountdown(nextAt) {
     var view = $('buy-countdown');
     if (view) view.hidden = false;
     if (els.countBox) els.countBox.hidden = true;
+    // Only the countdown — drop the rest of the store page while there's nothing to buy.
+    var origin = document.querySelector('.store-section.origin'); if (origin) origin.hidden = true;
     fund('buy_countdown_view', { variant: variant() });
     var grid = $('cd-grid'), soon = $('cd-soon'), whenWrap = $('cd-when-wrap');
     var target = nextAt ? new Date(nextAt).getTime() : NaN;
@@ -126,7 +130,7 @@
       var h = Math.floor(left / 3600); left -= h * 3600;
       var m = Math.floor(left / 60), s = left - m * 60;
       if (!c.d) { clearInterval(cdTimer); return; }
-      c.d.textContent = d; c.h.textContent = h; c.m.textContent = m; c.s.textContent = s;
+      setCell(c.d, d); setCell(c.h, h); setCell(c.m, m); setCell(c.s, s);
     }
     tick();
     cdTimer = setInterval(tick, 1000);

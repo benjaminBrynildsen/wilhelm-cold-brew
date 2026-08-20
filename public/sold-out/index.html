@@ -15,14 +15,27 @@
   <link rel="stylesheet" href="/store.css"/>
   <style>
     /* Between-batches countdown (shown once the last batch is old news) */
-    #countdown-view .cd-grid{display:flex;gap:10px;justify-content:center;margin:22px 0 14px}
-    #countdown-view .cd-cell{min-width:70px;text-align:center;border:1px solid rgba(232,194,74,.28);
-      background:rgba(232,217,181,.05);border-radius:14px;padding:14px 8px 10px}
-    #countdown-view .cd-cell b{display:block;font-family:var(--display,'Bodoni Moda',serif);font-weight:800;
-      font-size:clamp(28px,7vw,38px);line-height:1;color:var(--gold)}
+    #countdown-view{position:relative;overflow:hidden}
+    #countdown-view::before{content:"";position:absolute;inset:0;pointer-events:none;
+      background:radial-gradient(ellipse at 50% 26%, rgba(232,194,74,.14), transparent 62%)}
+    #countdown-view>*{position:relative;z-index:1}
+    #countdown-view .cd-grid{display:flex;gap:clamp(7px,2.5vw,12px);justify-content:center;margin:26px 0 16px}
+    #countdown-view .cd-cell{position:relative;min-width:clamp(64px,20vw,84px);text-align:center;
+      border:1px solid rgba(232,194,74,.3);background:rgba(232,217,181,.05);border-radius:14px;padding:16px 8px 11px;
+      animation:cdGlow 3.4s ease-in-out infinite}
+    #countdown-view .cd-cell:nth-child(2){animation-delay:.25s}
+    #countdown-view .cd-cell:nth-child(3){animation-delay:.5s}
+    #countdown-view .cd-cell:nth-child(4){animation-delay:.75s}
+    #countdown-view .cd-cell b{display:block;font-family:'Bodoni Moda',Georgia,serif;font-weight:800;
+      font-size:clamp(30px,8vw,42px);line-height:1;color:var(--gold);transition:color .2s}
+    #countdown-view .cd-cell b.bump{animation:cdBump .5s ease}
     #countdown-view .cd-cell span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:2px;
-      text-transform:uppercase;color:rgba(246,239,218,.6);margin-top:6px}
-    #countdown-view .cd-soon{font-family:var(--display,'Bodoni Moda',serif);font-size:clamp(22px,6vw,30px);color:var(--gold);margin:18px 0}
+      text-transform:uppercase;color:rgba(246,239,218,.6);margin-top:7px}
+    #countdown-view .cd-soon{font-family:'Bodoni Moda',Georgia,serif;font-size:clamp(22px,6vw,30px);color:var(--gold);margin:18px 0}
+    @keyframes cdGlow{0%,100%{box-shadow:0 6px 18px rgba(232,194,74,.05);border-color:rgba(232,194,74,.3)}
+      50%{box-shadow:0 10px 34px rgba(232,194,74,.2);border-color:rgba(232,194,74,.55)}}
+    @keyframes cdBump{0%{transform:scale(1)}28%{transform:scale(1.2);color:#fff}100%{transform:scale(1)}}
+    @media (prefers-reduced-motion:reduce){#countdown-view .cd-cell{animation:none}#countdown-view .cd-cell b.bump{animation:none}}
   </style>
 
   <!-- X (Twitter) conversion tracking base code -->

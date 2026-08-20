@@ -34,6 +34,12 @@ body::before {
   display: flex; align-items: flex-start; justify-content: center;
   padding: calc(clamp(78px, 9vh, 100px) + env(safe-area-inset-top, 0px)) clamp(16px, 4vw, 48px) clamp(16px, 2.5vh, 36px);
 }
+/* Countdown pages: center the block in the viewport (incl. mobile). */
+body.cd-mode .hero {
+  align-items: center;
+  padding-top: calc(clamp(24px, 6vh, 56px) + env(safe-area-inset-top, 0px));
+  padding-bottom: clamp(24px, 6vh, 56px);
+}
 @media (min-width: 760px) { .hero { align-items: center; padding-top: calc(clamp(40px, 6vh, 72px) + env(safe-area-inset-top, 0px)); } }
 
 .hero-logo {

@@ -4,6 +4,7 @@
 import Stripe from 'stripe';
 import { q } from './db.js';
 import { sendOrderConfirmation, sendOrderAlert } from './mailer.js';
+import { awardPurchase } from './points.js';
 
 const SITE = process.env.SITE_URL || 'https://wilhelmcoldbrew.com';
 const SHIP_CENTS = parseInt(process.env.SHIP_CENTS || '800', 10); // flat US shipping (per order)
@@ -371,7 +372,9 @@ async function markPaidByIntent(pi) {
 }
 
 // Shared tail for both paid paths: close the drop at cap (by BOTTLES) + send emails.
-async function finalizePaidOrder({ dropId, email, amountCents, shippingName }) {
+async function finalizePaidOrder({ orderId, dropId, email, amountCents, shippingName }) {
+  // Loyalty points, credited the moment the order is paid. Idempotent.
+  if (orderId) awardPurchase(orderId).catch((e) => console.warn('[points] purchase award failed:', e?.message || e));
   let dropName = null;
   if (dropId) {
     const d = (await q(

@@ -1983,6 +1983,20 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[demo/clear]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Customer batch reviews (private — admin eyes only), newest first.
+  app.get('/api/admin/reviews', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(
+        `SELECT r.id, r.email, r.rating, r.body, r.flavors, r.created_at, d.name AS drop_name
+           FROM reviews r LEFT JOIN drops d ON d.id = r.drop_id
+          ORDER BY r.created_at DESC LIMIT 300`)).rows;
+      const agg = (await q(
+        `SELECT COUNT(*)::int n, COALESCE(ROUND(AVG(rating)::numeric,1),0) avg FROM reviews`)).rows[0];
+      res.json({ reviews: rows, count: agg.n, avg: Number(agg.avg) });
+    } catch (e) { console.error('[admin/reviews]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Manually set/clear an order's tracking number(s) — one-off fixes (a refund
   // reship, a wrong number, a hand-created label). Accepts one or several numbers
   // (comma/space separated). Editing the number resets the delivery status so the

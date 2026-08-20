@@ -341,6 +341,39 @@ export async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Loyalty points ledger. Every earn/spend is one immutable row; balances are
+    -- derived (SUM of delta = spendable balance; SUM of positive delta = lifetime
+    -- earned, which drives permanent status like the Pre-Order privilege). The
+    -- unique key makes awards idempotent — one 'purchase' row per order, one
+    -- 'review' row per (member, batch) — so re-processing never double-awards.
+    CREATE TABLE IF NOT EXISTS point_events (
+      id         BIGSERIAL PRIMARY KEY,
+      email      TEXT NOT NULL,                 -- normalized (lower) member email
+      delta      INTEGER NOT NULL,              -- + earn, - spend
+      reason     TEXT NOT NULL,                 -- purchase | review | recipe_rating | recipe_add | redeem_*
+      ref_type   TEXT NOT NULL DEFAULT '',      -- order | drop | recipe | redemption
+      ref_id     TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (email, reason, ref_type, ref_id)
+    );
+    CREATE INDEX IF NOT EXISTS point_events_email_idx ON point_events (email);
+
+    -- Batch reviews (private for now — for points + admin eyes, not shown publicly).
+    -- flavors is the list of notes the member tapped on the tasting wheel. One
+    -- review per member per batch.
+    CREATE TABLE IF NOT EXISTS reviews (
+      id         BIGSERIAL PRIMARY KEY,
+      email      TEXT NOT NULL,
+      drop_id    BIGINT REFERENCES drops(id) ON DELETE CASCADE,
+      rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      body       TEXT,
+      flavors    JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (email, drop_id)
+    );
+    CREATE INDEX IF NOT EXISTS reviews_drop_idx ON reviews (drop_id);
+
     -- WebAuthn / passkey credentials (Face ID / Touch ID admin sign-in). One shared
     -- admin, so every row is a registered device for that admin.
     CREATE TABLE IF NOT EXISTS webauthn_credentials (

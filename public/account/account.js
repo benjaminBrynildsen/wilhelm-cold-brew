@@ -15,19 +15,40 @@
   const money = (c) => (c == null ? '' : '$' + (c / 100).toFixed(2));
   const firstName = (name, email) => (name ? String(name).trim().split(/\s+/)[0] : (email ? String(email).split('@')[0] : '')) || 'there';
 
-  // ── Points model (placeholder values until the ledger is built) ──
-  const PTS_PER_BOTTLE = 25;
-  const PREORDER_COST = 200;
+  // ── Points model (real values come from the server; these are display fallbacks) ──
   const EARN = [
     { label: 'Each bottle you buy', pts: 25, live: true },
-    { label: 'Review a batch you bought', pts: 50, live: false },
+    { label: 'Review a batch you bought', pts: 50, live: true },
     { label: 'Rate a recipe', pts: 10, live: false },
     { label: 'Add a recipe we publish', pts: 100, live: false },
   ];
+  // Points state, hydrated from the overview payload.
+  let PT = { balance: 0, lifetimeEarned: 0, preorderThreshold: 200, preorderUnlocked: false, review: 50 };
+  let REVIEWS = {};           // dropId -> { rating, body, flavors }
+  const bal = () => PT.balance || 0;
+  const threshold = () => PT.preorderThreshold || 200;
 
   let PREVIEW = false;
   let DATA = null;
   let batchesLoaded = false;
+
+  // ── Coffee tasting wheel taxonomy (SCA-inspired). Tap flavors while you sip. ──
+  const WHEEL = [
+    { cat: 'Fruity', color: '#b83246', subs: ['Berry', 'Citrus', 'Stone', 'Dried'] },
+    { cat: 'Floral', color: '#a8446e', subs: ['Jasmine', 'Rose', 'Tea'] },
+    { cat: 'Sweet', color: '#cf9a24', subs: ['Honey', 'Caramel', 'Vanilla', 'Sugar'] },
+    { cat: 'Cocoa', color: '#6f4423', subs: ['Chocolate', 'Cocoa', 'Malt'] },
+    { cat: 'Nutty', color: '#a9752e', subs: ['Almond', 'Hazelnut', 'Peanut'] },
+    { cat: 'Spice', color: '#9c3b26', subs: ['Cinnamon', 'Clove', 'Pepper'] },
+    { cat: 'Roasted', color: '#54382a', subs: ['Toast', 'Smoky', 'Ash'] },
+    { cat: 'Green', color: '#4a7a45', subs: ['Herbal', 'Grassy', 'Fresh'] },
+    { cat: 'Sour', color: '#8f9a35', subs: ['Winey', 'Boozy', 'Tart'] },
+  ];
+  const FLAVOR_COLOR = {};
+  WHEEL.forEach((c) => c.subs.forEach((s) => { FLAVOR_COLOR[s] = c.color; }));
+
+  // A draft review being edited: { dropId, rating, flavors:Set, toast }
+  let draft = null;
 
   const TITLES = { overview: 'Overview', orders: 'Orders', reviews: 'Reviews', recipes: 'Recipes',
     points: 'Points', batches: 'All Batches', preorder: 'Pre-Order', settings: 'Account settings' };
@@ -172,36 +193,116 @@
     if (form) { form.hidden = !editing; if (editing) { const e = form.querySelector('.af-err'); if (e) e.textContent = ''; } }
   }
 
-  // ── Reviews: batches you've bought, ready to rate (earning coming soon) ──
+  // ── Tasting wheel geometry ──
+  function polar(cx, cy, r, deg) { const a = (deg - 90) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
+  function arcSeg(cx, cy, r0, r1, a0, a1) {
+    const [x0, y0] = polar(cx, cy, r0, a0), [x1, y1] = polar(cx, cy, r1, a0);
+    const [x2, y2] = polar(cx, cy, r1, a1), [x3, y3] = polar(cx, cy, r0, a1);
+    const lg = (a1 - a0) > 180 ? 1 : 0; const f = (n) => n.toFixed(2);
+    return `M ${f(x0)} ${f(y0)} L ${f(x1)} ${f(y1)} A ${r1} ${r1} 0 ${lg} 1 ${f(x2)} ${f(y2)} L ${f(x3)} ${f(y3)} A ${r0} ${r0} 0 ${lg} 0 ${f(x0)} ${f(y0)} Z`;
+  }
+  function buildWheel(sel) {
+    const cx = 200, cy = 200, rHole = 56, rMid = 120, rOut = 194;
+    const N = WHEEL.length, span = 360 / N;
+    let paths = '', labels = '';
+    WHEEL.forEach((c, i) => {
+      const a0 = i * span, a1 = (i + 1) * span, mid = (a0 + a1) / 2;
+      paths += `<path d="${arcSeg(cx, cy, rHole, rMid, a0, a1)}" fill="${c.color}" opacity="0.95" stroke="#0f0b05" stroke-width="1"/>`;
+      const [lx, ly] = polar(cx, cy, (rHole + rMid) / 2, mid);
+      const crot = mid <= 180 ? mid - 90 : mid + 90;
+      labels += `<text class="wcat" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${crot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})">${esc(c.cat)}</text>`;
+      const m = c.subs.length, sub = span / m;
+      c.subs.forEach((s, j) => {
+        const b0 = a0 + j * sub, b1 = a0 + (j + 1) * sub, bm = (b0 + b1) / 2, on = sel.has(s);
+        paths += `<path class="wseg" data-flavor="${esc(s)}" d="${arcSeg(cx, cy, rMid, rOut, b0, b1)}" fill="${c.color}" opacity="${on ? 1 : 0.34}" stroke="#0f0b05" stroke-width="${on ? 1.8 : 0.8}"/>`;
+        const [tx, ty] = polar(cx, cy, (rMid + rOut) / 2, bm);
+        const rot = bm <= 180 ? bm - 90 : bm + 90;
+        labels += `<text class="wlbl" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${rot.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})" fill="${on ? '#fff' : 'rgba(255,255,255,.82)'}">${esc(s)}</text>`;
+      });
+    });
+    const n = sel.size;
+    const center = `<circle cx="${cx}" cy="${cy}" r="${rHole}" fill="#17110a" stroke="rgba(232,194,74,.3)" stroke-width="1"/>
+      <text x="${cx}" y="${cy - 3}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="22" fill="#e8c24a">${n || '☕'}</text>
+      <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" letter-spacing="1.6" fill="rgba(246,239,218,.6)">${n ? 'SELECTED' : 'TASTE'}</text>`;
+    return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Coffee tasting wheel">${paths}${center}${labels}</svg>`;
+  }
+  function tasteTags(sel) {
+    if (!sel.size) return '<div class="taste-tags"><span class="note" style="font-size:12.5px">Tap the outer ring — berry, cocoa, citrus, honey…</span></div>';
+    return '<div class="taste-tags">' + [...sel].map((s) =>
+      `<span class="ttag"><i style="background:${FLAVOR_COLOR[s] || '#b8922f'}"></i>${esc(s)} <b class="ttrm" data-flavor="${esc(s)}">×</b></span>`).join('') + '</div>';
+  }
+  function starsInput(rating) {
+    return '<div class="rev-stars">' + [1, 2, 3, 4, 5].map((n) => `<button type="button" class="star ${n <= rating ? 'on' : ''}" data-star="${n}">★</button>`).join('') + '</div>';
+  }
+  function starsRO(rating) {
+    return '<span class="rev-stars">' + [1, 2, 3, 4, 5].map((n) => `<span class="star ro ${n <= rating ? 'on' : ''}">★</span>`).join('') + '</span>';
+  }
+
+  // ── Reviews: rate a batch you bought + tap what you taste on the wheel ──
+  function captureBody() {
+    if (!draft) return;
+    const ta = $('reviews').querySelector('textarea[data-role="body"]');
+    if (ta) draft.body = ta.value;
+  }
+  function editorCard(o) {
+    const did = o.drop_id;
+    return `<div class="order">
+      <div class="top"><b>${esc(o.drop_name || 'Friday Drop')}</b><span class="soon">+${PT.review || 50} pts</span></div>
+      <div class="rev-editor">
+        <div class="lbl">Your rating</div>
+        ${starsInput(draft.rating)}
+        <div class="lbl">While you sip — tap what you taste</div>
+        <div class="wheel-wrap">${buildWheel(draft.flavors)}${tasteTags(draft.flavors)}</div>
+        <div class="lbl">Notes (optional)</div>
+        <textarea data-role="body" placeholder="How did it drink? How did you pour it?">${esc(draft.body || '')}</textarea>
+        <div class="rev-actions">
+          <button class="btn rev-save" type="button" data-id="${did}">Save review</button>
+          <button class="btn ghost rev-cancel" type="button">Cancel</button>
+        </div>
+        <div class="err rev-err"></div>
+      </div>
+    </div>`;
+  }
   function renderReviews(orders) {
     const el = $('reviews');
-    const seen = new Set();
-    const batches = (orders || []).filter((o) => { const k = o.drop_name || o.id; if (seen.has(k)) return false; seen.add(k); return true; });
+    const seen = new Set(), batches = [];
+    (orders || []).forEach((o) => { if (o.drop_id == null) return; const k = String(o.drop_id); if (seen.has(k)) return; seen.add(k); batches.push(o); });
     if (!batches.length) {
       el.innerHTML = '<div class="card"><p class="note" style="margin:0">Once you’ve got a batch, you’ll be able to review it here — and earn points for it.</p></div>';
       return;
     }
-    el.innerHTML = batches.map((o) => `<div class="order">
-      <div class="top"><b>${esc(o.drop_name || 'Friday Drop')}</b><span class="soon">Rate · +50 pts soon</span></div>
-      <div class="note">${esc(o.tracking_status === 'Delivered' || o.delivered_at ? 'Delivered — how was it?' : 'Tell us how you’re pouring it.')}</div>
-      <div class="trackrow"><button class="btn ghost" type="button" disabled style="opacity:.65;cursor:default">★ Write a review</button></div>
-    </div>`).join('');
+    el.innerHTML = batches.map((o) => {
+      const did = o.drop_id, rev = REVIEWS[did];
+      if (draft && String(draft.dropId) === String(did)) return editorCard(o);
+      if (rev) return `<div class="order">
+        <div class="top"><b>${esc(o.drop_name || 'Friday Drop')}</b>${starsRO(rev.rating)}</div>
+        ${Array.isArray(rev.flavors) && rev.flavors.length ? `<div style="margin-top:10px">${rev.flavors.map((f) => `<span class="flav-chip"><i style="background:${FLAVOR_COLOR[f] || '#b8922f'}"></i>${esc(f)}</span>`).join('')}</div>` : ''}
+        ${rev.body ? `<p class="note" style="margin-top:8px;color:var(--body);font-style:italic">“${esc(rev.body)}”</p>` : ''}
+        <div class="trackrow"><button class="btn ghost rev-edit" type="button" data-id="${did}">Edit review</button></div>
+      </div>`;
+      return `<div class="order">
+        <div class="top"><b>${esc(o.drop_name || 'Friday Drop')}</b><span class="soon">+${PT.review || 50} pts</span></div>
+        <div class="note">${o.delivered_at || o.tracking_status === 'Delivered' ? 'Delivered — pour a glass and tell us what you taste.' : 'While you sip, tell us what you taste.'}</div>
+        <div class="trackrow"><button class="btn rev-start" type="button" data-id="${did}">★ Review this batch</button></div>
+      </div>`;
+    }).join('');
   }
 
-  // ── Points: balance from purchases, ways to earn, what it unlocks ──
-  function pointsBalance(stats) { return (stats && stats.bottles ? stats.bottles : 0) * PTS_PER_BOTTLE; }
-  function renderPoints(stats) {
-    const bal = pointsBalance(stats);
-    const pct = Math.min(100, Math.round((bal / PREORDER_COST) * 100));
-    const toGo = Math.max(0, PREORDER_COST - bal);
+  // ── Points: real balance + lifetime status from the ledger ──
+  // The Pre-Order privilege is permanent status (lifetime earned ≥ threshold);
+  // the big number is the spendable balance (for redemptions that deduct later).
+  function renderPoints() {
+    const lifetime = PT.lifetimeEarned || 0;
+    const pct = Math.min(100, Math.round((lifetime / threshold()) * 100));
+    const toGo = Math.max(0, threshold() - lifetime);
     $('pointswrap').innerHTML = `
       <div class="pts-dark">
-        <span class="bal">${bal.toLocaleString()}</span>
-        <span class="lbl">points</span>
+        <span class="bal">${bal().toLocaleString()}</span>
+        <span class="lbl">points to spend</span>
         <div class="prog"><i style="width:${pct}%"></i></div>
-        <p class="goal">${toGo > 0
-          ? `<b>${toGo}</b> more to unlock <b>Pre-Order</b>`
-          : `You’ve unlocked <b>Pre-Order</b> — claim it from the menu.`}</p>
+        <p class="goal">${PT.preorderUnlocked
+          ? `Pre-Order unlocked — a perk that’s yours for good.`
+          : `<b>${toGo}</b> more earned to unlock <b>Pre-Order</b>`}</p>
       </div>
       <div class="card">
         <div class="k" style="margin:2px 0 10px">Ways to earn</div>
@@ -214,16 +315,16 @@
       <div class="card">
         <div class="k" style="margin:2px 0 10px">What points unlock</div>
         <div class="rows">
-          <div class="row"><span class="rk">Pre-Order the next batch</span><span class="rv">${bal >= PREORDER_COST ? '<span class="chip good">Unlocked</span>' : PREORDER_COST + ' pts'}</span></div>
-          <div class="row"><span class="rk">More perks <span class="soon">soon</span></span><span class="rv">—</span></div>
+          <div class="row"><span class="rk">Pre-Order access <span class="soon">status</span></span><span class="rv">${PT.preorderUnlocked ? '<span class="chip good">Unlocked</span>' : threshold() + ' pts'}</span></div>
+          <div class="row"><span class="rk">Free bottle <span class="soon">soon</span></span><span class="rv">spend pts</span></div>
         </div>
       </div>`;
   }
 
-  // ── Pre-Order: gated behind points ──
-  function renderPreorder(drop, stats) {
-    const bal = pointsBalance(stats);
-    const unlocked = bal >= PREORDER_COST;
+  // ── Pre-Order: gated behind lifetime-earned points (permanent once unlocked) ──
+  function renderPreorder(drop) {
+    const lifetime = PT.lifetimeEarned || 0;
+    const unlocked = PT.preorderUnlocked;
     const el = $('preorder');
     const dropBlock = drop ? `<div class="card">
       <h2>${esc(drop.name || 'The next batch')}</h2>
@@ -233,15 +334,15 @@
     if (!unlocked) {
       el.innerHTML = dropBlock + `<div class="card">
         <h2>Pre-Order</h2>
-        <p class="note" style="font-size:14px;color:var(--body)">Pre-ordering is a members' perk unlocked with points. You have <b>${bal}</b> — reach <b>${PREORDER_COST}</b> to claim your bottle before the Friday drop opens.</p>
-        <div class="prog"><i style="width:${Math.min(100, Math.round((bal / PREORDER_COST) * 100))}%"></i></div>
-        <button class="btn" type="button" disabled style="opacity:.6;cursor:default;margin-top:6px">Locked · ${PREORDER_COST - bal} pts to go</button>
+        <p class="note" style="font-size:14px;color:var(--body)">Pre-ordering is a members' perk unlocked with points. You've earned <b>${lifetime}</b> — reach <b>${threshold()}</b> to claim your bottle before the Friday drop opens (and it stays unlocked for good).</p>
+        <div class="prog"><i style="width:${Math.min(100, Math.round((lifetime / threshold()) * 100))}%"></i></div>
+        <button class="btn" type="button" disabled style="opacity:.6;cursor:default;margin-top:6px">Locked · ${threshold() - lifetime} pts to go</button>
       </div>`;
       return;
     }
     el.innerHTML = dropBlock + `<div class="card">
       <h2>Pre-Order unlocked</h2>
-      <p class="note" style="font-size:14px;color:var(--body)">You've earned early access. Reserve your bottle before the Friday drop opens to the list.</p>
+      <p class="note" style="font-size:14px;color:var(--body)">You've earned early access — yours for good. Reserve your bottle before the Friday drop opens to the list.</p>
       <button class="btn" type="button" disabled style="opacity:.7;cursor:default">Reserve — opens soon <span class="soon" style="margin-left:6px">beta</span></button>
     </div>`;
   }
@@ -272,54 +373,67 @@
     }).join('');
   }
 
-  function renderDash(d) {
+  function hydrate(d) {
     DATA = d;
-    show('v-dash');
-    $('previewbanner').hidden = !PREVIEW;
+    PT = Object.assign({ balance: 0, lifetimeEarned: 0, preorderThreshold: 200, preorderUnlocked: false, review: 50 }, d.points || {});
+    REVIEWS = {};
+    (d.reviews || []).forEach((r) => { REVIEWS[r.drop_id] = { rating: r.rating, body: r.body, flavors: Array.isArray(r.flavors) ? r.flavors : [] }; });
+  }
+  function renderHero() {
+    const d = DATA;
     const fn = firstName(d.orders && d.orders[0] && d.orders[0].shipping_name, d.email);
-    const s = d.stats || {};
-    const bal = pointsBalance(s);
-    const toGo = Math.max(0, PREORDER_COST - bal);
+    const toGo = Math.max(0, threshold() - (PT.lifetimeEarned || 0));
     const nextDrop = d.drop && (d.drop.name || 'the next batch');
     $('hero').innerHTML = `
       <div class="eyebrow">The Cellar</div>
       <h3>Welcome back, ${esc(fn)}.</h3>
       <p>Your orders, your batches, and everything Wilhelm — in one place.</p>
       <div class="hero-row">
-        <span class="pts-chip">✦ <b>${bal.toLocaleString()}</b> points${toGo > 0 ? ` · ${toGo} to Pre-Order` : ' · Pre-Order unlocked'}</span>
+        <span class="pts-chip">✦ <b>${bal().toLocaleString()}</b> points${PT.preorderUnlocked ? ' · Pre-Order unlocked' : ` · ${toGo} to Pre-Order`}</span>
         ${d.drop ? `<a class="btn mini" href="#" data-goto="preorder">${d.drop.status === 'live' ? 'Buy the live drop →' : 'See ' + esc(nextDrop) + ' →'}</a>` : ''}
       </div>`;
     $('userchip').innerHTML = `<div class="av">${esc((fn[0] || 'W').toUpperCase())}</div><span class="em">${esc(d.email)}</span>`;
     $('who').textContent = d.email;
-
-    renderDrop(d.drop);
-    renderOrders(d.orders || []);
-    renderReviews(d.orders || []);
-    renderPoints(s);
-    renderPreorder(d.drop, s);
-
-    const IC = {
-      bottle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4M11 2v3.5c0 .8-.4 1.4-1 2.1C8.8 8.9 8 10 8 12v7a3 3 0 0 0 3 3h2a3 3 0 0 0 3-3v-7c0-2-.8-3.1-2-4.4-.6-.7-1-1.3-1-2.1V2"/></svg>',
-      star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.9-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.6 9.7l5.8-.9z"/></svg>',
-      cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>',
-    };
+  }
+  const IC = {
+    bottle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4M11 2v3.5c0 .8-.4 1.4-1 2.1C8.8 8.9 8 10 8 12v7a3 3 0 0 0 3 3h2a3 3 0 0 0 3-3v-7c0-2-.8-3.1-2-4.4-.6-.7-1-1.3-1-2.1V2"/></svg>',
+    star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.9-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.6 9.7l5.8-.9z"/></svg>',
+    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>',
+  };
+  function renderStats() {
+    const s = DATA.stats || {};
     $('stats').innerHTML = `
       <div class="stat"><div class="ic">${IC.bottle}</div><b>${s.bottles || 0}</b><span>bottles collected</span></div>
-      <div class="stat"><div class="ic">${IC.star}</div><b>${bal.toLocaleString()}</b><span>points</span></div>
+      <div class="stat"><div class="ic">${IC.star}</div><b>${bal().toLocaleString()}</b><span>points</span></div>
       <div class="stat"><div class="ic">${IC.cal}</div><b>${s.memberSince ? new Date(s.memberSince).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}</b><span>member since</span></div>`;
-
     const listMsg = s.onTheList
       ? 'You’re on the Friday Drop list — the buy link lands in your inbox first.'
       : 'You’re not on the Friday Drop list right now — <a href="/drink/">rejoin here</a> so you don’t miss the next batch.';
     $('liststate').innerHTML = listMsg;
     $('liststate2').innerHTML = listMsg;
     $('acctrows').innerHTML = [
-      ['Email', esc(d.email)],
+      ['Email', esc(DATA.email)],
       ['Member since', s.memberSince ? esc(fmtD(s.memberSince)) : '—'],
       ['Bottles collected', String(s.bottles || 0)],
-      ['Points', pointsBalance(s).toLocaleString()],
+      ['Points to spend', bal().toLocaleString()],
+      ['Lifetime earned', (PT.lifetimeEarned || 0).toLocaleString()],
       ['On the Friday list', s.onTheList ? 'Yes' : 'No'],
     ].map(([k, v]) => `<div class="row"><span class="rk">${k}</span><span class="rv">${v}</span></div>`).join('');
+  }
+  // Re-render everything that depends on points (after a review awards them).
+  function refreshPoints() { renderHero(); renderStats(); renderPoints(); renderPreorder(DATA.drop); }
+
+  function renderDash(d) {
+    hydrate(d);
+    show('v-dash');
+    $('previewbanner').hidden = !PREVIEW;
+    renderHero();
+    renderStats();
+    renderDrop(d.drop);
+    renderOrders(d.orders || []);
+    renderReviews(d.orders || []);
+    renderPoints();
+    renderPreorder(d.drop);
   }
 
   // ── sample data for ?preview ──
@@ -339,11 +453,13 @@
     return {
       email: 'benbrynildsen5757@gmail.com',
       stats: { bottles: 7, drops: 4, memberSince: iso(now - 275 * DAY), onTheList: true },
+      points: { balance: 175, lifetimeEarned: 175, spent: 0, perBottle: 25, review: 50, preorderThreshold: 200, preorderUnlocked: false },
+      reviews: [{ drop_id: 63, rating: 5, body: 'Best one yet — drank it black over a big cube.', flavors: ['Cocoa', 'Stone', 'Caramel'] }],
       drop: { name: 'Batch 66', status: 'scheduled', opens_at: nf.toISOString(), price_cents: 2200, origin: 'Ethiopia, Guji', roast: 'Light roast', tasting_notes: 'Stone fruit, jasmine, a long, clean finish.' },
       orders: [
-        { id: 'demo1', drop_name: 'Batch 65', quantity: 2, amount_total_cents: 4400, paid_at: iso(now - 5 * DAY), shipped_at: null, address_editable: true, shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
-        { id: 'demo2', drop_name: 'Batch 64', quantity: 1, amount_total_cents: 2200, paid_at: iso(now - 12 * DAY), shipped_at: iso(now - 10 * DAY), tracking_number: '9400111899223197428491', tracking_carrier: 'USPS', tracking_status: 'In transit', shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
-        { id: 'demo3', drop_name: 'Batch 63', quantity: 4, amount_total_cents: 8800, paid_at: iso(now - 26 * DAY), shipped_at: iso(now - 24 * DAY), delivered_at: iso(now - 21 * DAY), tracking_number: '9400111899223197428490', tracking_carrier: 'USPS', shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo1', drop_id: 65, drop_name: 'Batch 65', quantity: 2, amount_total_cents: 4400, paid_at: iso(now - 5 * DAY), shipped_at: null, address_editable: true, shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo2', drop_id: 64, drop_name: 'Batch 64', quantity: 1, amount_total_cents: 2200, paid_at: iso(now - 12 * DAY), shipped_at: iso(now - 10 * DAY), tracking_number: '9400111899223197428491', tracking_carrier: 'USPS', tracking_status: 'In transit', shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo3', drop_id: 63, drop_name: 'Batch 63', quantity: 4, amount_total_cents: 8800, paid_at: iso(now - 26 * DAY), shipped_at: iso(now - 24 * DAY), delivered_at: iso(now - 21 * DAY), tracking_number: '9400111899223197428490', tracking_carrier: 'USPS', shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
       ],
     };
   }
@@ -410,6 +526,48 @@
       await api('/api/portal/order/' + encodeURIComponent(id) + '/address', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       renderOrders((await api('/api/portal/overview')).orders || []);
     } catch (err) { errEl.textContent = err.message; submit.disabled = false; submit.textContent = 'Save address'; }
+  });
+
+  // ── Reviews + tasting wheel interactions (delegated on #reviews) ──
+  function openReview(dropId) {
+    const rev = REVIEWS[dropId];
+    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '' };
+    renderReviews(DATA.orders || []);
+  }
+  async function saveReview(dropId) {
+    captureBody();
+    const errEl = $('reviews').querySelector('.rev-err');
+    if (!draft.rating) { if (errEl) errEl.textContent = 'Tap a star rating first.'; return; }
+    const flavors = [...draft.flavors];
+    const btn = $('reviews').querySelector('.rev-save');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    if (PREVIEW) {
+      REVIEWS[dropId] = { rating: draft.rating, body: draft.body, flavors };
+      if (!PT._reviewed) PT._reviewed = {};
+      if (!PT._reviewed[dropId]) { PT._reviewed[dropId] = 1; PT.balance += PT.review; PT.lifetimeEarned += PT.review; PT.preorderUnlocked = PT.lifetimeEarned >= threshold(); }
+      draft = null; renderReviews(DATA.orders || []); refreshPoints();
+      return;
+    }
+    try {
+      const r = await api('/api/portal/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dropId, rating: draft.rating, body: draft.body || '', flavors }) });
+      REVIEWS[dropId] = { rating: draft.rating, body: draft.body, flavors };
+      if (r.points) { PT.balance = r.points.balance; PT.lifetimeEarned = r.points.lifetimeEarned; PT.spent = r.points.spent; PT.preorderUnlocked = PT.lifetimeEarned >= threshold(); }
+      draft = null; renderReviews(DATA.orders || []); refreshPoints();
+    } catch (err) { if (errEl) errEl.textContent = err.message; if (btn) { btn.disabled = false; btn.textContent = 'Save review'; } }
+  }
+  $('reviews').addEventListener('click', (e) => {
+    const start = e.target.closest('.rev-start, .rev-edit');
+    if (start) { openReview(parseInt(start.dataset.id, 10)); return; }
+    if (e.target.closest('.rev-cancel')) { draft = null; renderReviews(DATA.orders || []); return; }
+    const save = e.target.closest('.rev-save');
+    if (save) { saveReview(parseInt(save.dataset.id, 10)); return; }
+    if (!draft) return;
+    const star = e.target.closest('.star[data-star]');
+    if (star) { captureBody(); draft.rating = parseInt(star.dataset.star, 10); renderReviews(DATA.orders || []); return; }
+    const rm = e.target.closest('.ttrm');
+    if (rm) { captureBody(); draft.flavors.delete(rm.dataset.flavor); renderReviews(DATA.orders || []); return; }
+    const seg = e.target.closest('.wseg');
+    if (seg) { captureBody(); const f = seg.getAttribute('data-flavor'); draft.flavors.has(f) ? draft.flavors.delete(f) : draft.flavors.add(f); renderReviews(DATA.orders || []); return; }
   });
 
   boot();

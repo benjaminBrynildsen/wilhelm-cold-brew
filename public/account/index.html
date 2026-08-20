@@ -191,6 +191,37 @@
     .pts-dark .goal{color:rgba(246,239,218,.82);font-size:13.5px;margin:0}
     .pts-dark .goal b{color:#fff}
 
+    /* ── reviews + tasting wheel ── */
+    .rev-stars{display:inline-flex;gap:4px}
+    .star{cursor:pointer;font-size:26px;line-height:1;color:rgba(184,146,47,.32);transition:transform .1s,color .1s;background:none;border:0;padding:0}
+    .star.on{color:var(--gold-deep)}
+    .star:hover{transform:scale(1.12)}
+    .star.ro{cursor:default;font-size:18px}
+    .star.ro:hover{transform:none}
+    .rev-editor{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line-soft)}
+    .rev-editor .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--gold-ink);margin:14px 0 8px}
+    .rev-editor .lbl:first-child{margin-top:0}
+    .rev-editor textarea{width:100%;min-height:74px;padding:11px 13px;background:#fff;border:1.5px solid var(--line);border-radius:12px;color:var(--ink);font:inherit;font-size:14.5px;resize:vertical}
+    .rev-editor textarea:focus{border-color:var(--gold-deep);outline:none}
+    .wheel-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+    .wheel{width:100%;max-width:340px;height:auto;touch-action:manipulation;user-select:none}
+    .wheel path{cursor:pointer;transition:opacity .12s}
+    .wheel path:hover{opacity:.9}
+    .wheel text{pointer-events:none;font-family:var(--sans)}
+    .wheel .wlbl{fill:#fff;font-size:8.5px;font-weight:600;letter-spacing:.2px}
+    .wheel .wcat{font-family:var(--display);font-weight:700;font-size:10px;fill:rgba(255,255,255,.92)}
+    .wheel .wctr{font-family:var(--mono);letter-spacing:1px;fill:var(--gold-ink)}
+    .taste-tags{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;min-height:2px}
+    .ttag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);border:1px solid var(--line);
+      background:var(--card);border-radius:20px;padding:5px 10px 5px 12px}
+    .ttag i{width:9px;height:9px;border-radius:50%;display:inline-block}
+    .ttag b{cursor:pointer;color:var(--dim);font-style:normal;font-weight:700;font-size:14px;line-height:1}
+    .rev-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+    .rev-toast{color:#2f7d46;font-size:13px;font-weight:600;margin-top:8px}
+    .flav-chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.4px;
+      text-transform:uppercase;color:var(--body);border:1px solid var(--line-soft);border-radius:16px;padding:4px 9px;margin:0 6px 6px 0}
+    .flav-chip i{width:8px;height:8px;border-radius:50%}
+
     @media(prefers-reduced-motion:no-preference){.sec{animation:rise .32s cubic-bezier(.2,.7,.3,1)}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
   </style>
 </head>

@@ -11,6 +11,7 @@ import { receiveJourney, subscribe, recordChallenge } from './ingest.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin } from './admin.js';
 import { mountPortal } from './portal.js';
+import { backfillPurchasePoints } from './points.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
 import { deliveryEnabled, refreshDeliveryStatuses } from './delivery.js';
@@ -299,6 +300,8 @@ ensureSchema()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`[wilhelm] listening on :${PORT}`);
+      // Backfill loyalty points for existing paid orders (idempotent).
+      backfillPurchasePoints().catch((e) => console.warn('[points] backfill failed:', e?.message || e));
       // Warm the bandit cache so the first visitors after a deploy never pay
       // for the aggregate queries; refresh it on an interval so cache expiry
       // is invisible too (getState single-flights, so this never stacks).

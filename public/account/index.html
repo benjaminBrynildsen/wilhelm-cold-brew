@@ -148,6 +148,49 @@
     .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;border-top:1px solid var(--line-soft);padding-top:10px}
     .meta div .mk{font-family:var(--mono);font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}
     .meta div .mv{font-size:13.5px;color:var(--ink)}
+    /* ── liveliness: hero band, feature cards, richer tiles ── */
+    .hero{position:relative;overflow:hidden;border-radius:20px;padding:28px 26px 26px;margin:0 0 18px;
+      background:linear-gradient(135deg,#20170c 0%,#0f0b05 72%);color:var(--parchment);
+      box-shadow:0 18px 44px rgba(60,40,8,.24)}
+    .hero::after{content:"";position:absolute;right:-30px;top:-24px;bottom:-24px;width:48%;
+      background:url(/drink/assets/bottle-pour.webp) right center/cover no-repeat;opacity:.26;
+      -webkit-mask-image:linear-gradient(90deg,transparent,#000 65%);mask-image:linear-gradient(90deg,transparent,#000 65%)}
+    .hero>*{position:relative;z-index:1}
+    .hero .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:2.6px;text-transform:uppercase;color:var(--gold)}
+    .hero h3{font-family:var(--display);font-weight:700;font-size:30px;margin:9px 0 5px;color:#fff}
+    .hero p{margin:0 0 16px;color:rgba(246,239,218,.72);font-size:14px;max-width:64%}
+    .hero-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .pts-chip{display:inline-flex;align-items:center;gap:7px;background:rgba(232,194,74,.15);border:1px solid rgba(232,194,74,.42);
+      color:var(--gold);font-family:var(--mono);font-size:12px;letter-spacing:.4px;padding:8px 14px;border-radius:20px}
+    .pts-chip b{color:#fff;font-weight:700}
+    .hero .btn.mini{min-height:0;padding:9px 16px;font-size:13px}
+
+    /* richer stat tiles */
+    .stats{gap:12px}
+    .stat{position:relative;padding:18px 10px 15px;transition:transform .16s,box-shadow .16s}
+    .stat:hover{transform:translateY(-3px);box-shadow:0 12px 26px rgba(96,72,16,.14)}
+    .stat .ic{width:32px;height:32px;border-radius:50%;background:rgba(232,194,74,.16);color:var(--gold-ink);
+      display:flex;align-items:center;justify-content:center;margin:0 auto 9px}
+    .stat .ic svg{width:16px;height:16px}
+
+    /* card + order hover life */
+    .content .card,.order{transition:transform .16s,box-shadow .16s}
+    .content .card:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(96,72,16,.13)}
+    .order:hover{transform:translateY(-2px);box-shadow:0 14px 28px rgba(96,72,16,.13)}
+    /* accent bar on the next-drop + list cards */
+    .card.accent{border-left:3px solid var(--gold)}
+
+    /* dark points hero */
+    .pts-dark{position:relative;overflow:hidden;background:linear-gradient(135deg,#20170c,#0f0b05);border-radius:20px;
+      padding:30px 24px 24px;margin:0 0 16px;color:var(--parchment);box-shadow:0 18px 44px rgba(60,40,8,.24);text-align:center}
+    .pts-dark .bal{font-family:var(--display);font-weight:800;font-size:60px;color:var(--gold);display:block;line-height:1;
+      text-shadow:0 2px 26px rgba(232,194,74,.3)}
+    .pts-dark .lbl{font-family:var(--mono);font-size:10px;letter-spacing:2.8px;text-transform:uppercase;color:rgba(246,239,218,.6)}
+    .pts-dark .prog{background:rgba(246,239,218,.15)}
+    .pts-dark .prog i{box-shadow:0 0 16px rgba(232,194,74,.55)}
+    .pts-dark .goal{color:rgba(246,239,218,.82);font-size:13.5px;margin:0}
+    .pts-dark .goal b{color:#fff}
+
     @media(prefers-reduced-motion:no-preference){.sec{animation:rise .32s cubic-bezier(.2,.7,.3,1)}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
   </style>
 </head>
@@ -235,9 +278,9 @@
         <div class="preview-banner" id="previewbanner" hidden>Preview · sample data — not a real account</div>
 
         <section class="sec" data-sec="overview" id="sec-overview">
-          <div class="hello" id="hello"></div>
-          <div class="card" id="dropcard" hidden><h2>Next drop</h2><div id="dropbody"></div></div>
+          <div class="hero" id="hero"></div>
           <div class="stats" id="stats"></div>
+          <div class="card accent" id="dropcard" hidden><h2>Next drop</h2><div id="dropbody"></div></div>
           <div class="note" id="liststate"></div>
         </section>
 
@@ -265,7 +308,7 @@
 
         <section class="sec" data-sec="points" id="sec-points" hidden>
           <p class="secintro">Every bottle earns you a point toward Wilhelm perks.</p>
-          <div class="card" id="pointscard"></div>
+          <div id="pointswrap"></div>
         </section>
 
         <section class="sec" data-sec="batches" id="sec-batches" hidden>

@@ -1,11 +1,9 @@
-// The Cellar — customer portal. Three views: login → check-your-inbox → dashboard.
-// A ?token= in the URL (from the magic-link email) is redeemed for a session
-// cookie on load, then stripped from the address bar.
+// The Cellar — customer portal. A magic-link session opens a dashboard with a
+// sidebar (Overview · Orders · Account). A ?token= in the URL is redeemed for a
+// session cookie on load; ?preview renders the layout with sample data (no auth,
+// no writes) so the design can be seen fully populated.
 (function () {
   const $ = (id) => document.getElementById(id);
-  const show = (id) => {
-    ['v-login', 'v-sent', 'v-dash'].forEach((v) => { $(v).hidden = v !== id; });
-  };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const api = async (path, opts) => {
     const r = await fetch(path, Object.assign({ credentials: 'include' }, opts || {}));
@@ -15,6 +13,27 @@
   };
   const fmtD = (t) => new Date(t).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const money = (c) => (c == null ? '' : '$' + (c / 100).toFixed(2));
+  const firstName = (name, email) => (name ? String(name).trim().split(/\s+/)[0] : (email ? String(email).split('@')[0] : '')) || 'there';
+
+  let PREVIEW = false;
+  let DATA = null; // last overview payload (for local re-render, e.g. preview edits)
+
+  // Pre-auth (login / check-inbox) vs the dashboard app.
+  const TITLES = { overview: 'Overview', orders: 'Orders', account: 'Account' };
+  function show(view) {
+    const dash = view === 'v-dash';
+    $('preauth').hidden = dash;
+    $('v-dash').hidden = !dash;
+    if (!dash) { $('v-login').hidden = view !== 'v-login'; $('v-sent').hidden = view !== 'v-sent'; }
+  }
+  function goSection(sec) {
+    document.querySelectorAll('.sec').forEach((s) => { s.hidden = s.dataset.sec !== sec; });
+    document.querySelectorAll('.navitem').forEach((n) => n.classList.toggle('active', n.dataset.sec === sec));
+    $('topttl').textContent = TITLES[sec] || 'Cellar';
+    closeDrawer();
+  }
+  function openDrawer() { $('v-dash').classList.add('drawer-open'); $('backdrop').hidden = false; }
+  function closeDrawer() { $('v-dash').classList.remove('drawer-open'); $('backdrop').hidden = true; }
 
   // Carrier tracking URL — mirrors the server's mapping (USPS default).
   function trackUrl(num, carrier) {
@@ -70,7 +89,6 @@
     }
   }
 
-  // Address as display lines, and as a one-liner for the summary.
   function addrLines(a) {
     if (!a) return [];
     return [
@@ -78,16 +96,13 @@
       [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''),
     ].map((s) => String(s || '').trim()).filter(Boolean);
   }
-
   function statusChip(o) {
     if (o.delivered_at) return `<span class="chip good">Delivered ${esc(fmtD(o.delivered_at))}</span>`;
     if (o.tracking_status) return `<span class="chip">${esc(o.tracking_status)}</span>`;
     if (o.shipped_at) return `<span class="chip good">Shipped</span>`;
     return `<span class="chip">Being prepared</span>`;
   }
-
-  // The self-service address editor, shown only while an order is still
-  // unshipped (address_editable). Prefilled with the current address.
+  // Self-service address editor, shown only while an order is still unshipped.
   function addrForm(o) {
     const a = o.shipping_address || {};
     const f = (name, ph, val, extra) =>
@@ -112,7 +127,7 @@
   function renderOrders(orders) {
     const el = $('orders');
     if (!orders.length) {
-      el.innerHTML = '<p class="note">No bottles yet — your first drop is waiting. Watch Friday’s email.</p>';
+      el.innerHTML = '<div class="card"><p class="note" style="margin:0">No bottles yet — your first drop is waiting. Watch Friday’s email.</p></div>';
       return;
     }
     el.innerHTML = orders.map((o) => {
@@ -146,7 +161,6 @@
     }).join('');
   }
 
-  // Toggle between the address summary and its edit form.
   function toggleAddr(id, editing) {
     const summary = document.querySelector(`.ship[data-id="${CSS.escape(id)}"]`);
     const form = document.querySelector(`.addrform[data-id="${CSS.escape(id)}"]`);
@@ -155,36 +169,95 @@
   }
 
   function renderDash(d) {
+    DATA = d;
     show('v-dash');
+    $('previewbanner').hidden = !PREVIEW;
+
+    const fn = firstName(d.orders && d.orders[0] && d.orders[0].shipping_name, d.email);
+    $('hello').innerHTML = `<h3>Welcome back, ${esc(fn)}.</h3><p>Here's everything Wilhelm, in one place.</p>`;
+
+    // topbar user chip + sidebar identity
+    const initial = (fn[0] || 'W').toUpperCase();
+    $('userchip').innerHTML = `<div class="av">${esc(initial)}</div><span class="em">${esc(d.email)}</span>`;
+    $('who').textContent = d.email;
+
     renderDrop(d.drop);
     renderOrders(d.orders || []);
+
     const s = d.stats || {};
     $('stats').innerHTML = `
       <div class="stat"><b>${s.bottles || 0}</b><span>bottles collected</span></div>
       <div class="stat"><b>${s.drops || 0}</b><span>drops caught</span></div>
       <div class="stat"><b>${s.memberSince ? new Date(s.memberSince).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}</b><span>member since</span></div>`;
-    $('liststate').innerHTML = s.onTheList
+
+    const listMsg = s.onTheList
       ? 'You’re on the Friday Drop list — the buy link lands in your inbox first.'
       : 'You’re not on the Friday Drop list right now — <a href="/drink/">rejoin here</a> so you don’t miss the next batch.';
-    $('refurl').value = d.referral.url;
-    $('refcount').textContent = d.referral.joined === 1
-      ? '1 friend has joined through your link.'
-      : `${d.referral.joined} friends have joined through your link.`;
-    $('who').textContent = 'Signed in as ' + d.email;
+    $('liststate').innerHTML = listMsg;
+    $('liststate2').innerHTML = listMsg;
+
+    $('acctrows').innerHTML = [
+      ['Email', esc(d.email)],
+      ['Member since', s.memberSince ? esc(fmtD(s.memberSince)) : '—'],
+      ['Bottles collected', String(s.bottles || 0)],
+      ['On the Friday list', s.onTheList ? 'Yes' : 'No'],
+    ].map(([k, v]) => `<div class="row"><span class="rk">${k}</span><span class="rv">${v}</span></div>`).join('');
+  }
+
+  // ── Sample data for ?preview (no auth, no writes) ──
+  function mockData() {
+    const now = Date.now(), DAY = 86400000;
+    // next Friday 9am local
+    const nf = new Date(); nf.setHours(9, 0, 0, 0);
+    nf.setDate(nf.getDate() + ((5 - nf.getDay() + 7) % 7 || 7));
+    const iso = (ms) => new Date(ms).toISOString();
+    const addr = (line1, line2, city, state, zip) => ({ line1, line2: line2 || '', city, state, postal_code: zip, country: 'US' });
+    return {
+      email: 'benbrynildsen5757@gmail.com',
+      stats: { bottles: 7, drops: 4, memberSince: iso(now - 275 * DAY), onTheList: true },
+      drop: { name: 'Batch 66', status: 'scheduled', opens_at: nf.toISOString(), price_cents: 2200,
+        origin: 'Ethiopia, Guji', roast: 'Light roast', tasting_notes: 'Stone fruit, jasmine, a long, clean finish.' },
+      orders: [
+        { id: 'demo1', drop_name: 'Batch 65', quantity: 2, amount_total_cents: 4400, paid_at: iso(now - 5 * DAY),
+          shipped_at: null, address_editable: true, shipping_name: 'Ben Brynildsen',
+          shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo2', drop_name: 'Batch 64', quantity: 1, amount_total_cents: 2200, paid_at: iso(now - 12 * DAY),
+          shipped_at: iso(now - 10 * DAY), tracking_number: '9400111899223197428491', tracking_carrier: 'USPS',
+          tracking_status: 'In transit', shipping_name: 'Ben Brynildsen',
+          shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo3', drop_name: 'Batch 63', quantity: 4, amount_total_cents: 8800, paid_at: iso(now - 26 * DAY),
+          shipped_at: iso(now - 24 * DAY), delivered_at: iso(now - 21 * DAY), tracking_number: '9400111899223197428490',
+          tracking_carrier: 'USPS', shipping_name: 'Ben Brynildsen',
+          shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+      ],
+    };
   }
 
   async function boot() {
-    // Magic link? Redeem it, then clean the URL.
     const params = new URLSearchParams(location.search);
+
+    if (params.has('preview')) {
+      PREVIEW = true;
+      history.replaceState(null, '', location.pathname + '?preview');
+      renderDash(mockData());
+      goSection('overview');
+      return;
+    }
+
     const token = params.get('token');
     if (token) {
       history.replaceState(null, '', location.pathname);
       try { await api('/api/portal/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }); }
       catch (e) { show('v-login'); $('loginerr').textContent = e.message; return; }
     }
-    try { renderDash(await api('/api/portal/overview')); }
+    try { renderDash(await api('/api/portal/overview')); goSection('overview'); }
     catch { show('v-login'); }
   }
+
+  // ── wiring ──
+  document.querySelectorAll('.navitem').forEach((n) => n.addEventListener('click', () => goSection(n.dataset.sec)));
+  $('hamb').addEventListener('click', () => ($('v-dash').classList.contains('drawer-open') ? closeDrawer() : openDrawer()));
+  $('backdrop').addEventListener('click', closeDrawer);
 
   $('loginform').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -195,12 +268,11 @@
       show('v-sent');
     } catch (err) { $('loginerr').textContent = err.message; }
   });
-  $('logout').addEventListener('click', async () => {
-    await api('/api/portal/logout', { method: 'POST' }).catch(() => {});
-    show('v-login');
-  });
+  const doLogout = async () => { await api('/api/portal/logout', { method: 'POST' }).catch(() => {}); show('v-login'); };
+  $('logout').addEventListener('click', doLogout);
+  $('logout2').addEventListener('click', doLogout);
 
-  // Address editor — delegated on the orders container (it's re-rendered on refresh).
+  // Address editor — delegated on the orders container.
   $('orders').addEventListener('click', (e) => {
     const edit = e.target.closest('.editaddr');
     if (edit) { toggleAddr(edit.dataset.id, true); return; }
@@ -217,22 +289,25 @@
     const body = { name: get('name'), line1: get('line1'), line2: get('line2'),
       city: get('city'), state: get('state'), postal_code: get('postal_code'), country: 'US' };
     const submit = form.querySelector('button[type=submit]');
+    if (!body.line1 || !body.city || !body.state || !body.postal_code) {
+      errEl.textContent = 'Please fill in street, city, state and ZIP.'; return;
+    }
     errEl.textContent = ''; submit.disabled = true; submit.textContent = 'Saving…';
+    // Preview: update the sample order in place, no network.
+    if (PREVIEW) {
+      const o = DATA.orders.find((x) => String(x.id) === String(id));
+      if (o) { o.shipping_name = body.name || o.shipping_name; o.shipping_address = { ...body, state: body.state.toUpperCase() }; }
+      renderOrders(DATA.orders);
+      return;
+    }
     try {
       await api('/api/portal/order/' + encodeURIComponent(id) + '/address',
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      // Re-pull so the summary reflects exactly what was stored.
       renderOrders((await api('/api/portal/overview')).orders || []);
     } catch (err) {
       errEl.textContent = err.message;
       submit.disabled = false; submit.textContent = 'Save address';
     }
-  });
-  $('refcopy').addEventListener('click', async () => {
-    const inp = $('refurl');
-    try { await navigator.clipboard.writeText(inp.value); $('refcopy').textContent = 'Copied ✓'; }
-    catch { inp.select(); document.execCommand('copy'); $('refcopy').textContent = 'Copied ✓'; }
-    setTimeout(() => { $('refcopy').textContent = 'Copy'; }, 1800);
   });
 
   boot();

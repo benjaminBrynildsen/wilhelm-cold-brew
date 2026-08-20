@@ -70,6 +70,45 @@
     }
   }
 
+  // Address as display lines, and as a one-liner for the summary.
+  function addrLines(a) {
+    if (!a) return [];
+    return [
+      a.line1, a.line2,
+      [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ' ' + a.postal_code : ''),
+    ].map((s) => String(s || '').trim()).filter(Boolean);
+  }
+
+  function statusChip(o) {
+    if (o.delivered_at) return `<span class="chip good">Delivered ${esc(fmtD(o.delivered_at))}</span>`;
+    if (o.tracking_status) return `<span class="chip">${esc(o.tracking_status)}</span>`;
+    if (o.shipped_at) return `<span class="chip good">Shipped</span>`;
+    return `<span class="chip">Being prepared</span>`;
+  }
+
+  // The self-service address editor, shown only while an order is still
+  // unshipped (address_editable). Prefilled with the current address.
+  function addrForm(o) {
+    const a = o.shipping_address || {};
+    const f = (name, ph, val, extra) =>
+      `<input class="af-${name}" name="${name}" placeholder="${esc(ph)}" value="${esc(val || '')}" ${extra || ''}/>`;
+    return `<form class="addrform" data-id="${esc(o.id)}" hidden>
+      ${f('name', 'Full name', o.shipping_name)}
+      ${f('line1', 'Street address', a.line1)}
+      ${f('line2', 'Apt, suite, unit (optional)', a.line2)}
+      <div class="af-row">
+        ${f('city', 'City', a.city)}
+        ${f('state', 'State', a.state, 'maxlength="2" style="text-transform:uppercase"')}
+        ${f('postal_code', 'ZIP', a.postal_code, 'inputmode="numeric"')}
+      </div>
+      <div class="af-actions">
+        <button class="btn" type="submit">Save address</button>
+        <button class="btn ghost addrcancel" type="button" data-id="${esc(o.id)}">Cancel</button>
+      </div>
+      <div class="err af-err"></div>
+    </form>`;
+  }
+
   function renderOrders(orders) {
     const el = $('orders');
     if (!orders.length) {
@@ -80,22 +119,39 @@
       const boxes = (Array.isArray(o.tracking_numbers) && o.tracking_numbers.length)
         ? o.tracking_numbers
         : (o.tracking_number ? [{ tracking: o.tracking_number, carrier: o.tracking_carrier }] : []);
-      const status = o.shipped_at
-        ? `<span class="chip good">Shipped</span>`
-        : `<span class="chip">Being prepared</span>`;
       const track = boxes.length
         ? `<div class="trackrow">${boxes.map((b, i) =>
             `<a class="btn ghost" target="_blank" rel="noopener" href="${esc(trackUrl(b.tracking, b.carrier))}">Track${boxes.length > 1 ? ' box ' + (i + 1) : ''} →</a>`).join('')}</div>`
         : '';
+      const lines = addrLines(o.shipping_address);
+      const ship = lines.length ? `
+        <div class="ship" data-id="${esc(o.id)}">
+          <div class="k">Shipping to</div>
+          <div class="addr">${esc(o.shipping_name || '')}${o.shipping_name ? '<br/>' : ''}${lines.map(esc).join('<br/>')}</div>
+          ${o.address_editable
+            ? `<button class="btn ghost editaddr" data-id="${esc(o.id)}">Update address</button>
+               <div class="note" style="margin-top:6px">You can change this until we print your label.</div>`
+            : `<div class="note" style="margin-top:6px">Address locked — your label’s printed. Need a change? Reply to your order email.</div>`}
+        </div>
+        ${o.address_editable ? addrForm(o) : ''}` : '';
       return `<div class="order">
         <div class="top">
           <b>${esc(o.drop_name || 'Friday Drop')}</b>
-          ${status}
+          ${statusChip(o)}
         </div>
         <div class="note">${o.quantity || 1} bottle${(o.quantity || 1) > 1 ? 's' : ''} · ${money(o.amount_total_cents)} · ${fmtD(o.paid_at || o.created_at)}${boxes.length > 1 ? ' · ships as ' + boxes.length + ' boxes' : ''}</div>
         ${track}
+        ${ship}
       </div>`;
     }).join('');
+  }
+
+  // Toggle between the address summary and its edit form.
+  function toggleAddr(id, editing) {
+    const summary = document.querySelector(`.ship[data-id="${CSS.escape(id)}"]`);
+    const form = document.querySelector(`.addrform[data-id="${CSS.escape(id)}"]`);
+    if (summary) summary.hidden = editing;
+    if (form) { form.hidden = !editing; if (editing) { const e = form.querySelector('.af-err'); if (e) e.textContent = ''; } }
   }
 
   function renderDash(d) {
@@ -142,6 +198,35 @@
   $('logout').addEventListener('click', async () => {
     await api('/api/portal/logout', { method: 'POST' }).catch(() => {});
     show('v-login');
+  });
+
+  // Address editor — delegated on the orders container (it's re-rendered on refresh).
+  $('orders').addEventListener('click', (e) => {
+    const edit = e.target.closest('.editaddr');
+    if (edit) { toggleAddr(edit.dataset.id, true); return; }
+    const cancel = e.target.closest('.addrcancel');
+    if (cancel) { toggleAddr(cancel.dataset.id, false); return; }
+  });
+  $('orders').addEventListener('submit', async (e) => {
+    const form = e.target.closest('.addrform');
+    if (!form) return;
+    e.preventDefault();
+    const id = form.dataset.id;
+    const errEl = form.querySelector('.af-err');
+    const get = (n) => (form.querySelector('.af-' + n)?.value || '').trim();
+    const body = { name: get('name'), line1: get('line1'), line2: get('line2'),
+      city: get('city'), state: get('state'), postal_code: get('postal_code'), country: 'US' };
+    const submit = form.querySelector('button[type=submit]');
+    errEl.textContent = ''; submit.disabled = true; submit.textContent = 'Saving…';
+    try {
+      await api('/api/portal/order/' + encodeURIComponent(id) + '/address',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      // Re-pull so the summary reflects exactly what was stored.
+      renderOrders((await api('/api/portal/overview')).orders || []);
+    } catch (err) {
+      errEl.textContent = err.message;
+      submit.disabled = false; submit.textContent = 'Save address';
+    }
   });
   $('refcopy').addEventListener('click', async () => {
     const inp = $('refurl');

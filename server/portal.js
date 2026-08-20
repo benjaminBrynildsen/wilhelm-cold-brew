@@ -115,7 +115,11 @@ export function mountPortal(app) {
       const orders = (await q(
         `SELECT o.id, o.quantity, o.amount_total_cents, o.paid_at, o.created_at,
                 o.shipped_at, o.ship_notified_at, o.tracking_number, o.tracking_carrier,
-                o.tracking_numbers, d.name AS drop_name
+                o.tracking_numbers, o.tracking_status, o.delivered_at,
+                o.shipping_name, o.shipping_address,
+                -- The address stays editable until we print the label (shipped_at set).
+                (o.shipped_at IS NULL) AS address_editable,
+                d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE LOWER(o.email) = $1 AND (o.paid_at IS NOT NULL OR o.status = 'paid')
           ORDER BY COALESCE(o.paid_at, o.created_at) DESC`, [email])).rows;
@@ -151,5 +155,53 @@ export function mountPortal(app) {
         referral: { code, url: `${SITE}/r/${code}`, joined },
       });
     } catch (e) { console.error('[portal/overview]', e); res.status(500).json({ error: 'something went wrong' }); }
+  });
+
+  // Self-service shipping-address correction. Customers routinely email after
+  // checkout to say the address was wrong; this lets them fix it themselves,
+  // but ONLY while the order hasn't shipped yet (shipped_at IS NULL) — once the
+  // label is printed the address is locked. The stored copy is what the Pirate
+  // Ship export uses, so a correction here flows into the next label run. The
+  // WHERE clause double-checks ownership (LOWER(email)) and the unshipped gate,
+  // so a stale tab or a poked id can't edit someone else's — or a shipped —
+  // order.
+  app.post('/api/portal/order/:id/address', async (req, res) => {
+    try {
+      const email = sessionEmail(req);
+      if (!email) return res.status(401).json({ error: 'not signed in' });
+      const id = parseInt(req.params.id, 10);
+      if (!id) return res.status(400).json({ error: 'bad order' });
+
+      const b = req.body || {};
+      const t = (v, n) => { const s = v == null ? '' : String(v).trim(); return s ? s.slice(0, n) : null; };
+      const name = t(b.name, 120);
+      const state = t(b.state, 40);
+      const address = {
+        line1: t(b.line1, 200), line2: t(b.line2, 200), city: t(b.city, 120),
+        state: state ? state.toUpperCase() : null,
+        postal_code: t(b.postal_code, 20), country: (t(b.country, 2) || 'US').toUpperCase(),
+      };
+      if (!address.line1 || !address.city || !address.state || !address.postal_code) {
+        return res.status(400).json({ error: 'Please fill in street, city, state and ZIP.' });
+      }
+
+      const r = await q(
+        `UPDATE orders
+            SET shipping_address = $1,
+                shipping_name = COALESCE($2, shipping_name)
+          WHERE id = $3 AND LOWER(email) = $4 AND shipped_at IS NULL
+          RETURNING id, shipping_name, shipping_address`,
+        [JSON.stringify(address), name, id, email]);
+
+      if (!r.rows.length) {
+        // Distinguish "not yours / gone" from "already shipped" so the message is useful.
+        const own = await q(`SELECT shipped_at FROM orders WHERE id = $1 AND LOWER(email) = $2`, [id, email]);
+        if (own.rows.length && own.rows[0].shipped_at) {
+          return res.status(409).json({ error: 'This order has already shipped, so its address is locked. Reply to your order email and we’ll help.' });
+        }
+        return res.status(404).json({ error: 'We couldn’t find that order on your account.' });
+      }
+      res.json({ ok: true, order: r.rows[0] });
+    } catch (e) { console.error('[portal/address]', e); res.status(500).json({ error: 'something went wrong' }); }
   });
 }

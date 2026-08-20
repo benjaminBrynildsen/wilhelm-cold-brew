@@ -115,7 +115,7 @@ mountCheckout(app, payLimit);
 // Case-insensitive redirect for the marketing routes. The static handler is
 // case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos
 // and bounce them to the real lowercase path so an ad link can't dead-end.
-const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'batches', 'recipe'];
+const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'batches', 'recipe', 'account'];
 app.get(/^\/([A-Za-z-]+)\/?$/, (req, res, next) => {
   const slug = req.params[0].toLowerCase();
   if (CASE_ROUTES.includes(slug) && req.params[0] !== slug) return res.redirect(301, '/' + slug);

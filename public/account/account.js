@@ -248,47 +248,52 @@
   }
   // Is any of a group's flavors currently selected? (terminal group = its own name)
   function groupSelected(g, sel) { return g.subs ? g.subs.some((s) => sel.has(s)) : sel.has(g.name); }
-  function buildWheel(sel, active, rot) {
-    const cx = 200, cy = 200, rHole = 52, rInner = 112, rOut = 195;
-    const N = WHEEL.length, span = 360 / N;
+  function findGroup(name) { let out = null; WHEEL.forEach((c) => c.groups.forEach((g) => { if (g.name === name) out = { g, color: c.color, cat: c.cat }; })); return out; }
+  const radLabel = (cls, txt, cx, cy, r, deg) => {
+    const [x, y] = polar(cx, cy, r, deg);
+    return `<text class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="start" dominant-baseline="central" transform="rotate(${(deg - 90).toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})">${esc(txt)}</text>`;
+  };
+  // Two states: overview (broad categories + mid groups) and focus (one group's
+  // specific flavors fill the outer ring — tap the center to go back).
+  function buildWheel(sel, focus, rot) {
+    const cx = 200, cy = 200, rHole = 54, rInner = 116, rOut = 197;
     let paths = '', labels = '';
+    const grp = focus ? findGroup(focus) : null;
+
+    if (grp && grp.g.subs) {
+      const { g, color } = grp, subs = g.subs, span = 360 / subs.length;
+      paths += `<circle class="wback" data-back="1" cx="${cx}" cy="${cy}" r="${rInner}" fill="${color}" opacity="0.92"/>`;
+      subs.forEach((s, i) => {
+        const b0 = i * span, b1 = (i + 1) * span, bm = (b0 + b1) / 2, on = sel.has(s);
+        paths += `<path class="wsub" data-sub="${esc(s)}" d="${arcSeg(cx, cy, rInner, rOut, b0, b1)}" fill="${color}" opacity="${on ? 1 : 0.5}" stroke="${on ? '#fff' : '#0f0b05'}" stroke-width="${on ? 2.4 : 0.8}"/>`;
+        labels += radLabel('wlbl', s, cx, cy, rInner + 7, bm);
+      });
+      const ring = `<g class="wheel-rot" transform="rotate(${rot || 0} ${cx} ${cy})">${paths}${labels}</g>`;
+      const center = `<circle class="wback" data-back="1" cx="${cx}" cy="${cy}" r="${rHole}" fill="#17110a" stroke="rgba(232,194,74,.35)" stroke-width="1"/>
+        <text class="wback" data-back="1" x="${cx}" y="${cy - 5}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="13" fill="#e8c24a">${esc(g.lbl || g.name)}</text>
+        <text class="wback" data-back="1" x="${cx}" y="${cy + 11}" text-anchor="middle" font-family="var(--mono)" font-size="6.8" letter-spacing="1.1" fill="rgba(246,239,218,.62)">‹ TAP TO GO BACK</text>`;
+      return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Tasting wheel — ${esc(g.name)}">${ring}${center}</svg>`;
+    }
+
+    const N = WHEEL.length, span = 360 / N;
     WHEEL.forEach((c, i) => {
       const a0 = i * span, a1 = (i + 1) * span, mid = (a0 + a1) / 2;
-      // inner: broad category
       paths += `<path d="${arcSeg(cx, cy, rHole, rInner, a0, a1)}" fill="${c.color}" opacity="0.95" stroke="#0f0b05" stroke-width="1"/>`;
-      // Radial label: starts at the center side, reads outward (left→right when the
-      // wedge is rotated to the right). Uniform orientation, so rotating makes any
-      // one readable.
-      const [lx, ly] = polar(cx, cy, rHole + 6, mid);
-      labels += `<text class="wcat" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="start" dominant-baseline="central" transform="rotate(${(mid - 90).toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})">${esc(c.lbl || c.cat)}</text>`;
-      // middle: groups
+      labels += radLabel('wcat', c.lbl || c.cat, cx, cy, rHole + 6, mid);
       const m = c.groups.length, gs = span / m;
       c.groups.forEach((g, j) => {
         const b0 = a0 + j * gs, b1 = a0 + (j + 1) * gs, bm = (b0 + b1) / 2;
-        const on = groupSelected(g, sel), act = active === g.name;
-        const op = on ? 1 : (act ? 0.9 : 0.62);
-        paths += `<path class="wgrp" data-group="${esc(g.name)}" d="${arcSeg(cx, cy, rInner, rOut, b0, b1)}" fill="${c.color}" opacity="${op}" stroke="${on || act ? '#fff' : '#0f0b05'}" stroke-width="${on || act ? 2.2 : 0.8}"/>`;
-        const [tx, ty] = polar(cx, cy, rInner + 7, bm);
-        labels += `<text class="wlbl" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="start" dominant-baseline="central" transform="rotate(${(bm - 90).toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})">${esc(g.lbl || g.name)}</text>`;
+        const on = groupSelected(g, sel);
+        paths += `<path class="wgrp" data-group="${esc(g.name)}" d="${arcSeg(cx, cy, rInner, rOut, b0, b1)}" fill="${c.color}" opacity="${on ? 1 : 0.62}" stroke="${on ? '#fff' : '#0f0b05'}" stroke-width="${on ? 2.2 : 0.8}"/>`;
+        labels += radLabel('wlbl', g.lbl || g.name, cx, cy, rInner + 7, bm);
       });
     });
     const n = sel.size;
-    // The rings + labels rotate together (via the slider); the center stays put.
     const ring = `<g class="wheel-rot" transform="rotate(${rot || 0} ${cx} ${cy})">${paths}${labels}</g>`;
     const center = `<circle cx="${cx}" cy="${cy}" r="${rHole}" fill="#17110a" stroke="rgba(232,194,74,.3)" stroke-width="1"/>
       <text x="${cx}" y="${cy - 3}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="21" fill="#e8c24a">${n || '☕'}</text>
       <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" letter-spacing="1.4" fill="rgba(246,239,218,.6)">${n ? 'SELECTED' : 'TASTE'}</text>`;
     return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Coffee tasting wheel">${ring}${center}</svg>`;
-  }
-  // The chips for the currently open group (its specific flavors).
-  function groupDrawer(active, sel) {
-    if (!active) return '<div class="wheel-hint"><span class="note" style="font-size:12.5px">Tap a wedge on the outer ring to open its flavors.</span></div>';
-    let group = null, color = '#b8922f';
-    WHEEL.forEach((c) => c.groups.forEach((g) => { if (g.name === active) { group = g; color = c.color; } }));
-    if (!group || !group.subs) return '';
-    return `<div class="drawer"><div class="drawer-h">${esc(active)}</div><div class="drawer-chips">${
-      group.subs.map((s) => `<button type="button" class="dchip ${sel.has(s) ? 'on' : ''}" data-sub="${esc(s)}" style="--fc:${color}">${esc(s)}</button>`).join('')
-    }</div></div>`;
   }
   function tasteTags(sel) {
     if (!sel.size) return '<div class="taste-tags"><span class="note" style="font-size:12.5px">Nothing picked yet — tap the ring, then the flavors.</span></div>';
@@ -318,10 +323,11 @@
         <div class="lbl">While you sip — tap what you taste</div>
         <div class="wheel-wrap">
           <div class="wheel-stage">
-            ${buildWheel(draft.flavors, draft.activeGroup, draft.rot)}
+            ${buildWheel(draft.flavors, draft.focus, draft.rot)}
             <div class="wrot-col"><span class="cap">Rotate</span><input type="range" class="wrot" min="0" max="360" step="1" value="${draft.rot || 0}" orient="vertical" aria-label="Rotate the wheel"/></div>
           </div>
-          ${groupDrawer(draft.activeGroup, draft.flavors)}${tasteTags(draft.flavors)}
+          <div class="wheel-cap note">${draft.focus ? 'Tap the flavors you taste · tap the center to go back' : 'Tap a wedge to open its flavors'}</div>
+          ${tasteTags(draft.flavors)}
         </div>
         <div class="lbl">Notes (optional)</div>
         <textarea data-role="body" placeholder="How did it drink? How did you pour it?">${esc(draft.body || '')}</textarea>
@@ -601,7 +607,7 @@
   // ── Reviews + tasting wheel interactions (delegated on #reviews) ──
   function openReview(dropId) {
     const rev = REVIEWS[dropId];
-    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '', activeGroup: null, rot: 0 };
+    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '', focus: null, rot: 0 };
     renderReviews(DATA.orders || []);
   }
   // Terminal group (no subs) = its name is a selectable flavor.
@@ -646,14 +652,17 @@
     if (star) { captureBody(); draft.rating = parseInt(star.dataset.star, 10); renderReviews(DATA.orders || []); return; }
     const rm = e.target.closest('.ttrm');
     if (rm) { captureBody(); draft.flavors.delete(rm.dataset.flavor); renderReviews(DATA.orders || []); return; }
-    const chip = e.target.closest('.dchip[data-sub]');
-    if (chip) { captureBody(); const f = chip.dataset.sub; draft.flavors.has(f) ? draft.flavors.delete(f) : draft.flavors.add(f); renderReviews(DATA.orders || []); return; }
+    // In focus state: a sub-flavor wedge toggles; the center goes back.
+    const sub = e.target.closest('.wsub[data-sub]');
+    if (sub) { captureBody(); const f = sub.getAttribute('data-sub'); draft.flavors.has(f) ? draft.flavors.delete(f) : draft.flavors.add(f); renderReviews(DATA.orders || []); return; }
+    if (e.target.closest('.wback')) { captureBody(); draft.focus = null; draft.rot = 0; renderReviews(DATA.orders || []); return; }
+    // In overview state: a group wedge drills in (or toggles a terminal note).
     const grp = e.target.closest('.wgrp[data-group]');
     if (grp) {
       captureBody();
       const name = grp.getAttribute('data-group');
       if (isTerminal(name)) { draft.flavors.has(name) ? draft.flavors.delete(name) : draft.flavors.add(name); }
-      else { draft.activeGroup = draft.activeGroup === name ? null : name; }
+      else { draft.focus = name; draft.rot = 0; }
       renderReviews(DATA.orders || []);
       return;
     }

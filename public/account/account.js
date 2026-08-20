@@ -194,22 +194,29 @@
     const bal = pointsBalance(stats);
     const pct = Math.min(100, Math.round((bal / PREORDER_COST) * 100));
     const toGo = Math.max(0, PREORDER_COST - bal);
-    $('pointscard').innerHTML = `
-      <div class="pts-hero"><b>${bal.toLocaleString()}</b><span>points</span></div>
-      <div class="prog"><i style="width:${pct}%"></i></div>
-      <p class="note" style="text-align:center;margin:0 0 4px">${toGo > 0
-        ? `${toGo} more to unlock <b>Pre-Order</b> (${PREORDER_COST} pts)`
-        : `You’ve unlocked <b>Pre-Order</b> — jump to it from the menu.`}</p>
-      <div class="k" style="margin:22px 0 8px">Ways to earn</div>
-      <div class="rows">
-        ${EARN.map((e) => `<div class="row">
-          <span class="rk">${esc(e.label)}${e.live ? '' : ' <span class="soon">soon</span>'}</span>
-          <span class="rv">+${e.pts}</span></div>`).join('')}
+    $('pointswrap').innerHTML = `
+      <div class="pts-dark">
+        <span class="bal">${bal.toLocaleString()}</span>
+        <span class="lbl">points</span>
+        <div class="prog"><i style="width:${pct}%"></i></div>
+        <p class="goal">${toGo > 0
+          ? `<b>${toGo}</b> more to unlock <b>Pre-Order</b>`
+          : `You’ve unlocked <b>Pre-Order</b> — claim it from the menu.`}</p>
       </div>
-      <div class="k" style="margin:22px 0 8px">What points unlock</div>
-      <div class="rows">
-        <div class="row"><span class="rk">Pre-Order the next batch</span><span class="rv">${bal >= PREORDER_COST ? 'Unlocked' : PREORDER_COST + ' pts'}</span></div>
-        <div class="row"><span class="rk">More perks <span class="soon">soon</span></span><span class="rv">—</span></div>
+      <div class="card">
+        <div class="k" style="margin:2px 0 10px">Ways to earn</div>
+        <div class="rows">
+          ${EARN.map((e) => `<div class="row">
+            <span class="rk">${esc(e.label)}${e.live ? '' : ' <span class="soon">soon</span>'}</span>
+            <span class="rv" style="color:var(--gold-ink)">+${e.pts}</span></div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="k" style="margin:2px 0 10px">What points unlock</div>
+        <div class="rows">
+          <div class="row"><span class="rk">Pre-Order the next batch</span><span class="rv">${bal >= PREORDER_COST ? '<span class="chip good">Unlocked</span>' : PREORDER_COST + ' pts'}</span></div>
+          <div class="row"><span class="rk">More perks <span class="soon">soon</span></span><span class="rv">—</span></div>
+        </div>
       </div>`;
   }
 
@@ -270,21 +277,36 @@
     show('v-dash');
     $('previewbanner').hidden = !PREVIEW;
     const fn = firstName(d.orders && d.orders[0] && d.orders[0].shipping_name, d.email);
-    $('hello').innerHTML = `<h3>Welcome back, ${esc(fn)}.</h3><p>Here's everything Wilhelm, in one place.</p>`;
+    const s = d.stats || {};
+    const bal = pointsBalance(s);
+    const toGo = Math.max(0, PREORDER_COST - bal);
+    const nextDrop = d.drop && (d.drop.name || 'the next batch');
+    $('hero').innerHTML = `
+      <div class="eyebrow">The Cellar</div>
+      <h3>Welcome back, ${esc(fn)}.</h3>
+      <p>Your orders, your batches, and everything Wilhelm — in one place.</p>
+      <div class="hero-row">
+        <span class="pts-chip">✦ <b>${bal.toLocaleString()}</b> points${toGo > 0 ? ` · ${toGo} to Pre-Order` : ' · Pre-Order unlocked'}</span>
+        ${d.drop ? `<a class="btn mini" href="#" data-goto="preorder">${d.drop.status === 'live' ? 'Buy the live drop →' : 'See ' + esc(nextDrop) + ' →'}</a>` : ''}
+      </div>`;
     $('userchip').innerHTML = `<div class="av">${esc((fn[0] || 'W').toUpperCase())}</div><span class="em">${esc(d.email)}</span>`;
     $('who').textContent = d.email;
 
     renderDrop(d.drop);
     renderOrders(d.orders || []);
     renderReviews(d.orders || []);
-    renderPoints(d.stats || {});
-    renderPreorder(d.drop, d.stats || {});
+    renderPoints(s);
+    renderPreorder(d.drop, s);
 
-    const s = d.stats || {};
+    const IC = {
+      bottle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4M11 2v3.5c0 .8-.4 1.4-1 2.1C8.8 8.9 8 10 8 12v7a3 3 0 0 0 3 3h2a3 3 0 0 0 3-3v-7c0-2-.8-3.1-2-4.4-.6-.7-1-1.3-1-2.1V2"/></svg>',
+      star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.9-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.6 9.7l5.8-.9z"/></svg>',
+      cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>',
+    };
     $('stats').innerHTML = `
-      <div class="stat"><b>${s.bottles || 0}</b><span>bottles collected</span></div>
-      <div class="stat"><b>${pointsBalance(s).toLocaleString()}</b><span>points</span></div>
-      <div class="stat"><b>${s.memberSince ? new Date(s.memberSince).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}</b><span>member since</span></div>`;
+      <div class="stat"><div class="ic">${IC.bottle}</div><b>${s.bottles || 0}</b><span>bottles collected</span></div>
+      <div class="stat"><div class="ic">${IC.star}</div><b>${bal.toLocaleString()}</b><span>points</span></div>
+      <div class="stat"><div class="ic">${IC.cal}</div><b>${s.memberSince ? new Date(s.memberSince).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}</b><span>member since</span></div>`;
 
     const listMsg = s.onTheList
       ? 'You’re on the Friday Drop list — the buy link lands in your inbox first.'
@@ -349,6 +371,7 @@
   document.querySelectorAll('.navitem').forEach((n) => n.addEventListener('click', () => goSection(n.dataset.sec)));
   $('hamb').addEventListener('click', () => ($('v-dash').classList.contains('drawer-open') ? closeDrawer() : openDrawer()));
   $('backdrop').addEventListener('click', closeDrawer);
+  $('hero').addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) { e.preventDefault(); goSection(g.dataset.goto); } });
   $('loginform').addEventListener('submit', async (e) => {
     e.preventDefault();
     $('loginerr').textContent = '';

@@ -19,7 +19,12 @@
     #countdown-view::before{content:"";position:absolute;inset:0;pointer-events:none;
       background:radial-gradient(ellipse at 50% 26%, rgba(232,194,74,.14), transparent 62%)}
     #countdown-view>*{position:relative;z-index:1}
-    #countdown-view .cd-grid{display:flex;gap:clamp(7px,2.5vw,12px);justify-content:center;margin:26px 0 16px}
+    #countdown-view .cd-tag{font-family:'Bodoni Moda',Georgia,serif;font-style:italic;font-size:clamp(17px,4.5vw,22px);
+      color:rgba(246,239,218,.82);margin:2px 0 6px}
+    #countdown-view .cd-batch{font-family:'Bodoni Moda',Georgia,serif;font-weight:800;line-height:.92;
+      font-size:clamp(56px,17vw,120px);color:var(--gold);letter-spacing:1px;margin:0 0 6px;
+      text-shadow:0 4px 40px rgba(232,194,74,.28)}
+    #countdown-view .cd-grid{display:flex;gap:clamp(7px,2.5vw,12px);justify-content:center;margin:22px 0 16px}
     #countdown-view .cd-cell{position:relative;min-width:clamp(64px,20vw,84px);text-align:center;
       border:1px solid rgba(232,194,74,.3);background:rgba(232,217,181,.05);border-radius:14px;padding:16px 8px 11px;
       animation:cdGlow 3.4s ease-in-out infinite}
@@ -56,9 +61,8 @@
     <div class="card">
       <!-- BETWEEN BATCHES — clean countdown to the next drop (no last-batch refs) -->
       <div class="missed" id="countdown-view" hidden>
-        <div class="eyebrow">✦&nbsp;&nbsp;THE NEXT BATCH</div>
-        <h1 id="cd-h1">Coming soon.</h1>
-        <p class="lede">Small batch, barrel-aged, bottled by hand. Bottles go up Fridays at 9AM and sell out in minutes — the list gets the link first.</p>
+        <div class="cd-tag">The next batch is coming.</div>
+        <div class="cd-batch" id="cd-batch">Batch 67</div>
         <div class="cd-grid" id="cd-grid" hidden>
           <div class="cd-cell"><b id="cd-d">–</b><span>days</span></div>
           <div class="cd-cell"><b id="cd-h">–</b><span>hrs</span></div>
@@ -68,6 +72,7 @@
         <div class="cd-soon" id="cd-soon" hidden>Watch your inbox.</div>
         <div class="meta" id="cd-when-wrap" hidden>Opens <span id="cd-when" style="color:rgba(232,217,181,0.85)"></span></div>
         <div class="feedback-btns" style="margin-top:20px">
+          <button class="btn-primary" id="cd-cal" type="button" hidden>＋&nbsp; Add to calendar</button>
           <a class="btn-secondary" href="/account/">Track your orders in your Cellar</a>
         </div>
       </div>

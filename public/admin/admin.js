@@ -1635,6 +1635,10 @@ async function showOrders() {
       <div class="row-actions" style="margin-bottom:14px;align-items:center">
         <label class="note">Viewing <select id="ordersDrop" style="${FLD_DARK}">${dropOpts}</select></label>
         ${scoped ? '<span class="note">Paid orders &amp; revenue below are for this drop only.</span>' : '<span class="note">Paid orders &amp; revenue below are all-time across every drop.</span>'}
+        <span style="margin-left:auto;display:inline-flex;gap:6px">
+          <button class="btn ghost" id="demo-seed" title="Load sample orders onto an email so the customer Cellar (/account) shows populated">＋ Demo data</button>
+          <button class="btn ghost" id="demo-clear" title="Remove the sample orders from an email">Clear demo</button>
+        </span>
       </div>
       <div class="cards">
         <div class="card"><div class="k">Paid orders${scoped ? ' (this drop)' : ''}</div><div class="v">${num(o.paid)}</div></div>
@@ -1740,6 +1744,26 @@ async function showOrders() {
 
     const odSel = document.getElementById('ordersDrop');
     if (odSel) odSel.addEventListener('change', (e) => { state.ordersDrop = e.target.value; showOrders(); });
+
+    // Demo data: populate/clear the customer Cellar for an email (preview tool).
+    const seedBtn = document.getElementById('demo-seed');
+    if (seedBtn) seedBtn.addEventListener('click', async () => {
+      const email = prompt('Load demo orders onto which email?\nThese are sample rows — use "Clear demo" to remove them anytime.');
+      if (!email || !email.trim()) return;
+      try {
+        const r = await api('/api/admin/demo/seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
+        alert(`Added ${r.added} demo orders to ${r.email}.\nOpen /account and sign in as that email to see the populated Cellar.`);
+      } catch (e) { alert('Could not load demo data — ' + e.message); }
+    });
+    const clearBtn = document.getElementById('demo-clear');
+    if (clearBtn) clearBtn.addEventListener('click', async () => {
+      const email = prompt('Clear demo orders from which email?');
+      if (!email || !email.trim()) return;
+      try {
+        const r = await api('/api/admin/demo/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
+        alert(`Removed ${r.removed} demo orders from ${r.email}.`);
+      } catch (e) { alert('Could not clear demo data — ' + e.message); }
+    });
 
     // Shipping-email editor: live preview, save, test, reset.
     (() => {

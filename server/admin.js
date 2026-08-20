@@ -1931,6 +1931,58 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[orders] shipping update', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ── Demo data (for previewing the customer Cellar) ──────────────────────────
+  // Load a few sample orders onto an email so /account shows a populated
+  // dashboard, and clear them again. Demo rows are marked with
+  // stripe_payment_intent = 'demo_seed' so clear only ever removes these — never
+  // a real order. Admin-only.
+  const DEMO_MARKER = 'demo_seed';
+  app.post('/api/admin/demo/seed', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'enter a valid email' });
+    try {
+      // Attach to real recent drops so the batch names read naturally.
+      const drops = (await q(`SELECT id, name FROM drops ORDER BY created_at DESC LIMIT 3`)).rows;
+      const dropId = (i) => (drops[i] ? drops[i].id : null);
+      const addr = JSON.stringify({ line1: '1200 Market St', line2: 'Apt 5B', city: 'St. Louis', state: 'MO', postal_code: '63103', country: 'US' });
+      const name = 'Demo Customer';
+      // clear any prior demo rows first so re-seeding doesn't stack
+      await q(`DELETE FROM orders WHERE LOWER(email) = $1 AND stripe_payment_intent = $2`, [email, DEMO_MARKER]);
+      const rows = [
+        // editable (unshipped)
+        { d: 0, qty: 2, cents: 4400, paid: '5 days', shipped: null, deliv: null, tn: null, ts: null },
+        // in transit
+        { d: 1, qty: 1, cents: 2200, paid: '12 days', shipped: '10 days', deliv: null, tn: '9400111899223197428491', ts: 'In transit' },
+        // delivered
+        { d: 2, qty: 4, cents: 8800, paid: '26 days', shipped: '24 days', deliv: '21 days', tn: '9400111899223197428490', ts: 'Delivered' },
+      ];
+      for (const r of rows) {
+        await q(
+          `INSERT INTO orders (drop_id, email, quantity, amount_total_cents, status, stripe_payment_intent,
+                               shipping_name, shipping_address, created_at, paid_at, shipped_at, delivered_at,
+                               tracking_number, tracking_carrier, tracking_status)
+           VALUES ($1,$2,$3,$4,'demo',$5,$6,$7::jsonb,
+                   now() - $8::interval, now() - $8::interval,
+                   CASE WHEN $9::text IS NULL THEN NULL ELSE now() - $9::interval END,
+                   CASE WHEN $10::text IS NULL THEN NULL ELSE now() - $10::interval END,
+                   $11,$12,$13)`,
+          [dropId(r.d), email, r.qty, r.cents, DEMO_MARKER, name, addr,
+           r.paid, r.shipped, r.deliv, r.tn, r.tn ? 'USPS' : null, r.ts]);
+      }
+      res.json({ ok: true, added: rows.length, email });
+    } catch (e) { console.error('[demo/seed]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/demo/clear', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'enter an email' });
+    try {
+      const r = await q(`DELETE FROM orders WHERE LOWER(email) = $1 AND stripe_payment_intent = $2`, [email, DEMO_MARKER]);
+      res.json({ ok: true, removed: r.rowCount, email });
+    } catch (e) { console.error('[demo/clear]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Manually set/clear an order's tracking number(s) — one-off fixes (a refund
   // reship, a wrong number, a hand-created label). Accepts one or several numbers
   // (comma/space separated). Editing the number resets the delivery status so the

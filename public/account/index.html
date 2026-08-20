@@ -26,13 +26,12 @@
     a{color:var(--gold-ink)}
     [hidden]{display:none !important}
 
-    /* ───────── pre-auth (login / check inbox) ───────── */
+    /* ───────── pre-auth ───────── */
     .wrap{max-width:520px;margin:0 auto;padding:36px clamp(18px,5vw,40px) 80px}
     .mast{text-align:center;margin:10px 0 26px}
     .mast img{width:88px;height:88px;border-radius:50%;box-shadow:0 10px 30px rgba(60,45,10,.22);border:2px solid rgba(184,146,47,.4)}
     .mast h1{font-family:'Cinzel',var(--display);font-weight:800;font-size:24px;letter-spacing:3.5px;color:var(--gold-ink);margin:16px 0 4px;text-transform:uppercase}
     .mast .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:2.5px;color:var(--dim);text-transform:uppercase}
-
     .card{background:var(--card);border:1px solid var(--line-soft);border-radius:18px;padding:22px 24px;margin:0 0 18px;
       box-shadow:0 10px 32px rgba(96,72,16,.09), 0 1px 3px rgba(96,72,16,.06)}
     h2{font-family:var(--display);font-weight:700;color:var(--gold-ink);font-size:21px;margin:0 0 10px;letter-spacing:.2px}
@@ -49,32 +48,32 @@
     .btn.block{width:100%}
     .err{color:#b23c17;font-size:13px;min-height:18px;margin-top:8px}
 
-    /* ───────── app shell (dashboard) ───────── */
+    /* ───────── app shell ───────── */
     .app{min-height:100vh}
     @media(min-width:860px){ .app{display:grid;grid-template-columns:250px 1fr} }
-
     .side{background:linear-gradient(180deg,var(--side),var(--side-2));color:var(--side-txt);
       display:flex;flex-direction:column;border-right:1px solid var(--side-line)}
     @media(min-width:860px){ .side{position:sticky;top:0;height:100vh} }
     @media(max-width:859px){
-      .side{position:fixed;top:0;left:0;bottom:0;width:270px;transform:translateX(-100%);
-        transition:transform .26s cubic-bezier(.3,.7,.3,1);z-index:40;box-shadow:0 0 60px rgba(0,0,0,.4)}
+      .side{position:fixed;top:0;left:0;bottom:0;width:272px;transform:translateX(-100%);
+        transition:transform .26s cubic-bezier(.3,.7,.3,1);z-index:40;box-shadow:0 0 60px rgba(0,0,0,.4);overflow-y:auto}
       .app.drawer-open .side{transform:none}
     }
-    .brand{display:flex;align-items:center;gap:12px;padding:22px 20px 20px;border-bottom:1px solid var(--side-line)}
-    .brand img{width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(232,194,74,.5)}
-    .brand b{display:block;font-family:'Cinzel',var(--display);font-weight:800;font-size:15px;letter-spacing:2px;color:var(--parchment);text-transform:uppercase;line-height:1.1}
-    .brand span{font-family:var(--mono);font-size:9.5px;letter-spacing:2px;color:var(--gold);text-transform:uppercase}
-    .nav{display:flex;flex-direction:column;gap:3px;padding:16px 12px;flex:1}
+    .brand{display:flex;align-items:center;gap:12px;padding:20px 20px 18px;border-bottom:1px solid var(--side-line)}
+    .brand img{width:42px;height:42px;border-radius:50%;border:1.5px solid rgba(232,194,74,.5)}
+    .brand b{display:block;font-family:'Cinzel',var(--display);font-weight:800;font-size:14px;letter-spacing:2px;color:var(--parchment);text-transform:uppercase;line-height:1.1}
+    .brand span{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--gold);text-transform:uppercase}
+    .nav{display:flex;flex-direction:column;gap:2px;padding:12px 12px;flex:1}
     .navitem{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;cursor:pointer;
-      color:var(--side-txt);font-family:inherit;font-size:14.5px;font-weight:600;text-align:left;
-      padding:12px 14px;border-radius:12px;transition:background .15s,color .15s}
-    .navitem svg{width:19px;height:19px;flex:none;opacity:.8}
+      color:var(--side-txt);font-family:inherit;font-size:14px;font-weight:600;text-align:left;
+      padding:11px 13px;border-radius:11px;transition:background .15s,color .15s}
+    .navitem svg{width:18px;height:18px;flex:none;opacity:.8}
     .navitem:hover{background:rgba(246,239,218,.06);color:var(--parchment)}
     .navitem.active{background:rgba(232,194,74,.14);color:#fff}
     .navitem.active svg{color:var(--gold);opacity:1}
-    .side-foot{padding:16px 16px 22px;border-top:1px solid var(--side-line)}
-    .side-foot .who{font-family:var(--mono);font-size:11px;letter-spacing:.4px;color:var(--side-dim);margin-bottom:12px;word-break:break-all}
+    .side-foot{padding:10px 12px 20px;border-top:1px solid var(--side-line)}
+    .side-foot .navitem{margin-bottom:10px}
+    .side-foot .who{font-family:var(--mono);font-size:11px;letter-spacing:.4px;color:var(--side-dim);margin:0 4px 12px;word-break:break-all}
     .side-foot .btn.ghost{color:var(--side-txt);border-color:rgba(246,239,218,.22);width:100%}
     .side-foot .btn.ghost:hover{border-color:var(--gold);color:var(--gold)}
 
@@ -97,9 +96,12 @@
     .hello{margin:2px 0 20px}
     .hello h3{font-family:var(--display);font-weight:700;font-size:26px;color:var(--ink);margin:0 0 3px}
     .hello p{margin:0;color:var(--dim);font-size:14px}
+    .secintro{color:var(--dim);font-size:14px;margin:-2px 0 18px}
     .preview-banner{background:rgba(232,194,74,.16);border:1px solid var(--line);border-radius:12px;
       padding:10px 14px;margin:0 0 16px;font-family:var(--mono);font-size:11.5px;letter-spacing:1px;
       text-transform:uppercase;color:var(--gold-ink);text-align:center}
+    .soon{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;
+      color:var(--gold-ink);border:1px solid var(--line);border-radius:20px;padding:3px 10px;background:rgba(232,194,74,.08)}
 
     /* countdown */
     .count{display:flex;gap:10px;justify-content:center;margin:16px 0 8px}
@@ -112,7 +114,7 @@
     .stat{border:1px solid var(--line-soft);background:var(--card);border-radius:14px;padding:16px 8px 13px;text-align:center;box-shadow:0 3px 10px rgba(96,72,16,.06)}
     .stat b{display:block;font-family:var(--display);font-weight:800;font-size:27px;color:var(--gold-ink)}
     .stat span{font-family:var(--mono);font-size:9px;letter-spacing:1.4px;color:var(--dim);text-transform:uppercase}
-    /* orders */
+    /* orders / list items */
     .order{border:1px solid var(--line-soft);border-radius:14px;padding:16px 18px;margin:0 0 14px;background:var(--card);box-shadow:0 3px 10px rgba(96,72,16,.05)}
     .order .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
     .order b{font-family:var(--display);font-size:18px;color:var(--ink)}
@@ -120,7 +122,6 @@
     .chip.good{color:#2f7d46;border-color:rgba(47,125,70,.4);background:rgba(47,125,70,.07)}
     .trackrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
     .trackrow .btn{min-height:38px;padding:8px 16px;font-size:13px;border-radius:10px}
-    /* shipping address + self-service editor */
     .ship{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line-soft)}
     .ship .addr{font-size:14px;color:var(--body);margin:4px 0 10px;line-height:1.5}
     .ship .btn.ghost.editaddr{min-height:36px;padding:7px 15px;font-size:13px;border-radius:10px}
@@ -131,24 +132,33 @@
     .addrform .af-actions{display:flex;gap:8px;margin-top:2px}
     .addrform .af-actions .btn{min-height:42px;padding:9px 18px;font-size:13.5px;border-radius:11px}
     @media(max-width:420px){.addrform .af-row{grid-template-columns:1fr 1fr}}
-    /* account section rows */
+    /* rows (settings) */
     .rows{display:flex;flex-direction:column;gap:2px}
     .row{display:flex;justify-content:space-between;gap:14px;padding:13px 2px;border-bottom:1px solid var(--line-soft)}
     .row:last-child{border-bottom:0}
     .row .rk{color:var(--dim);font-size:13.5px}
     .row .rv{color:var(--ink);font-size:14.5px;font-weight:600;text-align:right;word-break:break-word}
-    @media(prefers-reduced-motion:no-preference){.sec{animation:rise .35s cubic-bezier(.2,.7,.3,1)}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
+    /* points */
+    .pts-hero{text-align:center;padding:6px 0 2px}
+    .pts-hero b{font-family:var(--display);font-weight:800;font-size:54px;color:var(--gold-ink);display:block;line-height:1}
+    .pts-hero span{font-family:var(--mono);font-size:10px;letter-spacing:2.4px;text-transform:uppercase;color:var(--dim)}
+    .prog{height:11px;border-radius:7px;background:rgba(184,146,47,.16);overflow:hidden;margin:16px 0 8px}
+    .prog i{display:block;height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold));border-radius:7px}
+    /* batches */
+    .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;border-top:1px solid var(--line-soft);padding-top:10px}
+    .meta div .mk{font-family:var(--mono);font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}
+    .meta div .mv{font-size:13.5px;color:var(--ink)}
+    @media(prefers-reduced-motion:no-preference){.sec{animation:rise .32s cubic-bezier(.2,.7,.3,1)}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
   </style>
 </head>
 <body>
-  <!-- PRE-AUTH: login + check-inbox -->
+  <!-- PRE-AUTH -->
   <div class="wrap" id="preauth" hidden>
     <div class="mast">
       <img src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew"/>
       <h1>Your Cellar</h1>
       <div class="sub">Wilhelm Cold Brew · Members</div>
     </div>
-
     <div class="card" id="v-login" hidden>
       <h2>Step inside.</h2>
       <p class="note" style="font-size:14.5px;color:var(--body)">Enter the email you use with Wilhelm and we'll send you a one-tap sign-in link — no password to remember.</p>
@@ -158,7 +168,6 @@
       </form>
       <div class="err" id="loginerr"></div>
     </div>
-
     <div class="card" id="v-sent" hidden>
       <h2>Check your inbox.</h2>
       <p class="note" style="font-size:14.5px;color:var(--body)">If that email is on our books, your key is on its way — <b>“Your Wilhelm sign-in link.”</b> It works once and expires in 30 minutes. (Check spam if it's shy.)</p>
@@ -182,12 +191,32 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21 3 16.5z"/><path d="M3 7.5 12 12l9-4.5"/><path d="M12 12v9"/></svg>
           Orders
         </button>
-        <button class="navitem" data-sec="account" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
-          Account
+        <button class="navitem" data-sec="reviews" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.9-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.6 9.7l5.8-.9z"/></svg>
+          Reviews
+        </button>
+        <button class="navitem" data-sec="recipes" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10.5 5 8 4.6 4 5.1v13c4-.5 6.5-.1 8 1.4 1.5-1.5 4-1.9 8-1.4v-13c-4-.5-6.5-.1-8 1.4z"/><path d="M12 6.5v13"/></svg>
+          Recipes
+        </button>
+        <button class="navitem" data-sec="points" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5"/><path d="M8.5 13.2 7 21l5-2.6L17 21l-1.5-7.8"/></svg>
+          Points
+        </button>
+        <button class="navitem" data-sec="batches" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
+          All Batches
+        </button>
+        <button class="navitem" data-sec="preorder" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M12 13.5V17l2 1"/></svg>
+          Pre-Order
         </button>
       </nav>
       <div class="side-foot">
+        <button class="navitem" data-sec="settings" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          Account settings
+        </button>
         <div class="who" id="who"></div>
         <button class="btn ghost" id="logout" type="button">Sign out</button>
       </div>
@@ -207,10 +236,7 @@
 
         <section class="sec" data-sec="overview" id="sec-overview">
           <div class="hello" id="hello"></div>
-          <div class="card" id="dropcard" hidden>
-            <h2>Next drop</h2>
-            <div id="dropbody"></div>
-          </div>
+          <div class="card" id="dropcard" hidden><h2>Next drop</h2><div id="dropbody"></div></div>
           <div class="stats" id="stats"></div>
           <div class="note" id="liststate"></div>
         </section>
@@ -219,7 +245,40 @@
           <div id="orders"></div>
         </section>
 
-        <section class="sec" data-sec="account" id="sec-account" hidden>
+        <section class="sec" data-sec="reviews" id="sec-reviews" hidden>
+          <p class="secintro">Rate the batches you've tried — full reviews are landing soon.</p>
+          <div id="reviews"></div>
+        </section>
+
+        <section class="sec" data-sec="recipes" id="sec-recipes" hidden>
+          <p class="secintro">Ways to pour Wilhelm — start with the classic cut, then build from there.</p>
+          <div class="card">
+            <h2>On the Rocks</h2>
+            <p class="note" style="font-size:14px;color:var(--body)">The concentrate, neat over a big cube — the barrel undiluted, softening as it melts.</p>
+          </div>
+          <div class="card">
+            <h2>The Classic Cut</h2>
+            <p class="note" style="font-size:14px;color:var(--body)">3 parts cold brew to 2 parts water over ice. The everyday glass.</p>
+          </div>
+          <a class="btn" href="/recipe/" target="_blank" rel="noopener">Open all recipes →</a>
+        </section>
+
+        <section class="sec" data-sec="points" id="sec-points" hidden>
+          <p class="secintro">Every bottle earns you a point toward Wilhelm perks.</p>
+          <div class="card" id="pointscard"></div>
+        </section>
+
+        <section class="sec" data-sec="batches" id="sec-batches" hidden>
+          <p class="secintro">Every batch we've bottled — the one in your hand and every one before it.</p>
+          <div id="batchlist"><div class="note">Loading the batch book…</div></div>
+        </section>
+
+        <section class="sec" data-sec="preorder" id="sec-preorder" hidden>
+          <p class="secintro">First look at what's next.</p>
+          <div id="preorder"></div>
+        </section>
+
+        <section class="sec" data-sec="settings" id="sec-settings" hidden>
           <div class="card">
             <h2>Account</h2>
             <div class="rows" id="acctrows"></div>
@@ -228,6 +287,7 @@
             <h2>The list</h2>
             <div class="note" id="liststate2" style="font-size:14px;color:var(--body)"></div>
           </div>
+          <p class="note" style="margin:0 0 14px">Need to change the email on your account? Just reply to any Wilhelm email and we'll move it for you.</p>
           <button class="btn ghost block" id="logout2" type="button">Sign out</button>
         </section>
       </div>

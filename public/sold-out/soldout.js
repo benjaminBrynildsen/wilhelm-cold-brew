@@ -38,11 +38,48 @@
     return m + 'm';
   }
 
+  // ── Between-batches countdown (phase 'countdown') ──
+  var cdTimer = null;
+  function startCountdown(nextAt) {
+    var view = document.getElementById('countdown-view');
+    var missedEl = document.getElementById('missed');
+    if (missedEl) missedEl.hidden = true;
+    if (view) view.hidden = false;
+    fund('soldout_countdown_view', { variant: variant() });
+    var grid = document.getElementById('cd-grid');
+    var soon = document.getElementById('cd-soon');
+    var whenWrap = document.getElementById('cd-when-wrap');
+    if (!nextAt) { if (soon) soon.hidden = false; return; }
+    var target = new Date(nextAt).getTime();
+    if (isNaN(target)) { if (soon) soon.hidden = false; return; }
+    var when = document.getElementById('cd-when');
+    if (when) {
+      var dt = new Date(nextAt);
+      when.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+        + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    if (whenWrap) whenWrap.hidden = false;
+    if (grid) grid.hidden = false;
+    var cd = { d: document.getElementById('cd-d'), h: document.getElementById('cd-h'), m: document.getElementById('cd-m'), s: document.getElementById('cd-s') };
+    function tick() {
+      var left = Math.max(0, Math.floor((target - Date.now()) / 1000));
+      var d = Math.floor(left / 86400); left -= d * 86400;
+      var h = Math.floor(left / 3600); left -= h * 3600;
+      var m = Math.floor(left / 60); var s = left - m * 60;
+      if (!cd.d) { clearInterval(cdTimer); return; }
+      cd.d.textContent = d; cd.h.textContent = h; cd.m.textContent = m; cd.s.textContent = s;
+    }
+    tick();
+    cdTimer = setInterval(tick, 1000);
+  }
+
   // Show the real batch identity + how fast it went, and the next-drop date.
   var dropFetch = fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (d && d.dropId != null) soldOutDropId = d.dropId;
+      // Between batches: no last-batch talk — just a countdown to the next one.
+      if (d && d.phase === 'countdown') { startCountdown(d.nextDropAt); return; }
       var m = d && d.missed;
       if (m) {
         notes = { name: m.name, notes: m.tastingNotes, origin: m.origin, varietal: m.varietal, elevation: m.elevation, roast: m.roast };

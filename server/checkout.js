@@ -88,7 +88,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       const nextDropAt = await nextScheduledAt();
       if (d && d.remaining > 0) {
         return res.json({
-          available: true, dropId: d.id, name: d.name,
+          available: true, phase: 'live', dropId: d.id, name: d.name,
           priceCents: d.price_cents, remaining: d.remaining,
           maxPerOrder: Math.min(MAX_PER_ORDER, d.remaining),
           tastingNotes: d.tasting_notes || null,
@@ -143,7 +143,22 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
           }
         } catch (e) { console.warn('[drop/current] sold-out timing:', e?.message || e); }
       }
-      res.json({ available: false, soldOut, dropId, nextDropAt, shipCents: SHIP_CENTS, missed });
+      // Phase. For the first few days after a batch, the pages show the specific
+      // batch that just sold out (its card, how fast it went, the demand vote).
+      // After that window the batch is old news — switch to a clean countdown to
+      // the NEXT batch, with no reference to the last one.
+      const WINDOW_DAYS = 5;
+      let phase = 'countdown';
+      if (missedDrop) {
+        const a = (await q(`SELECT MAX(paid_at) m FROM orders WHERE drop_id = $1 AND status = 'paid'`, [missedDrop.id])).rows[0]?.m;
+        const anchor = a || missedDrop.opens_at || missedDrop.created_at;
+        if (anchor && (Date.now() - new Date(anchor).getTime()) <= WINDOW_DAYS * 86400000) phase = 'soldout';
+      }
+      res.json({
+        available: false, phase, soldOut, dropId, nextDropAt, shipCents: SHIP_CENTS,
+        // Suppress the missed-batch details once we're in countdown mode.
+        missed: phase === 'soldout' ? missed : null,
+      });
     } catch (e) { console.error('[drop/current]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -261,17 +261,23 @@
     const grp = focus ? findGroup(focus) : null;
 
     if (grp && grp.g.subs) {
+      // Focus view: fewer, larger wedges. Smaller inner radius gives the labels
+      // more room to run outward (bigger text); auto-shrink the long names.
       const { g, color } = grp, subs = g.subs, span = 360 / subs.length;
-      paths += `<circle class="wback" data-back="1" cx="${cx}" cy="${cy}" r="${rInner}" fill="${color}" opacity="0.92"/>`;
+      const rBack = 88, rSub0 = rBack, rSub1 = 198;
+      paths += `<circle class="wback" data-back="1" cx="${cx}" cy="${cy}" r="${rBack}" fill="${color}" opacity="0.92"/>`;
       subs.forEach((s, i) => {
         const b0 = i * span, b1 = (i + 1) * span, bm = (b0 + b1) / 2, on = sel.has(s);
-        paths += `<path class="wsub" data-sub="${esc(s)}" d="${arcSeg(cx, cy, rInner, rOut, b0, b1)}" fill="${color}" opacity="${on ? 1 : 0.5}" stroke="${on ? '#fff' : '#0f0b05'}" stroke-width="${on ? 2.4 : 0.8}"/>`;
-        labels += radLabel('wlbl', s, cx, cy, rInner + 7, bm);
+        paths += `<path class="wsub" data-sub="${esc(s)}" d="${arcSeg(cx, cy, rSub0, rSub1, b0, b1)}" fill="${color}" opacity="${on ? 1 : 0.5}" stroke="${on ? '#fff' : '#0f0b05'}" stroke-width="${on ? 2.4 : 0.8}"/>`;
+        const fs = s.length > 13 ? 10.5 : s.length > 10 ? 12.5 : 15;
+        const [tx, ty] = polar(cx, cy, rSub0 + 8, bm);
+        labels += `<text class="wsub-l" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" font-size="${fs}" text-anchor="start" dominant-baseline="central" transform="rotate(${(bm - 90).toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})">${esc(s)}</text>`;
       });
       const ring = `<g class="wheel-rot" transform="rotate(${rot || 0} ${cx} ${cy})">${paths}${labels}</g>`;
-      const center = `<circle class="wback" data-back="1" cx="${cx}" cy="${cy}" r="${rHole}" fill="#17110a" stroke="rgba(232,194,74,.35)" stroke-width="1"/>
-        <text class="wback" data-back="1" x="${cx}" y="${cy - 5}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="13" fill="#e8c24a">${esc(g.lbl || g.name)}</text>
-        <text class="wback" data-back="1" x="${cx}" y="${cy + 11}" text-anchor="middle" font-family="var(--mono)" font-size="6.8" letter-spacing="1.1" fill="rgba(246,239,218,.62)">‹ TAP TO GO BACK</text>`;
+      const rc = 60;
+      const center = `<circle class="wback" data-back="1" cx="${cx}" cy="${cy}" r="${rc}" fill="#17110a" stroke="rgba(232,194,74,.35)" stroke-width="1"/>
+        <text class="wback" data-back="1" x="${cx}" y="${cy - 6}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="15" fill="#e8c24a">${esc(g.lbl || g.name)}</text>
+        <text class="wback" data-back="1" x="${cx}" y="${cy + 12}" text-anchor="middle" font-family="var(--mono)" font-size="7" letter-spacing="1.1" fill="rgba(246,239,218,.62)">‹ TAP TO GO BACK</text>`;
       return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Tasting wheel — ${esc(g.name)}">${ring}${center}</svg>`;
     }
 

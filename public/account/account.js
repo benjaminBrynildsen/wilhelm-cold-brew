@@ -32,22 +32,67 @@
   let DATA = null;
   let batchesLoaded = false;
 
-  // ── Coffee tasting wheel taxonomy (SCA-inspired). Tap flavors while you sip. ──
+  // ── The full SCA Coffee Taster's Flavor Wheel ──
+  // Two rings on the wheel (broad category + mid group, both readable); a group's
+  // specific leaves open as tappable chips below, so every flavor is selectable
+  // without unreadable micro-labels. `lbl` is the short ring label; `name` (the
+  // group) is what a terminal group stores as a flavor. Leaves store their own name.
   const WHEEL = [
-    { cat: 'Fruity', color: '#b83246', subs: ['Berry', 'Citrus', 'Stone', 'Dried'] },
-    { cat: 'Floral', color: '#a8446e', subs: ['Jasmine', 'Rose', 'Tea'] },
-    { cat: 'Sweet', color: '#cf9a24', subs: ['Honey', 'Caramel', 'Vanilla', 'Sugar'] },
-    { cat: 'Cocoa', color: '#6f4423', subs: ['Chocolate', 'Cocoa', 'Malt'] },
-    { cat: 'Nutty', color: '#a9752e', subs: ['Almond', 'Hazelnut', 'Peanut'] },
-    { cat: 'Spice', color: '#9c3b26', subs: ['Cinnamon', 'Clove', 'Pepper'] },
-    { cat: 'Roasted', color: '#54382a', subs: ['Toast', 'Smoky', 'Ash'] },
-    { cat: 'Green', color: '#4a7a45', subs: ['Herbal', 'Grassy', 'Fresh'] },
-    { cat: 'Sour', color: '#8f9a35', subs: ['Winey', 'Boozy', 'Tart'] },
+    { cat: 'Floral', color: '#d06a95', groups: [
+      { name: 'Black Tea' },
+      { name: 'Floral', subs: ['Chamomile', 'Rose', 'Jasmine'] },
+    ] },
+    { cat: 'Fruity', color: '#c0392b', groups: [
+      { name: 'Berry', subs: ['Blackberry', 'Raspberry', 'Blueberry', 'Strawberry'] },
+      { name: 'Dried Fruit', lbl: 'Dried', subs: ['Raisin', 'Prune'] },
+      { name: 'Other Fruit', lbl: 'Other', subs: ['Coconut', 'Cherry', 'Pomegranate', 'Pineapple', 'Grape', 'Apple', 'Peach', 'Pear'] },
+      { name: 'Citrus', subs: ['Grapefruit', 'Orange', 'Lemon', 'Lime'] },
+    ] },
+    { cat: 'Sour/Fermented', color: '#e0c531', lbl: 'Sour', groups: [
+      { name: 'Sour', subs: ['Sour aromatics', 'Acetic acid', 'Butyric acid', 'Isovaleric acid', 'Citric acid', 'Malic acid'] },
+      { name: 'Alcohol/Fermented', lbl: 'Alcohol', subs: ['Winey', 'Whiskey', 'Fermented', 'Overripe'] },
+    ] },
+    { cat: 'Green/Veg', color: '#4a9a4d', groups: [
+      { name: 'Olive Oil', lbl: 'Olive' },
+      { name: 'Raw' },
+      { name: 'Green/Vegetative', lbl: 'Green', subs: ['Under-ripe', 'Peapod', 'Fresh', 'Dark green', 'Vegetative', 'Hay-like', 'Herb-like'] },
+      { name: 'Beany' },
+    ] },
+    { cat: 'Other', color: '#4a93a6', groups: [
+      { name: 'Papery/Musty', lbl: 'Papery', subs: ['Stale', 'Cardboard', 'Papery', 'Woody', 'Moldy/Damp', 'Musty/Dusty', 'Musty/Earthy', 'Animalic', 'Meaty Brothy', 'Phenolic'] },
+      { name: 'Chemical', subs: ['Bitter', 'Salty', 'Medicinal', 'Petroleum', 'Skunky', 'Rubber'] },
+    ] },
+    { cat: 'Roasted', color: '#6f4a2f', groups: [
+      { name: 'Pipe Tobacco', lbl: 'Pipe Tob.' },
+      { name: 'Tobacco' },
+      { name: 'Burnt', subs: ['Acrid', 'Ashy', 'Smoky', 'Brown roast'] },
+      { name: 'Cereal', subs: ['Grain', 'Malt'] },
+    ] },
+    { cat: 'Spices', color: '#a5382a', groups: [
+      { name: 'Pungent' },
+      { name: 'Pepper' },
+      { name: 'Brown Spice', lbl: 'Brown', subs: ['Anise', 'Nutmeg', 'Cinnamon', 'Clove'] },
+    ] },
+    { cat: 'Nutty/Cocoa', color: '#8a5a2b', lbl: 'Nutty', groups: [
+      { name: 'Nutty', subs: ['Peanuts', 'Hazelnut', 'Almond'] },
+      { name: 'Cocoa', subs: ['Chocolate', 'Dark chocolate'] },
+    ] },
+    { cat: 'Sweet', color: '#e69324', groups: [
+      { name: 'Brown Sugar', lbl: 'Brown Sug.', subs: ['Molasses', 'Maple syrup', 'Caramelized', 'Honey'] },
+      { name: 'Vanilla' },
+      { name: 'Vanillin' },
+      { name: 'Overall Sweet', lbl: 'Sweet' },
+      { name: 'Sweet Aromatics', lbl: 'Sweet Arom.' },
+    ] },
   ];
+  // Map every selectable flavor (leaf or terminal group) → its broad-category color.
   const FLAVOR_COLOR = {};
-  WHEEL.forEach((c) => c.subs.forEach((s) => { FLAVOR_COLOR[s] = c.color; }));
+  WHEEL.forEach((c) => c.groups.forEach((g) => {
+    if (g.subs) g.subs.forEach((s) => { FLAVOR_COLOR[s] = c.color; });
+    else FLAVOR_COLOR[g.name] = c.color;
+  }));
 
-  // A draft review being edited: { dropId, rating, flavors:Set, toast }
+  // A draft review being edited: { dropId, rating, flavors:Set, body, activeGroup }
   let draft = null;
 
   const TITLES = { overview: 'Overview', orders: 'Orders', reviews: 'Reviews', recipes: 'Recipes',
@@ -201,33 +246,49 @@
     const lg = (a1 - a0) > 180 ? 1 : 0; const f = (n) => n.toFixed(2);
     return `M ${f(x0)} ${f(y0)} L ${f(x1)} ${f(y1)} A ${r1} ${r1} 0 ${lg} 1 ${f(x2)} ${f(y2)} L ${f(x3)} ${f(y3)} A ${r0} ${r0} 0 ${lg} 0 ${f(x0)} ${f(y0)} Z`;
   }
-  function buildWheel(sel) {
-    const cx = 200, cy = 200, rHole = 56, rMid = 120, rOut = 194;
+  // Is any of a group's flavors currently selected? (terminal group = its own name)
+  function groupSelected(g, sel) { return g.subs ? g.subs.some((s) => sel.has(s)) : sel.has(g.name); }
+  function buildWheel(sel, active) {
+    const cx = 200, cy = 200, rHole = 52, rInner = 112, rOut = 195;
     const N = WHEEL.length, span = 360 / N;
     let paths = '', labels = '';
     WHEEL.forEach((c, i) => {
       const a0 = i * span, a1 = (i + 1) * span, mid = (a0 + a1) / 2;
-      paths += `<path d="${arcSeg(cx, cy, rHole, rMid, a0, a1)}" fill="${c.color}" opacity="0.95" stroke="#0f0b05" stroke-width="1"/>`;
-      const [lx, ly] = polar(cx, cy, (rHole + rMid) / 2, mid);
+      // inner: broad category
+      paths += `<path d="${arcSeg(cx, cy, rHole, rInner, a0, a1)}" fill="${c.color}" opacity="0.95" stroke="#0f0b05" stroke-width="1"/>`;
+      const [lx, ly] = polar(cx, cy, (rHole + rInner) / 2, mid);
       const crot = mid <= 180 ? mid - 90 : mid + 90;
-      labels += `<text class="wcat" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${crot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})">${esc(c.cat)}</text>`;
-      const m = c.subs.length, sub = span / m;
-      c.subs.forEach((s, j) => {
-        const b0 = a0 + j * sub, b1 = a0 + (j + 1) * sub, bm = (b0 + b1) / 2, on = sel.has(s);
-        paths += `<path class="wseg" data-flavor="${esc(s)}" d="${arcSeg(cx, cy, rMid, rOut, b0, b1)}" fill="${c.color}" opacity="${on ? 1 : 0.34}" stroke="#0f0b05" stroke-width="${on ? 1.8 : 0.8}"/>`;
-        const [tx, ty] = polar(cx, cy, (rMid + rOut) / 2, bm);
+      labels += `<text class="wcat" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${crot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})">${esc(c.lbl || c.cat)}</text>`;
+      // middle: groups
+      const m = c.groups.length, gs = span / m;
+      c.groups.forEach((g, j) => {
+        const b0 = a0 + j * gs, b1 = a0 + (j + 1) * gs, bm = (b0 + b1) / 2;
+        const on = groupSelected(g, sel), act = active === g.name;
+        const op = on ? 1 : (act ? 0.9 : 0.62);
+        paths += `<path class="wgrp" data-group="${esc(g.name)}" d="${arcSeg(cx, cy, rInner, rOut, b0, b1)}" fill="${c.color}" opacity="${op}" stroke="${on || act ? '#fff' : '#0f0b05'}" stroke-width="${on || act ? 2.2 : 0.8}"/>`;
+        const [tx, ty] = polar(cx, cy, (rInner + rOut) / 2, bm);
         const rot = bm <= 180 ? bm - 90 : bm + 90;
-        labels += `<text class="wlbl" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${rot.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})" fill="${on ? '#fff' : 'rgba(255,255,255,.82)'}">${esc(s)}</text>`;
+        labels += `<text class="wlbl" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${rot.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})">${esc(g.lbl || g.name)}</text>`;
       });
     });
     const n = sel.size;
     const center = `<circle cx="${cx}" cy="${cy}" r="${rHole}" fill="#17110a" stroke="rgba(232,194,74,.3)" stroke-width="1"/>
-      <text x="${cx}" y="${cy - 3}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="22" fill="#e8c24a">${n || '☕'}</text>
-      <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" letter-spacing="1.6" fill="rgba(246,239,218,.6)">${n ? 'SELECTED' : 'TASTE'}</text>`;
+      <text x="${cx}" y="${cy - 3}" text-anchor="middle" font-family="var(--display)" font-weight="800" font-size="21" fill="#e8c24a">${n || '☕'}</text>
+      <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" letter-spacing="1.4" fill="rgba(246,239,218,.6)">${n ? 'SELECTED' : 'TASTE'}</text>`;
     return `<svg class="wheel" viewBox="0 0 400 400" role="group" aria-label="Coffee tasting wheel">${paths}${center}${labels}</svg>`;
   }
+  // The chips for the currently open group (its specific flavors).
+  function groupDrawer(active, sel) {
+    if (!active) return '<div class="wheel-hint"><span class="note" style="font-size:12.5px">Tap a wedge on the outer ring to open its flavors.</span></div>';
+    let group = null, color = '#b8922f';
+    WHEEL.forEach((c) => c.groups.forEach((g) => { if (g.name === active) { group = g; color = c.color; } }));
+    if (!group || !group.subs) return '';
+    return `<div class="drawer"><div class="drawer-h">${esc(active)}</div><div class="drawer-chips">${
+      group.subs.map((s) => `<button type="button" class="dchip ${sel.has(s) ? 'on' : ''}" data-sub="${esc(s)}" style="--fc:${color}">${esc(s)}</button>`).join('')
+    }</div></div>`;
+  }
   function tasteTags(sel) {
-    if (!sel.size) return '<div class="taste-tags"><span class="note" style="font-size:12.5px">Tap the outer ring — berry, cocoa, citrus, honey…</span></div>';
+    if (!sel.size) return '<div class="taste-tags"><span class="note" style="font-size:12.5px">Nothing picked yet — tap the ring, then the flavors.</span></div>';
     return '<div class="taste-tags">' + [...sel].map((s) =>
       `<span class="ttag"><i style="background:${FLAVOR_COLOR[s] || '#b8922f'}"></i>${esc(s)} <b class="ttrm" data-flavor="${esc(s)}">×</b></span>`).join('') + '</div>';
   }
@@ -252,7 +313,7 @@
         <div class="lbl">Your rating</div>
         ${starsInput(draft.rating)}
         <div class="lbl">While you sip — tap what you taste</div>
-        <div class="wheel-wrap">${buildWheel(draft.flavors)}${tasteTags(draft.flavors)}</div>
+        <div class="wheel-wrap">${buildWheel(draft.flavors, draft.activeGroup)}${groupDrawer(draft.activeGroup, draft.flavors)}${tasteTags(draft.flavors)}</div>
         <div class="lbl">Notes (optional)</div>
         <textarea data-role="body" placeholder="How did it drink? How did you pour it?">${esc(draft.body || '')}</textarea>
         <div class="rev-actions">
@@ -531,9 +592,11 @@
   // ── Reviews + tasting wheel interactions (delegated on #reviews) ──
   function openReview(dropId) {
     const rev = REVIEWS[dropId];
-    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '' };
+    draft = { dropId, rating: rev ? rev.rating : 0, flavors: new Set(rev ? rev.flavors : []), body: rev ? (rev.body || '') : '', activeGroup: null };
     renderReviews(DATA.orders || []);
   }
+  // Terminal group (no subs) = its name is a selectable flavor.
+  function isTerminal(name) { let t = false; WHEEL.forEach((c) => c.groups.forEach((g) => { if (g.name === name && !g.subs) t = true; })); return t; }
   async function saveReview(dropId) {
     captureBody();
     const errEl = $('reviews').querySelector('.rev-err');
@@ -566,8 +629,17 @@
     if (star) { captureBody(); draft.rating = parseInt(star.dataset.star, 10); renderReviews(DATA.orders || []); return; }
     const rm = e.target.closest('.ttrm');
     if (rm) { captureBody(); draft.flavors.delete(rm.dataset.flavor); renderReviews(DATA.orders || []); return; }
-    const seg = e.target.closest('.wseg');
-    if (seg) { captureBody(); const f = seg.getAttribute('data-flavor'); draft.flavors.has(f) ? draft.flavors.delete(f) : draft.flavors.add(f); renderReviews(DATA.orders || []); return; }
+    const chip = e.target.closest('.dchip[data-sub]');
+    if (chip) { captureBody(); const f = chip.dataset.sub; draft.flavors.has(f) ? draft.flavors.delete(f) : draft.flavors.add(f); renderReviews(DATA.orders || []); return; }
+    const grp = e.target.closest('.wgrp[data-group]');
+    if (grp) {
+      captureBody();
+      const name = grp.getAttribute('data-group');
+      if (isTerminal(name)) { draft.flavors.has(name) ? draft.flavors.delete(name) : draft.flavors.add(name); }
+      else { draft.activeGroup = draft.activeGroup === name ? null : name; }
+      renderReviews(DATA.orders || []);
+      return;
+    }
   });
 
   boot();

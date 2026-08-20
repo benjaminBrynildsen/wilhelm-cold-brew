@@ -92,7 +92,7 @@
     .userchip .em{font-family:var(--mono);font-size:12px;color:var(--dim)}
     @media(max-width:600px){ .userchip .em{display:none} }
 
-    .content{width:100%;max-width:720px;margin:0 auto;padding:24px clamp(16px,4vw,32px) 90px}
+    .content{width:100%;max-width:940px;margin:0 auto;padding:26px clamp(16px,4vw,40px) 90px}
     .hello{margin:2px 0 20px}
     .hello h3{font-family:var(--display);font-weight:700;font-size:26px;color:var(--ink);margin:0 0 3px}
     .hello p{margin:0;color:var(--dim);font-size:14px}
@@ -204,13 +204,25 @@
     .rev-editor textarea{width:100%;min-height:74px;padding:11px 13px;background:#fff;border:1.5px solid var(--line);border-radius:12px;color:var(--ink);font:inherit;font-size:14.5px;resize:vertical}
     .rev-editor textarea:focus{border-color:var(--gold-deep);outline:none}
     .wheel-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
-    .wheel{width:100%;max-width:340px;height:auto;touch-action:manipulation;user-select:none}
+    .wheel{width:100%;max-width:520px;height:auto;touch-action:manipulation;user-select:none}
     .wheel path{cursor:pointer;transition:opacity .12s}
     .wheel path:hover{opacity:.9}
     .wheel text{pointer-events:none;font-family:var(--sans)}
-    .wheel .wlbl{fill:#fff;font-size:8.5px;font-weight:600;letter-spacing:.2px}
-    .wheel .wcat{font-family:var(--display);font-weight:700;font-size:10px;fill:rgba(255,255,255,.92)}
+    .wheel .wlbl{fill:#fff;font-size:10px;font-weight:700;letter-spacing:.2px;
+      paint-order:stroke;stroke:rgba(12,9,4,.6);stroke-width:2.4px;stroke-linejoin:round}
+    .wheel .wcat{font-family:var(--display);font-weight:800;font-size:12px;fill:#fff;
+      paint-order:stroke;stroke:rgba(12,9,4,.55);stroke-width:2.6px;stroke-linejoin:round}
     .wheel .wctr{font-family:var(--mono);letter-spacing:1px;fill:var(--gold-ink)}
+    .wheel-hint{text-align:center}
+    .drawer{width:100%;background:rgba(232,194,74,.07);border:1px solid var(--line-soft);border-radius:14px;padding:12px 13px}
+    .drawer-h{font-family:var(--display);font-weight:700;color:var(--gold-ink);font-size:16px;margin:0 0 9px}
+    .drawer-chips{display:flex;flex-wrap:wrap;gap:8px}
+    .dchip{font-family:inherit;font-size:13px;color:var(--body);background:#fff;border:1.5px solid var(--line);border-radius:20px;
+      padding:7px 13px;cursor:pointer;transition:all .12s;display:inline-flex;align-items:center;gap:6px}
+    .dchip::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--fc,#b8922f);opacity:.5}
+    .dchip:hover{border-color:var(--gold-deep)}
+    .dchip.on{background:var(--fc,#b8922f);color:#fff;border-color:transparent;font-weight:600}
+    .dchip.on::before{opacity:1;background:#fff}
     .taste-tags{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;min-height:2px}
     .ttag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);border:1px solid var(--line);
       background:var(--card);border-radius:20px;padding:5px 10px 5px 12px}

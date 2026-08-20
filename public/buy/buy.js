@@ -136,10 +136,17 @@
     cdTimer = setInterval(tick, 1000);
   }
 
+  // Force the countdown view for a look, regardless of the live drop state:
+  // /buy?preview or /buy?countdown. Uses the real next-drop date if one is
+  // scheduled, else the next Friday 9AM.
+  function nextFriday9() { var d = new Date(); d.setHours(9, 0, 0, 0); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7)); return d.toISOString(); }
+  var previewCountdown = /[?&](preview|countdown)\b/.test(location.search);
+
   // ── 1) Availability ──
   fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      if (previewCountdown) { showCountdown((d && d.nextDropAt) || nextFriday9()); return; }
       if (!d.available) {
         // Just-missed (first few days) → the sold-out demand page. Otherwise
         // (between batches) → show the next-batch countdown right here.
@@ -159,7 +166,7 @@
       fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant() });
       initStripe();
     })
-    .catch(function () { els.card.hidden = false; initStripe(); });
+    .catch(function () { if (previewCountdown) { showCountdown(nextFriday9()); return; } els.card.hidden = false; initStripe(); });
 
   // ── 2) Quantity stepper ──
   function updateQtyUI() {

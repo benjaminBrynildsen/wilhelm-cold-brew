@@ -75,6 +75,34 @@ async function nextScheduledAt() {
   return r.rows[0]?.opens_at || null;
 }
 
+// Drops go up Fridays at 9AM Central. The between-batches countdown shouldn't
+// depend on a scheduled row existing — so when none is set, count to the next
+// Friday 9AM Central. Computed as a real UTC instant (DST-correct via Intl).
+function centralOffsetMs(date) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - date.getTime();
+}
+function nextFridayNineCentral(now = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago', hourCycle: 'h23', weekday: 'short',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit',
+  }).formatToParts(now).map((x) => [x.type, x.value]));
+  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday);
+  let add = (5 - wd + 7) % 7;
+  if (add === 0 && +p.hour >= 9) add = 7; // it's Friday but past 9AM → next week
+  let inst = new Date(Date.UTC(+p.year, +p.month - 1, +p.day + add, 9, 0, 0));
+  inst = new Date(inst.getTime() - centralOffsetMs(inst)); // shift 9:00 UTC → 9:00 Central
+  return inst;
+}
+// The next-drop target: a real scheduled drop if there is one, else next Friday.
+async function nextDropTarget() {
+  return (await nextScheduledAt()) || nextFridayNineCentral().toISOString();
+}
+
 export function mountCheckout(app, payLimit = (req, res, next) => next()) {
   // Publishable key for Stripe.js on the buy page (safe to expose).
   app.get('/api/config', (_req, res) => {
@@ -85,7 +113,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
   app.get('/api/drop/current', async (_req, res) => {
     try {
       const d = await currentDrop();
-      const nextDropAt = await nextScheduledAt();
+      const nextDropAt = await nextDropTarget();
       if (d && d.remaining > 0) {
         return res.json({
           available: true, phase: 'live', dropId: d.id, name: d.name,
@@ -147,7 +175,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       // batch that just sold out (its card, how fast it went, the demand vote).
       // After that window the batch is old news — switch to a clean countdown to
       // the NEXT batch, with no reference to the last one.
-      const WINDOW_DAYS = 4;
+      const WINDOW_DAYS = 3;
       let phase = 'countdown';
       if (missedDrop) {
         const a = (await q(`SELECT MAX(paid_at) m FROM orders WHERE drop_id = $1 AND status = 'paid'`, [missedDrop.id])).rows[0]?.m;

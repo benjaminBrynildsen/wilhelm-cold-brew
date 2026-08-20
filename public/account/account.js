@@ -256,9 +256,11 @@
       const a0 = i * span, a1 = (i + 1) * span, mid = (a0 + a1) / 2;
       // inner: broad category
       paths += `<path d="${arcSeg(cx, cy, rHole, rInner, a0, a1)}" fill="${c.color}" opacity="0.95" stroke="#0f0b05" stroke-width="1"/>`;
-      const [lx, ly] = polar(cx, cy, (rHole + rInner) / 2, mid);
-      const crot = mid <= 180 ? mid - 90 : mid + 90;
-      labels += `<text class="wcat" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${crot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})">${esc(c.lbl || c.cat)}</text>`;
+      // Radial label: starts at the center side, reads outward (left→right when the
+      // wedge is rotated to the right). Uniform orientation, so rotating makes any
+      // one readable.
+      const [lx, ly] = polar(cx, cy, rHole + 6, mid);
+      labels += `<text class="wcat" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="start" dominant-baseline="central" transform="rotate(${(mid - 90).toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})">${esc(c.lbl || c.cat)}</text>`;
       // middle: groups
       const m = c.groups.length, gs = span / m;
       c.groups.forEach((g, j) => {
@@ -266,9 +268,8 @@
         const on = groupSelected(g, sel), act = active === g.name;
         const op = on ? 1 : (act ? 0.9 : 0.62);
         paths += `<path class="wgrp" data-group="${esc(g.name)}" d="${arcSeg(cx, cy, rInner, rOut, b0, b1)}" fill="${c.color}" opacity="${op}" stroke="${on || act ? '#fff' : '#0f0b05'}" stroke-width="${on || act ? 2.2 : 0.8}"/>`;
-        const [tx, ty] = polar(cx, cy, (rInner + rOut) / 2, bm);
-        const rot = bm <= 180 ? bm - 90 : bm + 90;
-        labels += `<text class="wlbl" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${rot.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})">${esc(g.lbl || g.name)}</text>`;
+        const [tx, ty] = polar(cx, cy, rInner + 7, bm);
+        labels += `<text class="wlbl" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="start" dominant-baseline="central" transform="rotate(${(bm - 90).toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)})">${esc(g.lbl || g.name)}</text>`;
       });
     });
     const n = sel.size;

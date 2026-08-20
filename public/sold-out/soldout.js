@@ -61,13 +61,15 @@
     if (whenWrap) whenWrap.hidden = false;
     if (grid) grid.hidden = false;
     var cd = { d: document.getElementById('cd-d'), h: document.getElementById('cd-h'), m: document.getElementById('cd-m'), s: document.getElementById('cd-s') };
+    function bump(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+    function setCell(el, val) { if (!el) return; var s = String(val); if (el.textContent !== s) { el.textContent = s; bump(el); } }
     function tick() {
       var left = Math.max(0, Math.floor((target - Date.now()) / 1000));
       var d = Math.floor(left / 86400); left -= d * 86400;
       var h = Math.floor(left / 3600); left -= h * 3600;
       var m = Math.floor(left / 60); var s = left - m * 60;
       if (!cd.d) { clearInterval(cdTimer); return; }
-      cd.d.textContent = d; cd.h.textContent = h; cd.m.textContent = m; cd.s.textContent = s;
+      setCell(cd.d, d); setCell(cd.h, h); setCell(cd.m, m); setCell(cd.s, s);
     }
     tick();
     cdTimer = setInterval(tick, 1000);

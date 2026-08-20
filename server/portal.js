@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import { q } from './db.js';
 import { sendPortalLink } from './mailer.js';
+import { pointsSummary, award, POINTS, PREORDER_THRESHOLD } from './points.js';
 
 const SITE = process.env.SITE_URL || 'https://wilhelmcoldbrew.com';
 const COOKIE = 'wcellar';
@@ -113,7 +114,7 @@ export function mountPortal(app) {
       if (!email) return res.status(401).json({ error: 'not signed in' });
 
       const orders = (await q(
-        `SELECT o.id, o.quantity, o.amount_total_cents, o.paid_at, o.created_at,
+        `SELECT o.id, o.drop_id, o.quantity, o.amount_total_cents, o.paid_at, o.created_at,
                 o.shipped_at, o.ship_notified_at, o.tracking_number, o.tracking_carrier,
                 o.tracking_numbers, o.tracking_status, o.delivered_at,
                 o.shipping_name, o.shipping_address,
@@ -150,8 +151,21 @@ export function mountPortal(app) {
         `SELECT COUNT(*)::int n FROM subscribers
           WHERE utm_source = 'referral' AND utm_campaign = $1`, [code])).rows[0].n;
 
+      // Loyalty points + this member's reviews (so the UI knows what's rated).
+      const pts = await pointsSummary(email);
+      const reviews = (await q(
+        `SELECT drop_id, rating, body, flavors, created_at
+           FROM reviews WHERE email = $1`, [email])).rows;
+
       res.json({
         email, orders, stats, drop,
+        points: {
+          ...pts,
+          perBottle: POINTS.perBottle, review: POINTS.review,
+          preorderThreshold: PREORDER_THRESHOLD,
+          preorderUnlocked: pts.lifetimeEarned >= PREORDER_THRESHOLD,
+        },
+        reviews,
         referral: { code, url: `${SITE}/r/${code}`, joined },
       });
     } catch (e) { console.error('[portal/overview]', e); res.status(500).json({ error: 'something went wrong' }); }
@@ -203,5 +217,44 @@ export function mountPortal(app) {
       }
       res.json({ ok: true, order: r.rows[0] });
     } catch (e) { console.error('[portal/address]', e); res.status(500).json({ error: 'something went wrong' }); }
+  });
+
+  // Submit (or update) a review for a batch you bought. Private — stored for
+  // points and admin eyes, not shown publicly. flavors is the list of notes
+  // tapped on the tasting wheel. Review points are awarded once per batch
+  // (idempotent via the ledger's unique key), and never removed on an edit.
+  app.post('/api/portal/review', async (req, res) => {
+    try {
+      const email = sessionEmail(req);
+      if (!email) return res.status(401).json({ error: 'not signed in' });
+      const dropId = parseInt(req.body?.dropId, 10);
+      const rating = parseInt(req.body?.rating, 10);
+      if (!dropId) return res.status(400).json({ error: 'which batch?' });
+      if (!(rating >= 1 && rating <= 5)) return res.status(400).json({ error: 'pick a rating from 1 to 5' });
+      const body = req.body?.body ? String(req.body.body).slice(0, 2000) : null;
+      const flavors = Array.isArray(req.body?.flavors)
+        ? req.body.flavors.filter((f) => typeof f === 'string').slice(0, 40).map((f) => f.slice(0, 60))
+        : [];
+
+      // Must have bought this batch (a paid order — or a demo order, so the
+      // account can be previewed with the demo-data tool).
+      const owns = await q(
+        `SELECT 1 FROM orders WHERE drop_id = $1 AND LOWER(email) = $2
+                 AND status IN ('paid','demo') LIMIT 1`, [dropId, email]);
+      if (!owns.rows.length) return res.status(403).json({ error: 'you can only review a batch you’ve ordered' });
+
+      await q(
+        `INSERT INTO reviews (email, drop_id, rating, body, flavors)
+         VALUES ($1,$2,$3,$4,$5::jsonb)
+         ON CONFLICT (email, drop_id)
+         DO UPDATE SET rating = EXCLUDED.rating, body = EXCLUDED.body,
+                       flavors = EXCLUDED.flavors, updated_at = now()`,
+        [email, dropId, rating, body, JSON.stringify(flavors)]);
+
+      // Award review points once for this batch (no-op on later edits).
+      const awarded = await award(email, POINTS.review, 'review', 'drop', String(dropId));
+      const pts = await pointsSummary(email);
+      res.json({ ok: true, awarded: awarded ? POINTS.review : 0, points: pts });
+    } catch (e) { console.error('[portal/review]', e); res.status(500).json({ error: 'something went wrong' }); }
   });
 }

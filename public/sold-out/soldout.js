@@ -38,13 +38,35 @@
     return m + 'm';
   }
 
+  // Build + download an .ics for the next drop (Apple/Google/Outlook).
+  function icsStamp(d) { return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+  function addToCalendar(nextAt, label) {
+    var start = new Date(nextAt); if (isNaN(start.getTime())) return;
+    var end = new Date(start.getTime() + 15 * 60000);
+    var name = (label && /batch/i.test(label)) ? ('Wilhelm ' + label + ' drops') : 'Wilhelm Cold Brew drops';
+    var ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Wilhelm Cold Brew//Drop//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+      'BEGIN:VEVENT', 'UID:wilhelm-' + icsStamp(start) + '@wilhelmcoldbrew.com', 'DTSTAMP:' + icsStamp(new Date()),
+      'DTSTART:' + icsStamp(start), 'DTEND:' + icsStamp(end), 'SUMMARY:' + name,
+      'DESCRIPTION:Bottles go up at 9AM Central and sell out fast. The list gets the link first.',
+      'URL:' + location.origin + '/buy', 'LOCATION:' + location.origin + '/buy',
+      'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', 'DESCRIPTION:Wilhelm drop in 30 minutes', 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'wilhelm-next-drop.ics';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    fund('add_to_calendar', { variant: variant() });
+  }
+
   // ── Between-batches countdown (phase 'countdown') ──
   var cdTimer = null;
-  function startCountdown(nextAt) {
+  function startCountdown(nextAt, batchLabel) {
     var view = document.getElementById('countdown-view');
     var missedEl = document.getElementById('missed');
     if (missedEl) missedEl.hidden = true;
     if (view) view.hidden = false;
+    var be = document.getElementById('cd-batch'); if (be && batchLabel) be.textContent = batchLabel;
     fund('soldout_countdown_view', { variant: variant() });
     var grid = document.getElementById('cd-grid');
     var soon = document.getElementById('cd-soon');
@@ -60,6 +82,8 @@
     }
     if (whenWrap) whenWrap.hidden = false;
     if (grid) grid.hidden = false;
+    var cal = document.getElementById('cd-cal');
+    if (cal) { cal.hidden = false; cal.onclick = function () { addToCalendar(nextAt, batchLabel); }; }
     var cd = { d: document.getElementById('cd-d'), h: document.getElementById('cd-h'), m: document.getElementById('cd-m'), s: document.getElementById('cd-s') };
     function bump(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
     function setCell(el, val) { if (!el) return; var s = String(val); if (el.textContent !== s) { el.textContent = s; bump(el); } }
@@ -81,7 +105,7 @@
     .then(function (d) {
       if (d && d.dropId != null) soldOutDropId = d.dropId;
       // Between batches: no last-batch talk — just a countdown to the next one.
-      if (d && d.phase === 'countdown') { startCountdown(d.nextDropAt); return; }
+      if (d && d.phase === 'countdown') { startCountdown(d.nextDropAt, d.nextBatch); return; }
       var m = d && d.missed;
       if (m) {
         notes = { name: m.name, notes: m.tastingNotes, origin: m.origin, varietal: m.varietal, elevation: m.elevation, roast: m.roast };

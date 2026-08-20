@@ -103,11 +103,32 @@
   // Between-batches countdown, shown right on the buy page until the next drop
   // is live. No reference to the batch that just passed.
   var cdTimer = null;
+  // Build + download an .ics for the next drop (works with Apple/Google/Outlook).
+  function icsStamp(d) { return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+  function addToCalendar(nextAt, label) {
+    var start = new Date(nextAt); if (isNaN(start.getTime())) return;
+    var end = new Date(start.getTime() + 15 * 60000);
+    var name = (label && /batch/i.test(label)) ? ('Wilhelm ' + label + ' drops') : 'Wilhelm Cold Brew drops';
+    var ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Wilhelm Cold Brew//Drop//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+      'BEGIN:VEVENT', 'UID:wilhelm-' + icsStamp(start) + '@wilhelmcoldbrew.com', 'DTSTAMP:' + icsStamp(new Date()),
+      'DTSTART:' + icsStamp(start), 'DTEND:' + icsStamp(end), 'SUMMARY:' + name,
+      'DESCRIPTION:Bottles go up at 9AM Central and sell out fast. The list gets the link first.',
+      'URL:' + location.origin + '/buy', 'LOCATION:' + location.origin + '/buy',
+      'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', 'DESCRIPTION:Wilhelm drop in 30 minutes', 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    var blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = 'wilhelm-next-drop.ics';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    fund('add_to_calendar', { variant: variant() });
+  }
   function bump(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
   function setCell(el, val) { if (!el) return; var s = String(val); if (el.textContent !== s) { el.textContent = s; bump(el); } }
-  function showCountdown(nextAt) {
+  function showCountdown(nextAt, batchLabel) {
     var view = $('buy-countdown');
     if (view) view.hidden = false;
+    var be = $('cd-batch'); if (be && batchLabel) be.textContent = batchLabel;
     if (els.countBox) els.countBox.hidden = true;
     // Only the countdown — drop the rest of the store page while there's nothing to buy.
     var origin = document.querySelector('.store-section.origin'); if (origin) origin.hidden = true;
@@ -123,6 +144,8 @@
     }
     if (whenWrap) whenWrap.hidden = false;
     if (grid) grid.hidden = false;
+    var cal = $('cd-cal');
+    if (cal) { cal.hidden = false; cal.onclick = function () { addToCalendar(nextAt, batchLabel); }; }
     var c = { d: $('cd-d'), h: $('cd-h'), m: $('cd-m'), s: $('cd-s') };
     function tick() {
       var left = Math.max(0, Math.floor((target - Date.now()) / 1000));
@@ -146,11 +169,11 @@
   fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (previewCountdown) { showCountdown((d && d.nextDropAt) || nextFriday9()); return; }
+      if (previewCountdown) { showCountdown((d && d.nextDropAt) || nextFriday9(), d && d.nextBatch); return; }
       if (!d.available) {
         // Just-missed (first few days) → the sold-out demand page. Otherwise
         // (between batches) → show the next-batch countdown right here.
-        if (d.phase === 'countdown') { showCountdown(d.nextDropAt); return; }
+        if (d.phase === 'countdown') { showCountdown(d.nextDropAt, d.nextBatch); return; }
         location.replace('/sold-out'); return;
       }
       state.priceCents = d.priceCents; state.shipCents = d.shipCents;

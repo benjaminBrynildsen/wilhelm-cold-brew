@@ -103,6 +103,20 @@ async function nextDropTarget() {
   return (await nextScheduledAt()) || nextFridayNineCentral().toISOString();
 }
 
+// The next batch's label for the countdown hero. A scheduled drop's name wins;
+// otherwise it's the highest existing "Batch N" plus one.
+async function nextBatchLabel() {
+  const sched = (await q(
+    `SELECT name FROM drops WHERE status = 'scheduled' AND (opens_at IS NULL OR opens_at > now())
+      ORDER BY opens_at ASC NULLS LAST LIMIT 1`)).rows[0];
+  if (sched?.name) return sched.name;
+  const r = await q(
+    `SELECT MAX(NULLIF(regexp_replace(name, '\\D', '', 'g'), '')::int) AS n
+       FROM drops WHERE name ~ '[0-9]'`);
+  const n = r.rows[0]?.n;
+  return n ? ('Batch ' + (n + 1)) : 'The next batch';
+}
+
 export function mountCheckout(app, payLimit = (req, res, next) => next()) {
   // Publishable key for Stripe.js on the buy page (safe to expose).
   app.get('/api/config', (_req, res) => {
@@ -114,6 +128,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
     try {
       const d = await currentDrop();
       const nextDropAt = await nextDropTarget();
+      const nextBatch = await nextBatchLabel();
       if (d && d.remaining > 0) {
         return res.json({
           available: true, phase: 'live', dropId: d.id, name: d.name,
@@ -122,7 +137,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
           tastingNotes: d.tasting_notes || null,
           origin: d.origin || null, varietal: d.varietal || null,
           elevation: d.elevation || null, roast: d.roast || null,
-          shipCents: SHIP_CENTS, nextDropAt,
+          shipCents: SHIP_CENTS, nextDropAt, nextBatch,
         });
       }
       // Not buyable: the drop the visitor just missed is the most recent drop
@@ -183,7 +198,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
         if (anchor && (Date.now() - new Date(anchor).getTime()) <= WINDOW_DAYS * 86400000) phase = 'soldout';
       }
       res.json({
-        available: false, phase, soldOut, dropId, nextDropAt, shipCents: SHIP_CENTS,
+        available: false, phase, soldOut, dropId, nextDropAt, nextBatch, shipCents: SHIP_CENTS,
         // Suppress the missed-batch details once we're in countdown mode.
         missed: phase === 'soldout' ? missed : null,
       });

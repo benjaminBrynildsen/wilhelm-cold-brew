@@ -61,6 +61,17 @@
     .chip.good{color:#2f7d46;border-color:rgba(47,125,70,.4);background:rgba(47,125,70,.07)}
     .trackrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
     .trackrow .btn{min-height:38px;padding:8px 16px;font-size:13px;border-radius:10px}
+    /* shipping address + self-service editor */
+    .ship{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line-soft)}
+    .ship .addr{font-size:14px;color:var(--body);margin:4px 0 10px;line-height:1.5}
+    .ship .btn.ghost.editaddr{min-height:36px;padding:7px 15px;font-size:13px;border-radius:10px}
+    .addrform{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:9px}
+    .addrform input{width:100%;height:44px;padding:0 12px;background:#fff;border:1.5px solid var(--line);border-radius:11px;color:var(--ink);font:inherit;font-size:14.5px}
+    .addrform input:focus{border-color:var(--gold-deep);outline:none}
+    .addrform .af-row{display:grid;grid-template-columns:1fr 76px 100px;gap:9px}
+    .addrform .af-actions{display:flex;gap:8px;margin-top:2px}
+    .addrform .af-actions .btn{min-height:42px;padding:9px 18px;font-size:13.5px;border-radius:11px}
+    @media(max-width:420px){.addrform .af-row{grid-template-columns:1fr 1fr;grid-auto-flow:row}}
     /* referral */
     .reflink{display:flex;gap:8px;margin:12px 0 8px}
     .reflink input{flex:1;height:46px;padding:0 12px;background:#fff;border:1.5px solid var(--line);border-radius:12px;color:var(--gold-ink);font-family:var(--mono);font-size:13px;min-width:0}

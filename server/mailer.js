@@ -229,7 +229,8 @@ function orderHtml({ amountCents, shippingName, dropName }) {
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
             <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">Order confirmed.</p>
             <p style="margin:0 0 16px;">${greet} Your bottle of Wilhelm Cold Brew is reserved${dropSafe ? ` from <strong>${dropSafe}</strong>` : ''}. ${total ? `We charged <strong>${total}</strong> to your card.` : ''}</p>
-            <p style="margin:0 0 22px;">It's hand-packed and ships within a few business days. You'll get a note when it's on its way. If you need anything, just reply to this email.</p>
+            <p style="margin:0 0 16px;">It's hand-packed and ships within a few business days. You'll get a note when it's on its way.</p>
+            <p style="margin:0 0 22px;">Wrong shipping address? You can fix it yourself before we print the label — <a href="${SITE}/account/" style="color:#8a6914;font-weight:bold;">sign in to your Cellar</a> and update it. Once it ships the address locks, so just reply here if you catch it late.</p>
             <p style="margin:0 0 22px;color:#6b6047;">Bourbon-barrel-aged, single origin, no alcohol. Pour it over a big cube and take your time.</p>
             <p style="margin:0;">Talk soon,<br/>Ben<br/><span style="color:#8a7d5f;">Wilhelm Cold Brew</span></p>
           </div>
@@ -247,7 +248,9 @@ function orderText({ amountCents, shippingName, dropName }) {
     '',
     `${shippingName ? `Thank you, ${shippingName}.` : 'Thank you.'} Your bottle of Wilhelm Cold Brew is reserved${dropName ? ` from ${dropName}` : ''}.${total ? ` We charged ${total} to your card.` : ''}`,
     '',
-    "It's hand-packed and ships within a few business days. You'll get a note when it's on its way. If you need anything, just reply to this email.",
+    "It's hand-packed and ships within a few business days. You'll get a note when it's on its way.",
+    '',
+    `Wrong shipping address? Fix it yourself before we print the label — sign in to your Cellar at ${SITE}/account/ and update it. Once it ships the address locks, so just reply here if you catch it late.`,
     '',
     'Talk soon,',
     'Ben',

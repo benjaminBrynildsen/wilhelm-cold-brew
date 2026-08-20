@@ -14,6 +14,17 @@
   <link rel="preload" as="image" href="/drink/assets/wilhelm-circle.png"/>
   <link rel="preload" as="image" href="/drink/assets/bottle-cigars.webp"/>
   <link rel="stylesheet" href="/store.css"/>
+  <style>
+    /* Between-batches countdown card (shown when nothing is buyable yet) */
+    #buy-countdown .cd-grid{display:flex;gap:10px;justify-content:center;margin:22px 0 14px}
+    #buy-countdown .cd-cell{min-width:70px;text-align:center;border:1px solid rgba(232,194,74,.28);
+      background:rgba(232,217,181,.05);border-radius:14px;padding:14px 8px 10px}
+    #buy-countdown .cd-cell b{display:block;font-family:'Bodoni Moda',Georgia,serif;font-weight:800;
+      font-size:clamp(28px,7vw,38px);line-height:1;color:var(--gold)}
+    #buy-countdown .cd-cell span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:2px;
+      text-transform:uppercase;color:rgba(246,239,218,.6);margin-top:6px}
+    #buy-countdown .cd-soon{font-family:'Bodoni Moda',Georgia,serif;font-size:clamp(22px,6vw,30px);color:var(--gold);margin:18px 0}
+  </style>
   <script src="https://js.stripe.com/v3/"></script>
 
   <!-- X (Twitter) conversion tracking base code -->
@@ -33,6 +44,21 @@
     <div class="count-box" id="count-box" hidden>
       <span class="count-num" id="count-num">—</span>
       <span class="count-lbl">left</span>
+    </div>
+
+    <!-- Between-batches: countdown to the next drop (no live batch to buy) -->
+    <div class="card" id="buy-countdown" hidden>
+      <div class="eyebrow" style="margin-bottom:14px">✦&nbsp;&nbsp;THE NEXT BATCH</div>
+      <h1 id="cd-h1" style="margin:0 0 12px">The next drop is coming.</h1>
+      <p class="lede">Small batch, barrel-aged, bottled by hand. Bottles go up Fridays at 9AM and sell out in minutes — the list gets the link first.</p>
+      <div class="cd-grid" id="cd-grid" hidden>
+        <div class="cd-cell"><b id="cd-d">–</b><span>days</span></div>
+        <div class="cd-cell"><b id="cd-h">–</b><span>hrs</span></div>
+        <div class="cd-cell"><b id="cd-m">–</b><span>min</span></div>
+        <div class="cd-cell"><b id="cd-s">–</b><span>sec</span></div>
+      </div>
+      <div class="cd-soon" id="cd-soon" hidden>Watch your inbox.</div>
+      <div class="meta" id="cd-when-wrap" hidden>Opens <span id="cd-when" style="color:rgba(232,217,181,0.85)"></span></div>
     </div>
 
     <div class="card" id="card" hidden>

@@ -100,11 +100,48 @@
     if (userInitiated) fund('card_form_open', { variant: variant() });
   }
 
+  // Between-batches countdown, shown right on the buy page until the next drop
+  // is live. No reference to the batch that just passed.
+  var cdTimer = null;
+  function showCountdown(nextAt) {
+    var view = $('buy-countdown');
+    if (view) view.hidden = false;
+    if (els.countBox) els.countBox.hidden = true;
+    fund('buy_countdown_view', { variant: variant() });
+    var grid = $('cd-grid'), soon = $('cd-soon'), whenWrap = $('cd-when-wrap');
+    var target = nextAt ? new Date(nextAt).getTime() : NaN;
+    if (!nextAt || isNaN(target)) { if (soon) soon.hidden = false; return; }
+    var when = $('cd-when');
+    if (when) {
+      var dt = new Date(nextAt);
+      when.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+        + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    if (whenWrap) whenWrap.hidden = false;
+    if (grid) grid.hidden = false;
+    var c = { d: $('cd-d'), h: $('cd-h'), m: $('cd-m'), s: $('cd-s') };
+    function tick() {
+      var left = Math.max(0, Math.floor((target - Date.now()) / 1000));
+      var d = Math.floor(left / 86400); left -= d * 86400;
+      var h = Math.floor(left / 3600); left -= h * 3600;
+      var m = Math.floor(left / 60), s = left - m * 60;
+      if (!c.d) { clearInterval(cdTimer); return; }
+      c.d.textContent = d; c.h.textContent = h; c.m.textContent = m; c.s.textContent = s;
+    }
+    tick();
+    cdTimer = setInterval(tick, 1000);
+  }
+
   // ── 1) Availability ──
   fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (!d.available) { location.replace('/sold-out'); return; }
+      if (!d.available) {
+        // Just-missed (first few days) → the sold-out demand page. Otherwise
+        // (between batches) → show the next-batch countdown right here.
+        if (d.phase === 'countdown') { showCountdown(d.nextDropAt); return; }
+        location.replace('/sold-out'); return;
+      }
       state.priceCents = d.priceCents; state.shipCents = d.shipCents;
       state.dropId = d.dropId; state.max = Math.max(1, d.maxPerOrder || 1);
       if (els.batchNum) els.batchNum.textContent = d.name || ('Batch № ' + d.dropId);

@@ -13,6 +13,17 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Mono:wght@300;400;500&display=swap"/>
   <link rel="preload" as="image" href="/drink/assets/wilhelm-circle.png"/>
   <link rel="stylesheet" href="/store.css"/>
+  <style>
+    /* Between-batches countdown (shown once the last batch is old news) */
+    #countdown-view .cd-grid{display:flex;gap:10px;justify-content:center;margin:22px 0 14px}
+    #countdown-view .cd-cell{min-width:70px;text-align:center;border:1px solid rgba(232,194,74,.28);
+      background:rgba(232,217,181,.05);border-radius:14px;padding:14px 8px 10px}
+    #countdown-view .cd-cell b{display:block;font-family:var(--display,'Bodoni Moda',serif);font-weight:800;
+      font-size:clamp(28px,7vw,38px);line-height:1;color:var(--gold)}
+    #countdown-view .cd-cell span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:2px;
+      text-transform:uppercase;color:rgba(246,239,218,.6);margin-top:6px}
+    #countdown-view .cd-soon{font-family:var(--display,'Bodoni Moda',serif);font-size:clamp(22px,6vw,30px);color:var(--gold);margin:18px 0}
+  </style>
 
   <!-- X (Twitter) conversion tracking base code -->
   <script>
@@ -30,6 +41,24 @@
     </a>
 
     <div class="card">
+      <!-- BETWEEN BATCHES — clean countdown to the next drop (no last-batch refs) -->
+      <div class="missed" id="countdown-view" hidden>
+        <div class="eyebrow">✦&nbsp;&nbsp;THE NEXT BATCH</div>
+        <h1 id="cd-h1">Coming soon.</h1>
+        <p class="lede">Small batch, barrel-aged, bottled by hand. Bottles go up Fridays at 9AM and sell out in minutes — the list gets the link first.</p>
+        <div class="cd-grid" id="cd-grid" hidden>
+          <div class="cd-cell"><b id="cd-d">–</b><span>days</span></div>
+          <div class="cd-cell"><b id="cd-h">–</b><span>hrs</span></div>
+          <div class="cd-cell"><b id="cd-m">–</b><span>min</span></div>
+          <div class="cd-cell"><b id="cd-s">–</b><span>sec</span></div>
+        </div>
+        <div class="cd-soon" id="cd-soon" hidden>Watch your inbox.</div>
+        <div class="meta" id="cd-when-wrap" hidden>Opens <span id="cd-when" style="color:rgba(232,217,181,0.85)"></span></div>
+        <div class="feedback-btns" style="margin-top:20px">
+          <a class="btn-secondary" href="/account/">Track your orders in your Cellar</a>
+        </div>
+      </div>
+
       <!-- MISSED IT — ask for demand signal (everyone here is already on the list) -->
       <div class="missed" id="missed">
         <div class="eyebrow" id="so-eyebrow">✦&nbsp;&nbsp;THIS WEEK — SOLD OUT</div>

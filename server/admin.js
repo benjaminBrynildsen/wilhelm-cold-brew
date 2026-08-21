@@ -2121,9 +2121,9 @@ export function mountAdmin(app) {
         let name = r.shipping_name || null;
         let phone = null;
         // Backfill any missing address straight from Stripe so no row is blank.
-        if ((!addr || !addr.line1) && r.stripe_payment_intent) {
+        if ((!addr || !addr.line1 || !name) && r.stripe_payment_intent) {
           const s = await getShippingFromStripe(r.stripe_payment_intent);
-          if (s) { addr = s.address || addr; name = name || s.name; phone = s.phone || phone; }
+          if (s) { addr = (addr && addr.line1) ? addr : (s.address || addr); name = name || s.name; phone = s.phone || phone; }
         }
         addr = addr || {};
         const qty = r.quantity || 1;
@@ -2204,9 +2204,9 @@ export function mountAdmin(app) {
         let addr = r.shipping_address || null;
         let name = r.shipping_name || null;
         let phone = null;
-        if ((!addr || !addr.line1) && r.stripe_payment_intent) {
+        if ((!addr || !addr.line1 || !name) && r.stripe_payment_intent) {
           const s = await getShippingFromStripe(r.stripe_payment_intent);
-          if (s) { addr = s.address || addr; name = name || s.name; phone = s.phone || phone; }
+          if (s) { addr = (addr && addr.line1) ? addr : (s.address || addr); name = name || s.name; phone = s.phone || phone; }
         }
         addr = addr || {};
         const qty = r.quantity || 1;

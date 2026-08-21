@@ -33,7 +33,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // wins even if they reload or come back later. Sent with the subscribe so we can
 // report "signups by ad" first-party — immune to the iOS Safari pixel loss that
 // makes X's own per-ad numbers unreliable.
-const ATTRIB_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'twclid'];
+const ATTRIB_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'twclid', 'rdt_cid'];
 function attribution() {
   const p = new URLSearchParams(location.search);
   const fromUrl = {}; let any = false;
@@ -117,8 +117,17 @@ function looksSuspicious(email) {
   } catch (e) { return false; }
 }
 
+// A stable id for one conversion, shared by the browser pixel and the server-side
+// Conversions API so Reddit (and any other CAPI) counts the signup once, not twice.
+function newEventId() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  return 'e' + Date.now().toString(36) + Math.random().toString(16).slice(2, 10);
+}
+
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
-async function subscribeEmail(email, variant) {
+// `rdtEventId` is the shared conversion id (see newEventId) — passed to the server
+// so its Reddit CAPI SignUp dedups against the browser pixel's SignUp.
+async function subscribeEmail(email, variant, rdtEventId) {
   switch (PROVIDER) {
     case 'mock':
       await wait(500);
@@ -129,7 +138,7 @@ async function subscribeEmail(email, variant) {
       const res = await fetch(CONFIG.endpoint.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, attribution(), botSignals())),
+        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null), rdtEventId: rdtEventId || null }, attribution(), botSignals())),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;
@@ -454,14 +463,17 @@ function funnel(event, props) {
       }
       setLoading(true);
       try {
-        await subscribeEmail(email, VARIANT);
+        // Shared id so the Reddit pixel SignUp and the server-side CAPI SignUp
+        // are deduped to one conversion.
+        const rdtEventId = newEventId();
+        await subscribeEmail(email, VARIANT, rdtEventId);
         funnel('subscribed', { variant: VARIANT });
         // Hand the just-confirmed email to this block's SMS early-access card so
         // its opt-in attaches to the right subscriber.
         wireSmsCard(successEl, email);
         try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
         try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
-        try { if (window.rdt) window.rdt('track', 'SignUp'); } catch (e) {}
+        try { if (window.rdt) window.rdt('track', 'SignUp', { conversionId: rdtEventId }); } catch (e) {}
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();

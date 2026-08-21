@@ -3,6 +3,7 @@ import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone } from './util.js';
 import { sendWelcome, sendSignupAlert } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
+import { redditTrackAsync } from './reddit.js';
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
 export async function receiveJourney(req, res) {
@@ -155,6 +156,17 @@ export async function subscribe(req, res) {
       sendSignupAlert(email, { variant, country: countryFrom(req) })
         .catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
       mcPushSignup(email);   // keep the Mailchimp audience current with new signups
+      // Reddit Conversions API — server-side SignUp mirroring the browser pixel,
+      // deduped by the shared rdtEventId. click_id (rdt_cid) + hashed email + the
+      // visitor's IP/UA let Reddit match it to the ad even when the pixel is
+      // blocked. No-op until the Reddit CAPI env is set; never blocks the response.
+      redditTrackAsync('SignUp', {
+        email,
+        clickId: req.body?.rdt_cid ? String(req.body.rdt_cid).slice(0, 255) : null,
+        conversionId: req.body?.rdtEventId ? String(req.body.rdtEventId).slice(0, 100) : null,
+        ip: getClientIp(req),
+        ua: (req.headers['user-agent'] || '').toString().slice(0, 500),
+      });
     }
     // SMS opt-in — runs for NEW and RETURNING subscribers alike (someone already
     // on the email list can come back and add SMS, in which case the INSERT above

@@ -209,14 +209,24 @@
         if (!phoneOk) { showErr(raw ? 'That mobile number doesn’t look right.' : 'Enter your mobile number.'); phoneEl.focus(); return; }
         clearErr();
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        // Shared conversion id + Reddit click id (if this visitor ever came via a
+        // Reddit ad) so the pixel + server CAPI SignUp dedup to one conversion.
+        var rdtEventId;
+        try { rdtEventId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('e' + Date.now().toString(36) + Math.random().toString(16).slice(2, 10)); }
+        catch (e3) { rdtEventId = 'e' + Date.now().toString(36); }
+        var rdtCid = null;
+        try {
+          rdtCid = new URLSearchParams(location.search).get('rdt_cid');
+          if (!rdtCid) { var a = JSON.parse(localStorage.getItem('wilhelm_attrib') || '{}'); rdtCid = a && a.rdt_cid || null; }
+        } catch (e4) {}
         fetch('/api/subscribe', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email, phone: raw, smsConsent: true, variant: variant() })
+          body: JSON.stringify({ email: email, phone: raw, smsConsent: true, variant: variant(), rdtEventId: rdtEventId, rdt_cid: rdtCid })
         }).then(function (res) {
           if (!res.ok) throw new Error('sms ' + res.status);
           fund('soldout_sms_optin', { variant: variant() });
           try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e2) {}
-          try { if (window.rdt) window.rdt('track', 'SignUp'); } catch (e2) {}
+          try { if (window.rdt) window.rdt('track', 'SignUp', { conversionId: rdtEventId }); } catch (e2) {}
           form.hidden = true;
           var fine = card.querySelector('.sms-fine'); if (fine) fine.hidden = true;
           var badge = card.querySelector('.sms-badge'); if (badge) badge.hidden = true;

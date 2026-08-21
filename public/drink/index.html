@@ -323,9 +323,6 @@
           type="email" inputmode="email" autocomplete="email"
           placeholder="you@email.com" aria-label="Email address" required/>
         <input class="optin-hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true" data-bwignore data-form-type="other" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none" placeholder="Your website"/>
-        <label class="sms-optin"><input type="checkbox" class="sms-consent"/><span>Also text me the moment the drop goes live</span></label>
-        <input class="sms-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 123-4567" aria-label="Mobile number for drop-alert texts" hidden/>
-        <p class="sms-fine" hidden>By checking this you agree to receive recurring automated drop-alert texts from Wilhelm Cold Brew at the number provided. Consent isn’t a condition of purchase. Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.</p>
           <button type="submit" data-submit>Join the List</button>
         <div class="optin-error" data-error hidden role="alert"></div>
       </form>
@@ -344,6 +341,21 @@
         <span data-live-banner-text>This week's batch is live — shop now</span>
         <span class="live-banner-arrow" aria-hidden="true">→</span>
       </a>
+
+      <!-- Early-access SMS upsell — offered here, at peak intent, not on the email form. -->
+      <div class="sms-card" data-sms-card>
+        <div class="sms-badge">⚡ 15 minutes early</div>
+        <h3 class="sms-card-h">Want the link <em>before</em> the list?</h3>
+        <p class="sms-card-p">Fridays sell out in minutes. Add your number and we'll <strong>text you the buy link 15 minutes before</strong> it hits the email list.</p>
+        <form class="sms-card-form" novalidate>
+          <input class="sms-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 123-4567" aria-label="Mobile number for early-access texts"/>
+          <button type="submit" data-sms-submit>Text me first →</button>
+          <div class="sms-err" data-sms-error hidden role="alert"></div>
+        </form>
+        <p class="sms-fine">Recurring automated drop texts from Wilhelm Cold Brew. Consent isn't a condition of purchase. Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.</p>
+        <div class="sms-done" data-sms-done hidden><span class="sms-done-check" aria-hidden="true">✓</span> You're on the early list — watch for a text before the next drop.</div>
+      </div>
+
       <p class="steps-intro">Three quick steps so Friday's link actually reaches you:</p>
       <div class="steps">
         <div class="step"><div class="step-n">1</div><div class="step-b">
@@ -444,9 +456,6 @@
         <form class="optin-form" novalidate>
           <input type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" aria-label="Email address" required/>
           <input class="optin-hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true" data-bwignore data-form-type="other" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none" placeholder="Your website"/>
-          <label class="sms-optin"><input type="checkbox" class="sms-consent"/><span>Also text me the moment the drop goes live</span></label>
-          <input class="sms-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 123-4567" aria-label="Mobile number for drop-alert texts" hidden/>
-          <p class="sms-fine" hidden>By checking this you agree to receive recurring automated drop-alert texts from Wilhelm Cold Brew at the number provided. Consent isn’t a condition of purchase. Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.</p>
           <button type="submit" data-submit>Join the List</button>
           <div class="optin-error" data-error hidden role="alert"></div>
         </form>
@@ -462,6 +471,21 @@
           <span data-live-banner-text>This week's batch is live — shop now</span>
           <span class="live-banner-arrow" aria-hidden="true">→</span>
         </a>
+
+        <!-- Early-access SMS upsell — offered here, at peak intent, not on the email form. -->
+        <div class="sms-card" data-sms-card>
+          <div class="sms-badge">⚡ 15 minutes early</div>
+          <h3 class="sms-card-h">Want the link <em>before</em> the list?</h3>
+          <p class="sms-card-p">Fridays sell out in minutes. Add your number and we'll <strong>text you the buy link 15 minutes before</strong> it hits the email list.</p>
+          <form class="sms-card-form" novalidate>
+            <input class="sms-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 123-4567" aria-label="Mobile number for early-access texts"/>
+            <button type="submit" data-sms-submit>Text me first →</button>
+            <div class="sms-err" data-sms-error hidden role="alert"></div>
+          </form>
+          <p class="sms-fine">Recurring automated drop texts from Wilhelm Cold Brew. Consent isn't a condition of purchase. Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.</p>
+          <div class="sms-done" data-sms-done hidden><span class="sms-done-check" aria-hidden="true">✓</span> You're on the early list — watch for a text before the next drop.</div>
+        </div>
+
         <p class="steps-intro">Three quick steps so Friday's link actually reaches you:</p>
         <div class="steps">
           <div class="step"><div class="step-n">1</div><div class="step-b">

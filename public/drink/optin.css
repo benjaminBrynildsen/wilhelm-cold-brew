@@ -349,35 +349,74 @@ html:not([data-drink-variant]) .optin-image { display: block; }
 .optin-form button:hover { filter: brightness(1.08); }
 .optin-form button:active { transform: translateY(1px); }
 
-/* SMS drop-alert opt-in — checkbox (affirmative consent) reveals the phone
-   field + disclosure. Kept visually secondary to the email so it never competes
-   with the primary conversion. */
-.sms-optin {
-  display: flex; align-items: center; gap: 9px; cursor: pointer;
-  font-family: var(--body); font-size: clamp(12.5px, 1.7vh, 14px);
-  color: rgba(246,239,218,0.82); text-align: left; line-height: 1.35;
-  padding: 2px 2px 0;
+/* SMS early-access card — the confirmation-screen upsell. A framed, gold-accented
+   block that reads as a perk ("get the link 15 min early"), not a form field. */
+.sms-card {
+  margin: clamp(18px, 3vh, 26px) auto clamp(8px, 1.6vh, 14px);
+  max-width: 420px; text-align: center;
+  background: linear-gradient(180deg, rgba(232,194,74,0.08), rgba(232,194,74,0.03));
+  border: 1px solid rgba(232,194,74,0.4); border-radius: 16px;
+  padding: clamp(18px, 3vh, 24px) clamp(16px, 3vw, 22px);
 }
-.sms-optin input[type="checkbox"] {
-  flex: none; width: 18px; height: 18px; margin: 0; cursor: pointer;
-  accent-color: var(--gold);
+.sms-badge {
+  display: inline-block; font-family: var(--mono);
+  font-size: clamp(10px, 1.4vh, 11px); letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--gold); background: rgba(232,194,74,0.12);
+  border: 1px solid rgba(232,194,74,0.4); border-radius: 100px;
+  padding: 5px 12px; margin-bottom: 12px;
 }
+.sms-card-h {
+  font-family: var(--display); font-weight: 700; font-size: clamp(20px, 3.2vh, 25px);
+  color: var(--parchment); line-height: 1.2; margin: 0 0 8px;
+}
+.sms-card-h em { color: var(--gold); font-style: italic; }
+.sms-card-p {
+  font-family: var(--body); font-size: clamp(14px, 1.9vh, 15.5px);
+  color: rgba(246,239,218,0.82); line-height: 1.5; margin: 0 0 16px;
+}
+.sms-card-p strong { color: var(--parchment); font-weight: 600; }
+.sms-card-form { display: flex; flex-direction: column; gap: 10px; }
 .sms-phone {
-  width: 100%; height: clamp(46px, 6.6vh, 54px); padding: 0 20px;
-  background: rgba(232,217,181,0.06); border: 1px solid rgba(232,194,74,0.35);
+  width: 100%; height: clamp(48px, 7vh, 56px); padding: 0 20px;
+  background: rgba(12,10,8,0.35); border: 1px solid rgba(232,194,74,0.35);
   color: var(--parchment); font-family: var(--body); font-size: clamp(15px, 2vh, 17px); text-align: center;
-  outline: none; transition: border-color .2s, background .2s;
+  border-radius: 10px; outline: none; transition: border-color .2s, background .2s;
 }
-.sms-phone::placeholder { color: rgba(246,239,218,0.6); font-style: normal; }
-.sms-phone:focus { border-color: var(--gold); background: rgba(232,217,181,0.1); }
+.sms-phone::placeholder { color: rgba(246,239,218,0.55); font-style: normal; }
+.sms-phone:focus { border-color: var(--gold); background: rgba(12,10,8,0.5); }
+.sms-card-form button {
+  width: 100%; height: clamp(48px, 7vh, 56px); border: none; cursor: pointer; border-radius: 10px;
+  background: var(--gold); color: var(--ink);
+  font-family: var(--display); font-weight: 700; font-size: clamp(15px, 2.2vh, 18px); letter-spacing: 0.4px;
+  transition: filter .2s, transform .08s;
+}
+.sms-card-form button:hover { filter: brightness(1.08); }
+.sms-card-form button:active { transform: translateY(1px); }
+.sms-card-form button:disabled { opacity: 0.7; cursor: progress; }
+.sms-err {
+  font-family: var(--body); font-size: 13.5px; color: #f0a58a; margin-top: 2px;
+}
 .sms-fine {
   font-family: var(--mono); font-size: clamp(9.5px, 1.2vh, 10.5px); letter-spacing: 0.4px;
-  color: rgba(246,239,218,0.5); line-height: 1.5; text-align: left; margin: 0 2px;
+  color: rgba(246,239,218,0.5); line-height: 1.5; margin: 12px 0 0;
 }
-html[data-drink-bg="light"] .optin-hero .sms-optin { color: rgba(12,10,8,0.72); }
+.sms-done {
+  font-family: var(--body); font-size: clamp(14px, 1.9vh, 15.5px);
+  color: var(--parchment); line-height: 1.45;
+}
+.sms-done-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; margin-right: 6px; vertical-align: -5px;
+  background: var(--gold); color: var(--ink); font-weight: 800; font-size: 13px;
+}
+html[data-drink-bg="light"] .optin-hero .sms-card { background: linear-gradient(180deg, rgba(184,146,47,0.1), rgba(184,146,47,0.03)); border-color: rgba(184,146,47,0.45); }
+html[data-drink-bg="light"] .optin-hero .sms-card-h,
+html[data-drink-bg="light"] .optin-hero .sms-card-p strong,
+html[data-drink-bg="light"] .optin-hero .sms-done { color: var(--ink); }
+html[data-drink-bg="light"] .optin-hero .sms-card-p { color: rgba(20,15,6,0.82); }
 html[data-drink-bg="light"] .optin-hero .sms-phone { background: #fff; color: var(--ink); border-color: rgba(12,10,8,0.28); }
 html[data-drink-bg="light"] .optin-hero .sms-phone::placeholder { color: rgba(12,10,8,0.45); }
-html[data-drink-bg="light"] .optin-hero .sms-fine { color: rgba(12,10,8,0.5); }
+html[data-drink-bg="light"] .optin-hero .sms-fine { color: rgba(20,15,6,0.5); }
 
 .fineprint { font-family: var(--mono); font-size: clamp(10px, 1.3vh, 11px); letter-spacing: 1.5px; color: rgba(246,239,218,0.6); margin-top: clamp(10px, 1.8vh, 18px); line-height: 1.6; }
 

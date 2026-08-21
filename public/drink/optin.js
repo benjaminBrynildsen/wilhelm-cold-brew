@@ -118,9 +118,7 @@ function looksSuspicious(email) {
 }
 
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
-// `sms` (optional) carries the drop-alert opt-in: { consent:boolean, phone:string }.
-// Only our own endpoint stores it — external providers get the email as before.
-async function subscribeEmail(email, variant, sms) {
+async function subscribeEmail(email, variant) {
   switch (PROVIDER) {
     case 'mock':
       await wait(500);
@@ -128,11 +126,10 @@ async function subscribeEmail(email, variant, sms) {
       return;
 
     case 'endpoint': {
-      const smsFields = (sms && sms.consent && sms.phone) ? { smsConsent: true, phone: sms.phone } : {};
       const res = await fetch(CONFIG.endpoint.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, smsFields, attribution(), botSignals())),
+        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, attribution(), botSignals())),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;
@@ -331,6 +328,57 @@ function funnel(event, props) {
     banner.addEventListener('click', () => track('live_drop_banner_click', { variant: VARIANT, dropId: liveDrop.dropId }), { once: true });
   }
 
+  // The confirmation-screen SMS early-access card. `email` is the address they
+  // just joined with, so the opt-in attaches to that subscriber — we reuse
+  // /api/subscribe, which adds SMS to an existing member and fires the Mailchimp
+  // "Signs up for SMS" journey. A null email (preview mode) runs the UI without a
+  // real POST. Idempotent per card.
+  function wireSmsCard(successEl, email) {
+    if (!successEl) return;
+    const card = successEl.querySelector('[data-sms-card]');
+    if (!card || card.dataset.wired === '1') return;
+    card.dataset.wired = '1';
+    const form = card.querySelector('.sms-card-form');
+    const phoneEl = card.querySelector('.sms-phone');
+    const btn = card.querySelector('[data-sms-submit]');
+    const errEl = card.querySelector('[data-sms-error]');
+    const doneEl = card.querySelector('[data-sms-done]');
+    if (!form || !phoneEl) return;
+    const BTN = btn ? btn.textContent : '';
+    const showErr = (m) => { if (errEl) { errEl.textContent = m; errEl.hidden = false; } };
+    phoneEl.addEventListener('input', () => { if (errEl) { errEl.hidden = true; errEl.textContent = ''; } });
+    funnel('sms_card_shown', { variant: VARIANT });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const raw = (phoneEl.value || '').trim();
+      const digits = raw.replace(/\D/g, '');
+      // 10 US digits, 11 starting with 1, or an 8–15 digit international +number.
+      const ok = raw[0] === '+' ? (digits.length >= 8 && digits.length <= 15)
+                                : (digits.length === 10 || (digits.length === 11 && digits[0] === '1'));
+      if (!ok) { showErr(raw ? 'That mobile number doesn’t look right.' : 'Enter your mobile number.'); try { phoneEl.focus({ preventScroll: true }); } catch (e2) { phoneEl.focus(); } return; }
+      if (errEl) errEl.hidden = true;
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        if (email) {
+          const res = await fetch(CONFIG.endpoint.url, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, phone: raw, smsConsent: true, variant: VARIANT, sessionId: (window.wilhelmSessionId || null) }),
+          });
+          if (!res.ok) throw new Error('sms ' + res.status);
+        }
+        funnel('sms_subscribed', { variant: VARIANT });
+        form.hidden = true;
+        const fine = card.querySelector('.sms-fine'); if (fine) fine.hidden = true;
+        const badge = card.querySelector('.sms-badge'); if (badge) badge.hidden = true;
+        if (doneEl) doneEl.hidden = false;
+      } catch (err) {
+        console.error(err);
+        if (btn) { btn.disabled = false; btn.textContent = BTN; }
+        showErr('Something went wrong — try again.');
+      }
+    });
+  }
+
   // Wire a capture form (hero + bottom). Each sits in a [data-capture] wrapper
   // holding a [data-state] (form view) and a [data-success] (confirmation).
   function wireForm(form) {
@@ -343,22 +391,6 @@ function funnel(event, props) {
     const successEl = wrap.querySelector('[data-success]');
     const BTN_LABEL = button.textContent;
     const showError = (m) => { errorEl.textContent = m; errorEl.hidden = false; };
-
-    // Optional SMS drop-alert opt-in. The checkbox is the affirmative consent
-    // (TCPA); ticking it reveals the phone field + the disclosure fineprint.
-    const smsConsentEl = form.querySelector('.sms-consent');
-    const smsPhoneEl = form.querySelector('.sms-phone');
-    const smsFineEl = form.querySelector('.sms-fine');
-    if (smsConsentEl && smsPhoneEl) {
-      smsConsentEl.addEventListener('change', () => {
-        const on = smsConsentEl.checked;
-        smsPhoneEl.hidden = !on;
-        if (smsFineEl) smsFineEl.hidden = !on;
-        if (on) { try { smsPhoneEl.focus({ preventScroll: true }); } catch (e) { smsPhoneEl.focus(); } funnel('sms_optin_check', { variant: VARIANT }); }
-        else { errorEl.hidden = true; errorEl.textContent = ''; }
-      });
-      smsPhoneEl.addEventListener('input', () => { errorEl.hidden = true; errorEl.textContent = ''; });
-    }
 
     input.addEventListener('input', () => { errorEl.hidden = true; errorEl.textContent = ''; });
     input.addEventListener('focus', () => {
@@ -408,26 +440,6 @@ function funnel(event, props) {
         }
       }
       errorEl.hidden = true;
-      // SMS opt-in gathered here so an invalid number is caught before we submit.
-      // A ticked box needs a usable number (10 US digits, or 11 starting with 1,
-      // or an 8–15 digit international number with +). We don't block the email
-      // signup over it — but since they asked for texts, prompt for a real number
-      // rather than silently dropping the opt-in.
-      let sms = null;
-      if (smsConsentEl && smsConsentEl.checked) {
-        const raw = (smsPhoneEl && smsPhoneEl.value || '').trim();
-        const digits = raw.replace(/\D/g, '');
-        const ok = raw[0] === '+' ? (digits.length >= 8 && digits.length <= 15)
-                                  : (digits.length === 10 || (digits.length === 11 && digits[0] === '1'));
-        if (!ok) {
-          funnel('sms_optin_invalid', { variant: VARIANT });
-          showError(raw ? 'That mobile number doesn’t look right — check it, or untick the text-alerts box.'
-                        : 'Add your mobile number for text alerts, or untick that box.');
-          if (smsPhoneEl) { try { smsPhoneEl.focus({ preventScroll: true }); } catch (e) { smsPhoneEl.focus(); } }
-          return;
-        }
-        sms = { consent: true, phone: raw };
-      }
       // Soft bot challenge: an impossibly-fast submit (under 2s from page open —
       // the bot signature Ben wants to gate on) gets ONE "try again" before we
       // accept it. A real person just taps once more; the second submit goes
@@ -442,9 +454,11 @@ function funnel(event, props) {
       }
       setLoading(true);
       try {
-        await subscribeEmail(email, VARIANT, sms);
+        await subscribeEmail(email, VARIANT);
         funnel('subscribed', { variant: VARIANT });
-        if (sms) funnel('sms_subscribed', { variant: VARIANT });
+        // Hand the just-confirmed email to this block's SMS early-access card so
+        // its opt-in attaches to the right subscriber.
+        wireSmsCard(successEl, email);
         try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
         try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
         if (stateEl) stateEl.hidden = true;
@@ -477,7 +491,7 @@ function funnel(event, props) {
     document.querySelectorAll('[data-capture]').forEach((wrap) => {
       const s = wrap.querySelector('[data-state]'), ok = wrap.querySelector('[data-success]');
       if (s) s.hidden = true;
-      if (ok) ok.hidden = false;
+      if (ok) { ok.hidden = false; wireSmsCard(ok, null); }
     });
   }
 

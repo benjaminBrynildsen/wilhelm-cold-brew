@@ -2144,6 +2144,95 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[pirateship]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // USPS Click-N-Ship bulk import. Same options as the Pirate Ship export
+  // (?scope=all, ?dropId=N, ?split=1, ?lbs=, plus ?service=) but emits USPS's
+  // exact bulk-file header and maps each order into the Recipient + Package
+  // fields. Sender fields are left blank so Click-N-Ship uses the account's
+  // saved return address. Domestic US only.
+  const USPS_HEADER = [
+    'Reference ID', 'Reference ID 2', 'Shipping Date', 'Item Description', 'Item Quantity',
+    'Item Weight (lb)', 'Item Weight (oz)', 'Item Value', 'HS Tariff #', 'Country of Origin',
+    'Sender First Name', 'Sender Middle Initial', 'Sender Last Name', 'Sender Company/Org Name',
+    'Sender Address Line 1', 'Sender Address Line 2', 'Sender Address Line 3', 'Sender Address Town/City',
+    'Sender State', 'Sender Country', 'Sender ZIP Code', 'Sender Urbanization Code', 'Ship From Another ZIP Code',
+    'Sender Email', 'Sender Cell Phone', 'Recipient Country', 'Recipient First Name', 'Recipient Middle Initial',
+    'Recipient Last Name', 'Recipient Company/Org Name', 'Recipient Address Line 1', 'Recipient Address Line 2',
+    'Recipient Address Line 3', 'Recipient Address Town/City', 'Recipient Province', 'Recipient State',
+    'Recipient ZIP Code', 'Recipient Urbanization Code', 'Recipient Phone', 'Recipient Email', 'Service Type',
+    'Package Type', 'Package Weight (lb)', 'Package Weight (oz)', 'Length', 'Width', 'Height', 'Girth',
+    'Insured Value', 'Contents', 'Contents Description', 'Package Comments', 'Customs Form Reference #',
+    'License #', 'Certificate #', 'Invoice #', 'Customs Form Reference # Type', 'HAZMAT Type',
+    'Live Animals and Perishable Goods Indicator',
+  ];
+  app.get('/api/admin/orders/usps.csv', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const scope = String(req.query?.scope || 'unshipped');
+      const dropId = parseInt(req.query?.dropId, 10);
+      const lbsPerBottle = Math.max(0.1, parseFloat(req.query?.lbs) || 3);
+      const split = req.query?.split === '1';
+      const service = req.query?.service ? String(req.query.service).slice(0, 60) : '';
+      const where = ["o.status = 'paid'"];
+      const params = [];
+      if (scope !== 'all') where.push('o.shipped_at IS NULL');
+      if (dropId > 0) { params.push(dropId); where.push(`o.drop_id = $${params.length}`); }
+      const rows = (await q(
+        `SELECT o.id, o.email, o.quantity, o.shipping_name, o.shipping_address, o.stripe_payment_intent,
+                d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE ${where.join(' AND ')} ORDER BY o.id ASC`, params)).rows;
+
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [USPS_HEADER.join(',')]; // header names carry no commas → raw is exact + valid
+
+      for (const r of rows) {
+        let addr = r.shipping_address || null;
+        let name = r.shipping_name || null;
+        let phone = null;
+        if ((!addr || !addr.line1) && r.stripe_payment_intent) {
+          const s = await getShippingFromStripe(r.stripe_payment_intent);
+          if (s) { addr = s.address || addr; name = name || s.name; phone = s.phone || phone; }
+        }
+        addr = addr || {};
+        const qty = r.quantity || 1;
+        const boxes = split ? qty : 1;
+        const perBox = split ? 1 : qty;
+        let wl = Math.floor(perBox * lbsPerBottle);
+        let wo = Math.round((perBox * lbsPerBottle - wl) * 16);
+        if (wo >= 16) { wl += 1; wo -= 16; }
+        const toks = String(name || '').trim().split(/\s+/).filter(Boolean);
+        const first = toks.length >= 2 ? toks[0] : '';
+        const last = toks.length >= 2 ? toks.slice(1).join(' ') : (toks[0] || '');
+        for (let b = 0; b < boxes; b++) {
+          const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
+          row['Reference ID'] = 'WCB-' + r.id;
+          row['Reference ID 2'] = r.drop_name || '';
+          row['Item Description'] = 'Wilhelm Cold Brew';
+          row['Item Quantity'] = String(perBox);
+          row['Recipient Country'] = 'United States';
+          row['Recipient First Name'] = first;
+          row['Recipient Last Name'] = last;
+          row['Recipient Address Line 1'] = addr.line1 || '';
+          row['Recipient Address Line 2'] = addr.line2 || '';
+          row['Recipient Address Town/City'] = addr.city || '';
+          row['Recipient State'] = String(addr.state || '').toUpperCase();
+          row['Recipient ZIP Code'] = addr.postal_code || '';
+          row['Recipient Phone'] = phone || '';
+          row['Recipient Email'] = r.email || '';
+          row['Service Type'] = service;
+          row['Package Weight (lb)'] = String(wl);
+          row['Package Weight (oz)'] = String(wo);
+          row['Package Comments'] = r.drop_name || '';
+          lines.push(USPS_HEADER.map((h) => esc(row[h])).join(','));
+        }
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-usps.csv"');
+      res.send(lines.join('\n'));
+    } catch (e) { console.error('[usps-export]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Mark orders shipped so they drop off the export queue. Body: { ids: [..] } to
   // mark specific orders, or { all: true } to clear every currently-unshipped paid order.
   app.post('/api/admin/orders/mark-shipped', async (req, res) => {

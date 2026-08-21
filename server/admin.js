@@ -2165,8 +2165,20 @@ export function mountAdmin(app) {
       const http = p.httpStatus;
       const status = p?.parsed?.status || '';
       const ok2xx = http >= 200 && http < 300;
+      // Pull the carrier's own error wording out of whatever shape it returned,
+      // so the 403 sub-reason (not subscribed / not approved / wrong env) is
+      // visible instead of guessed.
+      const carrierMsg = (raw) => {
+        if (!raw) return '';
+        if (typeof raw === 'string') return raw.replace(/\s+/g, ' ').trim().slice(0, 240);
+        const m = raw.error?.message || raw.error_description || raw.errorDescription || raw.message
+          || (Array.isArray(raw.errors) && raw.errors[0] && (raw.errors[0].detail || raw.errors[0].message || raw.errors[0].title))
+          || raw.fault?.faultstring || raw.moreInfo || '';
+        return String(m || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+      };
+      const carrier = carrierMsg(p.raw);
       if (p.tokenError) {
-        return res.json({ level: 'err', provider, tracking, title: 'Credentials rejected',
+        return res.json({ level: 'err', provider, tracking, carrier, title: 'Credentials rejected',
           detail: `${pName} refused the client id/secret (OAuth token failed): ${p.tokenError}` });
       }
       if (ok2xx && p.parsed) {
@@ -2179,12 +2191,12 @@ export function mountAdmin(app) {
       }
       if (http === 401 || http === 403) {
         const detail = provider === 'usps'
-          ? `The keys work but this app can’t read tracking. At developer.usps.com, add the Tracking API to your app, and make sure the credentials are Production (not the test/CAT environment).`
+          ? `The keys work but this app can’t read tracking. At developer.usps.com: open your app, add the Tracking (3.0) API to it, and — because USPS gates tracking — request access if it isn’t already granted. Also confirm the keys are Production, not the test/CAT sandbox.`
           : `EasyPost rejected the request (${http}). Check that EASYPOST_API_KEY is your live key and is active.`;
-        return res.json({ level: 'err', provider, tracking, title: `${pName} ${http} — tracking not authorized`, detail });
+        return res.json({ level: 'err', provider, tracking, carrier, title: `${pName} ${http} — tracking not authorized`, detail });
       }
-      const snip = typeof p.raw === 'string' ? p.raw.slice(0, 180) : (p.raw ? JSON.stringify(p.raw).slice(0, 180) : '');
-      return res.json({ level: 'warn', provider, tracking, status,
+      const snip = carrier || (typeof p.raw === 'string' ? p.raw.slice(0, 180) : (p.raw ? JSON.stringify(p.raw).slice(0, 180) : ''));
+      return res.json({ level: 'warn', provider, tracking, status, carrier,
         title: `Unexpected response${http ? ` (HTTP ${http})` : ''}`, detail: snip || `${pName} returned something we didn’t recognize.` });
     } catch (e) { console.error('[shipping/test]', e); res.status(500).json({ error: e.message }); }
   });

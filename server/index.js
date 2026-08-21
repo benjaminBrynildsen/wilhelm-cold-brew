@@ -62,7 +62,7 @@ app.use((req, _res, next) => {
     // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
     // below) — the visit is counted there, so don't also log the bounce here
     // (it would double-count every one of those visits).
-    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p.startsWith('/r/')) return next();
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p.startsWith('/r/')) return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -182,6 +182,34 @@ app.get(['/drinkup', '/drinkup/'], (_req, res) => {
 // as its own source so reply-driven joins read separately from the bio link.
 app.get(['/join', '/join/'], (_req, res) => {
   res.redirect(302, '/drink/?utm_source=join&utm_medium=reply');
+});
+
+// Reddit ads land here: /reddit → the opt-in page tagged as a Reddit ad source,
+// so signups classify as 'ad' and the Traffic tab's UTM breakdown shows Reddit.
+// Anything Reddit appends (its click id rdt_cid, a campaign tag) rides along and
+// overrides the defaults, so per-campaign links keep working. 302 so the tagging
+// can change without fighting browser caches.
+app.get(['/reddit', '/reddit/'], (req, res) => {
+  const i = req.originalUrl.indexOf('?');
+  const inc = new URLSearchParams(i >= 0 ? req.originalUrl.slice(i + 1) : '');
+  const out = new URLSearchParams({ utm_source: 'reddit', utm_medium: 'cpc' });
+  for (const [k, v] of inc) out.set(k, v);   // preserve/override with the ad platform's params
+  res.redirect(302, '/drink/?' + out.toString());
+});
+
+// Reddit Pixel bootstrap, served with the ID from the environment so it stays out
+// of the repo and can be switched on/off without redeploying the static pages.
+// Pages include <script src="/rdt-pixel.js">; when REDDIT_PIXEL_ID is unset this
+// returns a harmless no-op stub, so rdt('track', …) calls elsewhere never throw.
+const REDDIT_PIXEL_ID = (process.env.REDDIT_PIXEL_ID || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+app.get('/rdt-pixel.js', (_req, res) => {
+  res.type('application/javascript');
+  res.set('Cache-Control', 'public, max-age=300');
+  if (!REDDIT_PIXEL_ID) return res.send('window.rdt=window.rdt||function(){};');
+  res.send(
+    '!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js";t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);' +
+    `rdt('init','${REDDIT_PIXEL_ID}');rdt('track','PageVisit');`
+  );
 });
 
 // Member referral links: /r/CODE → the opt-in page tagged with the code, so the

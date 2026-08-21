@@ -2182,7 +2182,9 @@ export function mountAdmin(app) {
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ${where.join(' AND ')} ORDER BY o.id ASC`, params)).rows;
 
-      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      // Minimal CSV quoting — USPS's importer wants bare values (their own
+      // template rows are unquoted); only quote a field that actually needs it.
+      const esc = (v) => { const s = String(v ?? ''); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [USPS_HEADER.join(',')]; // header names carry no commas → raw is exact + valid
 
       for (const r of rows) {
@@ -2207,9 +2209,11 @@ export function mountAdmin(app) {
           const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
           row['Reference ID'] = 'WCB-' + r.id;
           row['Reference ID 2'] = r.drop_name || '';
-          row['Item Description'] = 'Wilhelm Cold Brew';
-          row['Item Quantity'] = String(perBox);
-          row['Recipient Country'] = 'United States';
+          // Domestic package — DON'T itemize. Leaving the Item/customs fields
+          // blank means USPS reads the weight from Package Weight (below) and
+          // never asks for a customs Country of Origin. Country codes are the
+          // 2-letter form per USPS's file spec.
+          row['Recipient Country'] = 'US';
           row['Recipient First Name'] = first;
           row['Recipient Last Name'] = last;
           row['Recipient Address Line 1'] = addr.line1 || '';

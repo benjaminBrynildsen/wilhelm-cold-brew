@@ -2171,7 +2171,20 @@ export function mountAdmin(app) {
       const dropId = parseInt(req.query?.dropId, 10);
       const lbsPerBottle = Math.max(0.1, parseFloat(req.query?.lbs) || 3);
       const split = req.query?.split === '1';
-      const service = req.query?.service ? String(req.query.service).slice(0, 60) : '';
+      const service = req.query?.service ? String(req.query.service).slice(0, 60) : 'USPS Ground Advantage';
+      const pkgType = req.query?.package ? String(req.query.package).slice(0, 40) : 'Custom Packaging';
+      // Return address — USPS's bulk file requires the sender in-file (it doesn't
+      // pull from the account). Env overrides let it change without a deploy.
+      const SENDER = {
+        company: process.env.SENDER_COMPANY || 'Wilhelm Cold Brew',
+        line1: process.env.SENDER_ADDR1 || '',
+        line2: process.env.SENDER_ADDR2 || '',
+        city: process.env.SENDER_CITY || '',
+        state: (process.env.SENDER_STATE || '').toUpperCase(),
+        zip: process.env.SENDER_ZIP || '',
+        email: process.env.SENDER_EMAIL || 'ben@wilhelmcoldbrew.com',
+        phone: (process.env.SENDER_PHONE || '').replace(/\D/g, ''),
+      };
       const where = ["o.status = 'paid'"];
       const params = [];
       if (scope !== 'all') where.push('o.shipped_at IS NULL');
@@ -2209,6 +2222,17 @@ export function mountAdmin(app) {
           const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
           row['Reference ID'] = 'WCB-' + r.id;
           row['Reference ID 2'] = r.drop_name || '';
+          // Sender / return address (required in USPS's bulk file). Company alone
+          // satisfies the name requirement.
+          row['Sender Company/Org Name'] = SENDER.company;
+          row['Sender Address Line 1'] = SENDER.line1;
+          row['Sender Address Line 2'] = SENDER.line2;
+          row['Sender Address Town/City'] = SENDER.city;
+          row['Sender State'] = SENDER.state;
+          row['Sender Country'] = 'US';
+          row['Sender ZIP Code'] = SENDER.zip;
+          row['Sender Email'] = SENDER.email;
+          row['Sender Cell Phone'] = SENDER.phone;
           // Domestic package — DON'T itemize. Leaving the Item/customs fields
           // blank means USPS reads the weight from Package Weight (below) and
           // never asks for a customs Country of Origin. Country codes are the
@@ -2224,6 +2248,7 @@ export function mountAdmin(app) {
           row['Recipient Phone'] = phone || '';
           row['Recipient Email'] = r.email || '';
           row['Service Type'] = service;
+          row['Package Type'] = pkgType;
           row['Package Weight (lb)'] = String(wl);
           row['Package Weight (oz)'] = String(wo);
           row['Package Comments'] = r.drop_name || '';

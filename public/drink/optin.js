@@ -473,7 +473,14 @@ function funnel(event, props) {
         wireSmsCard(successEl, email);
         try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
         try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
-        try { if (window.rdt) window.rdt('track', 'SignUp', { conversionId: rdtEventId }); } catch (e) {}
+        // Reddit: enrich the pixel with advanced matching (email) now that we have
+        // it, then fire SignUp. conversionId dedups with the server-side CAPI event.
+        try {
+          if (window.rdt) {
+            if (window.__RDT_PIXEL_ID) window.rdt('init', window.__RDT_PIXEL_ID, { email: email });
+            window.rdt('track', 'SignUp', { conversionId: rdtEventId });
+          }
+        } catch (e) {}
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();

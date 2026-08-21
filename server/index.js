@@ -197,17 +197,24 @@ app.get(['/reddit', '/reddit/'], (req, res) => {
   res.redirect(302, '/drink/?' + out.toString());
 });
 
-// Reddit Pixel bootstrap, served with the ID from the environment so it stays out
-// of the repo and can be switched on/off without redeploying the static pages.
-// Pages include <script src="/rdt-pixel.js">; when REDDIT_PIXEL_ID is unset this
-// returns a harmless no-op stub, so rdt('track', …) calls elsewhere never throw.
-const REDDIT_PIXEL_ID = (process.env.REDDIT_PIXEL_ID || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+// Reddit Pixel bootstrap, served from here so the exact Reddit snippet lives in
+// one place. The pixel id is a public identifier (it appears in the page source
+// regardless), so it defaults to the account's real id and REDDIT_PIXEL_ID can
+// still override it. Pages include <script src="/rdt-pixel.js">; setting the id
+// to empty ("off") returns a harmless no-op stub so rdt() calls never throw.
+// window.__RDT_PIXEL_ID is exposed so the signup code can add advanced matching
+// (the email) to its SignUp event, as Reddit recommends.
+const REDDIT_PIXEL_ID = (process.env.REDDIT_PIXEL_ID != null ? process.env.REDDIT_PIXEL_ID : 'a2_jjy7wh046wem')
+  .replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
 app.get('/rdt-pixel.js', (_req, res) => {
   res.type('application/javascript');
   res.set('Cache-Control', 'public, max-age=300');
   if (!REDDIT_PIXEL_ID) return res.send('window.rdt=window.rdt||function(){};');
   res.send(
-    '!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js";t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);' +
+    `window.__RDT_PIXEL_ID=${JSON.stringify(REDDIT_PIXEL_ID)};` +
+    '!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");' +
+    `t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=${REDDIT_PIXEL_ID}";` +
+    't.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);' +
     `rdt('init','${REDDIT_PIXEL_ID}');rdt('track','PageVisit');`
   );
 });

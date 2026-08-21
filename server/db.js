@@ -147,6 +147,16 @@ export async function ensureSchema() {
     -- flagged fast ones — so the Bot Catcher can show the real human distribution
     -- and prove the sub-2s challenge sits well below how long real people take.
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS elapsed_ms   INTEGER;
+    -- SMS opt-in (optional, collected on the signup form). phone is stored E.164.
+    -- sms_consent is the explicit "text me drop alerts" checkbox (TCPA requires
+    -- affirmative consent — never opt someone in from a phone number alone), and
+    -- sms_consent_at stamps when they gave it. When both are present we push the
+    -- number to Mailchimp as an SMS subscriber, which fires the "Signs up for
+    -- SMS" Customer Journey. sms_synced_at records the last successful push.
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS phone          TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sms_consent    BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sms_consent_at TIMESTAMPTZ;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sms_synced_at  TIMESTAMPTZ;
     -- Manual archive (soft delete) — set when Ben removes someone from the list.
     -- Distinct from unsubscribed_at (their opt-out); archived rows are excluded
     -- from every active query but kept for restore/audit.

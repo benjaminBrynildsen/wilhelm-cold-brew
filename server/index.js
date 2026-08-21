@@ -6,8 +6,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { ensureSchema, q } from './db.js';
-import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE } from './util.js';
+import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE, EMAIL_DOMAIN_FIXES } from './util.js';
 import { receiveJourney, subscribe, recordChallenge } from './ingest.js';
+import { sendWelcome } from './mailer.js';
+import { mcPushSignup } from './mailchimp.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin } from './admin.js';
 import { mountPortal } from './portal.js';
@@ -331,12 +333,52 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 // ───────── boot ─────────
+// One-time repair: correct existing subscribers whose email domain is a known typo
+// (e.g. hmail.com → gmail.com) so they're reachable, and re-send the welcome to the
+// recently-corrected ones — their original welcome hard-bounced. Idempotent: once a
+// row is corrected its domain no longer matches, so it never re-fires. If the
+// corrected address already belongs to another subscriber, the mistyped row is a
+// dupe and gets removed instead.
+async function fixTypoDomainSubscribers() {
+  const typos = Object.keys(EMAIL_DOMAIN_FIXES);
+  if (!typos.length) return;
+  let rows;
+  try {
+    rows = (await q(
+      `SELECT id, email, created_at FROM subscribers
+        WHERE lower(split_part(email, '@', 2)) = ANY($1)`, [typos])).rows;
+  } catch (e) { console.warn('[typo-fix] lookup failed:', e?.message || e); return; }
+  if (!rows.length) return;
+  const RESEND_MS = 14 * 24 * 3600 * 1000;   // only re-welcome recent bounces, not ancient rows
+  let corrected = 0, dupes = 0;
+  for (const r of rows) {
+    const at = r.email.lastIndexOf('@');
+    const fixed = EMAIL_DOMAIN_FIXES[r.email.slice(at + 1).toLowerCase()];
+    if (at < 1 || !fixed) continue;
+    const newEmail = r.email.slice(0, at) + '@' + fixed;
+    try {
+      const exists = (await q(`SELECT 1 FROM subscribers WHERE lower(email) = lower($1) AND id <> $2`, [newEmail, r.id])).rows.length;
+      if (exists) { await q(`DELETE FROM subscribers WHERE id = $1`, [r.id]); dupes++; continue; }
+      await q(`UPDATE subscribers SET email = $1 WHERE id = $2`, [newEmail, r.id]);
+      corrected++;
+      if (r.created_at && Date.now() - new Date(r.created_at).getTime() < RESEND_MS) {
+        sendWelcome(newEmail).catch((e) => console.warn('[typo-fix] welcome failed:', e?.message || e));
+        mcPushSignup(newEmail);
+      }
+    } catch (e) { console.warn('[typo-fix] fix failed for', r.email, '—', e?.message || e); }
+  }
+  if (corrected || dupes) console.log(`[typo-fix] corrected ${corrected} mistyped domain(s); removed ${dupes} dupe(s)`);
+}
+
 ensureSchema()
   .then(() => {
     app.listen(PORT, () => {
       console.log(`[wilhelm] listening on :${PORT}`);
       // Backfill loyalty points for existing paid orders (idempotent).
       backfillPurchasePoints().catch((e) => console.warn('[points] backfill failed:', e?.message || e));
+      // Repair mistyped email domains (e.g. hmail.com → gmail.com) so bounced
+      // welcomes reach real signups. Idempotent; safe on every boot.
+      fixTypoDomainSubscribers().catch((e) => console.warn('[typo-fix] failed:', e?.message || e));
       // Warm the bandit cache so the first visitors after a deploy never pay
       // for the aggregate queries; refresh it on an interval so cache expiry
       // is invisible too (getState single-flights, so this never stacks).

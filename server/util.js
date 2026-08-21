@@ -98,5 +98,44 @@ export function isDisposableEmail(email) {
   return d ? DISPOSABLE_DOMAINS.has(d.toLowerCase()) : false;
 }
 
+// High-confidence email-domain typo corrections. A curated exact-match map — never
+// fuzzy guessing — so we only ever "fix" a domain that provably can't receive mail
+// (e.g. hmail.com returns a Null MX) and maps unambiguously to a real provider.
+// This is what stops a mistyped popular domain from bouncing the welcome email and
+// silently losing a real signup. Keep it exact-match only: correcting a domain
+// that could be legitimate risks routing someone's signup to a stranger.
+export const EMAIL_DOMAIN_FIXES = {
+  // gmail (g/h are adjacent keys; the rest are the common slips)
+  'hmail.com': 'gmail.com', 'gmial.com': 'gmail.com', 'gmai.com': 'gmail.com',
+  'gmaill.com': 'gmail.com', 'gnail.com': 'gmail.com', 'gamil.com': 'gmail.com',
+  'gmail.co': 'gmail.com', 'gmail.con': 'gmail.com', 'gmail.cm': 'gmail.com',
+  'gmail.om': 'gmail.com', 'gmail.comm': 'gmail.com', 'gmail.ocm': 'gmail.com',
+  'gmail.vom': 'gmail.com', 'gmail.xom': 'gmail.com', 'gmailcom': 'gmail.com',
+  'gmail.clm': 'gmail.com', 'gmail.co.com': 'gmail.com', 'glmail.com': 'gmail.com',
+  // hotmail
+  'hotmial.com': 'hotmail.com', 'hotmai.com': 'hotmail.com', 'hotnail.com': 'hotmail.com',
+  'hotmail.co': 'hotmail.com', 'hotmail.con': 'hotmail.com', 'hotmail.cm': 'hotmail.com',
+  'hormail.com': 'hotmail.com',
+  // yahoo
+  'yaho.com': 'yahoo.com', 'yhoo.com': 'yahoo.com', 'yahooo.com': 'yahoo.com',
+  'yahoo.co': 'yahoo.com', 'yahoo.con': 'yahoo.com', 'yahoo.cm': 'yahoo.com',
+  // outlook
+  'outlook.co': 'outlook.com', 'outlook.con': 'outlook.com', 'outlok.com': 'outlook.com',
+  'outloo.com': 'outlook.com', 'oulook.com': 'outlook.com',
+  // icloud
+  'icloud.co': 'icloud.com', 'icloud.con': 'icloud.com', 'iclod.com': 'icloud.com',
+  'icloud.cm': 'icloud.com',
+};
+
+// Correct a known-typo email domain in place, preserving the local part (and any
+// +tag). Returns the email unchanged when the domain isn't a known typo.
+export function correctEmailDomain(email) {
+  const s = String(email || '').trim().toLowerCase();
+  const at = s.lastIndexOf('@');
+  if (at < 1) return s;
+  const fixed = EMAIL_DOMAIN_FIXES[s.slice(at + 1)];
+  return fixed ? s.slice(0, at) + '@' + fixed : s;
+}
+
 // Bots / link-preview crawlers / scanners — excluded from analytics.
 export const BOT_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternalhit|preview|monitor|curl|wget|python-requests|node-fetch|axios|go-http|java\/|okhttp|headless|phantom|puppeteer|playwright|lighthouse|pagespeed|gtmetrix|pingdom|uptime|statuscake|whatsapp|telegram|slack|discord|embedly|vkshare|skype|linkedinbot|twitterbot|applebot|petalbot|gptbot|ahrefs|semrush|mj12|dotbot|dataforseo|bytespider/i;

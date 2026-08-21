@@ -1614,7 +1614,7 @@ async function showOrders() {
           <td>${esc((r.created_at || '').slice(0, 10))}</td>
           <td>${esc(r.email || '—')}${r.buyer_drops > 1 ? ` <span title="Repeat customer — bought ${r.buyer_drops} batches" style="color:var(--gold);font-weight:700;cursor:default">↻${r.buyer_drops > 2 ? '<sup style="font-size:.7em">' + num(r.buyer_drops) + '</sup>' : ''}</span>` : ''}</td>
           <td>${esc(r.drop_name || '—')}</td>
-          <td>${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
+          <td>${r.addressIssue ? `<span title="${esc(r.addressIssue)} — fix before exporting" style="color:#e0902a;cursor:default">⚠</span> ` : ''}${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
           <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
           <td>${r.tracking_number
@@ -1668,6 +1668,7 @@ async function showOrders() {
         <button class="btn ghost" id="markshipped">Mark ${scoped ? 'this batch' : 'all'} as shipped</button>
         <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship' + (scoped ? ' in this batch' : '') + '.' : (scoped ? 'This batch is fully shipped.' : 'All paid orders shipped.')}</span>
         <span class="note" id="shipmsg"></span>
+        ${o.addrIssues ? `<span class="note" style="color:#e0902a;font-weight:600;white-space:nowrap">⚠ ${num(o.addrIssues)} order${o.addrIssues === 1 ? '' : 's'} with an incomplete address — fix (⚠ / ✎ below) before exporting.</span>` : ''}
       </div>
       <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Both assume 3 lbs/bottle — override with <code>?lbs=</code> if that's off. With <b>one box per bottle</b> ticked, a 2-bottle order becomes two rows (two labels, 1-bottle weight each). (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 

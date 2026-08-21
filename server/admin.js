@@ -1753,6 +1753,32 @@ export function mountAdmin(app) {
       const unshipped = (await q(
         `SELECT COUNT(*)::int n FROM orders
           WHERE status='paid' AND shipped_at IS NULL AND ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0].n;
+      // Flag paid orders whose shipping address looks incomplete/malformed, so
+      // they can be fixed BEFORE a USPS/Pirate Ship export rejects them. Heuristic
+      // (can't catch a valid-format-but-wrong address), but catches the common
+      // misses: no street number, missing city/state/ZIP, bad ZIP format.
+      const addrIssue = (o) => {
+        if (o.status !== 'paid' || o.shipped_at) return null; // only orders still to ship
+        const a = o.shipping_address;
+        if (!a) return 'No shipping address';
+        const miss = [['line1', 'street'], ['city', 'city'], ['state', 'state'], ['postal_code', 'ZIP']]
+          .find(([k]) => !String(a[k] || '').trim());
+        if (miss) return 'Missing ' + miss[1];
+        if (!/[0-9]/.test(String(a.line1))) return 'No street number';
+        if (!/^\d{5}(-\d{4})?$/.test(String(a.postal_code).trim())) return 'Check ZIP';
+        return null;
+      };
+      for (const o of orders) o.addressIssue = addrIssue(o);
+      const addrIssues = (await q(
+        `SELECT COUNT(*)::int n FROM orders o
+          WHERE o.status='paid' AND o.shipped_at IS NULL AND ($1::int IS NULL OR o.drop_id = $1)
+            AND ( o.shipping_address IS NULL
+               OR btrim(coalesce(o.shipping_address->>'line1','')) = ''
+               OR btrim(coalesce(o.shipping_address->>'city','')) = ''
+               OR btrim(coalesce(o.shipping_address->>'state','')) = ''
+               OR btrim(coalesce(o.shipping_address->>'postal_code','')) = ''
+               OR o.shipping_address->>'line1' !~ '[0-9]'
+               OR o.shipping_address->>'postal_code' !~ '^[0-9]{5}(-[0-9]{4})?$' )`, [dropId])).rows[0].n;
       // Returning customers. Scoped: how many of this batch's distinct buyers had
       // already bought an EARLIER batch (matched by email, case-insensitive).
       // Unscoped: customers who have bought 2+ different batches, ever.
@@ -1899,7 +1925,7 @@ export function mountAdmin(app) {
       const returningOut = returning
         ? { ...returning, returningBottles: returning.returning_bottles }
         : returning;
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, returning: returningOut, freshSignups, buyerCohorts, shipMap });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, addrIssues, returning: returningOut, freshSignups, buyerCohorts, shipMap });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

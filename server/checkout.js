@@ -32,8 +32,11 @@ export async function getShippingFromStripe(paymentIntentId) {
     const charge = full.latest_charge && typeof full.latest_charge === 'object' ? full.latest_charge : null;
     if (!ship && charge?.shipping) ship = charge.shipping;
     const email = full.receipt_email || charge?.billing_details?.email || full.customer_details?.email || null;
-    if (!ship) return { email };
-    return { name: ship.name || null, phone: ship.phone || null, address: ship.address || null, email };
+    // Fall back to the billing name when the shipping block has none (common with
+    // Apple Pay / Express checkout, where shipping.name comes back blank).
+    const billingName = charge?.billing_details?.name || full.customer_details?.name || null;
+    if (!ship) return { email, name: billingName };
+    return { name: ship.name || billingName || null, phone: ship.phone || null, address: ship.address || null, email };
   } catch (e) { console.warn('[pirateship] stripe shipping fetch failed:', e?.message || e); return null; }
 }
 

@@ -1599,6 +1599,7 @@ async function showShipping() {
         if (out) out.innerHTML = `<div style="border:1px solid ${tone}55;background:${bg};border-radius:10px;padding:11px 14px">
           <div style="font-weight:600;color:${tone}">${esc(r.title || '')}</div>
           ${r.detail ? `<div class="note" style="margin-top:4px">${esc(r.detail)}</div>` : ''}
+          ${r.carrier ? `<div class="note" style="margin-top:6px">USPS said: <span style="font-family:var(--mono,monospace);font-size:11.5px;color:var(--parchment,#f6efda)">“${esc(r.carrier)}”</span></div>` : ''}
           ${r.tracking ? `<div class="note" style="margin-top:4px;font-family:var(--mono,monospace);font-size:11px">tested against ${esc(String(r.tracking).slice(0, 22))}${String(r.tracking).length > 22 ? '…' : ''}</div>` : ''}
         </div>`;
       } catch (e) { if (tmsg) tmsg.textContent = ''; if (out) out.innerHTML = `<div class="note" style="color:#c0392b">Test failed: ${esc(e.message)}</div>`; }

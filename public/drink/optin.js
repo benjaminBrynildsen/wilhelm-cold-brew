@@ -461,6 +461,7 @@ function funnel(event, props) {
         wireSmsCard(successEl, email);
         try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
         try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
+        try { if (window.rdt) window.rdt('track', 'SignUp'); } catch (e) {}
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();

@@ -290,3 +290,58 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 .spec-v { font-family: var(--body); font-size: 15px; color: #2a1d08; margin-top: 2px; line-height: 1.3; }
 .notes-sig { display: block; width: 118px; height: auto; margin: 16px auto 2px; opacity: 0.9; }
 .notes-by { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #6e500f; margin-top: 4px; }
+
+/* SMS early-access card — the "text me the link 15 min early" upsell, shared by
+   the sold-out page (and reusable on buy). Dark theme; matches the /drink card. */
+.sms-card {
+  margin: 24px auto 6px; max-width: 400px; text-align: center;
+  background: linear-gradient(180deg, rgba(232,194,74,0.09), rgba(232,194,74,0.03));
+  border: 1px solid rgba(232,194,74,0.4); border-radius: 16px;
+  padding: 22px 20px;
+}
+.sms-card .sms-badge {
+  display: inline-block; font-family: var(--mono);
+  font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--gold); background: rgba(232,194,74,0.12);
+  border: 1px solid rgba(232,194,74,0.4); border-radius: 100px;
+  padding: 5px 12px; margin-bottom: 12px;
+}
+.sms-card .sms-card-h {
+  font-family: var(--display); font-weight: 700; font-size: clamp(21px, 5.5vw, 26px);
+  color: var(--parchment); line-height: 1.2; margin: 0 0 8px;
+}
+.sms-card .sms-card-h em { color: var(--gold); font-style: italic; }
+.sms-card .sms-card-p {
+  font-family: var(--body); font-size: 15px; color: rgba(246,239,218,0.82);
+  line-height: 1.5; margin: 0 0 16px;
+}
+.sms-card .sms-card-p strong { color: var(--parchment); font-weight: 600; }
+.sms-card .sms-card-form { display: flex; flex-direction: column; gap: 10px; }
+.sms-card .sms-email, .sms-card .sms-phone {
+  width: 100%; height: 52px; padding: 0 18px; box-sizing: border-box;
+  background: rgba(12,10,8,0.35); border: 1px solid rgba(232,194,74,0.35);
+  color: var(--parchment); font-family: var(--body); font-size: 16px; text-align: center;
+  border-radius: 10px; outline: none; transition: border-color .2s, background .2s;
+}
+.sms-card .sms-email::placeholder, .sms-card .sms-phone::placeholder { color: rgba(246,239,218,0.55); }
+.sms-card .sms-email:focus, .sms-card .sms-phone:focus { border-color: var(--gold); background: rgba(12,10,8,0.5); }
+.sms-card .sms-card-form button {
+  width: 100%; height: 54px; border: none; cursor: pointer; border-radius: 10px;
+  background: var(--gold); color: var(--ink);
+  font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: 0.4px;
+  transition: filter .2s, transform .08s;
+}
+.sms-card .sms-card-form button:hover { filter: brightness(1.08); }
+.sms-card .sms-card-form button:active { transform: translateY(1px); }
+.sms-card .sms-card-form button:disabled { opacity: 0.7; cursor: progress; }
+.sms-card .sms-err { font-family: var(--body); font-size: 14px; color: #f0a58a; margin-top: 2px; }
+.sms-card .sms-fine {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.4px;
+  color: rgba(246,239,218,0.5); line-height: 1.5; margin: 12px 0 0;
+}
+.sms-card .sms-done { font-family: var(--body); font-size: 15px; color: var(--parchment); line-height: 1.45; }
+.sms-card .sms-done-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; margin-right: 6px; vertical-align: -5px;
+  background: var(--gold); color: var(--ink); font-weight: 800; font-size: 13px;
+}

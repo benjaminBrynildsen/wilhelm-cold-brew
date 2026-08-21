@@ -8,7 +8,7 @@ import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
-import { deliveryEnabled, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
+import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -2130,6 +2130,63 @@ export function mountAdmin(app) {
       }
       res.json({ trackingUsed: tracking, trackingLength: tracking.length, ...(await deliveryProbe(tracking)) });
     } catch (e) { console.error('[shipping/probe]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // "Test connection" — runs the probe against a real tracking number and boils
+  // the result down to one plain verdict for the Shipping tab, so nobody has to
+  // read raw JSON to know whether live status actually works. level drives the
+  // colour: ok (green) / idle · off (amber) / err · warn (red).
+  app.get('/api/admin/shipping/test', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!deliveryEnabled()) {
+        return res.json({ level: 'off', title: 'No delivery key detected',
+          detail: 'Add USPS_CLIENT_ID + USPS_CLIENT_SECRET (or EASYPOST_API_KEY) in Render and redeploy. Until then, orders still show “Shipped” with the tracking number.' });
+      }
+      const provider = deliveryProvider();               // 'usps' | 'easypost'
+      const pName = provider === 'easypost' ? 'EasyPost' : 'USPS';
+      let tracking = req.query?.tracking ? String(req.query.tracking).trim() : '';
+      if (!tracking) {
+        tracking = (await q(
+          `SELECT tracking_number FROM orders
+            WHERE status='paid' AND NULLIF(tracking_number,'') IS NOT NULL
+            ORDER BY shipped_at DESC NULLS LAST LIMIT 1`)).rows[0]?.tracking_number || '';
+      }
+      if (!tracking) {
+        return res.json({ level: 'idle', provider, title: `${pName} key detected — nothing to test yet`,
+          detail: `A ${pName} key is set. Import this batch’s tracking numbers first, then test again to confirm live status flows through.` });
+      }
+      let p;
+      try { p = await deliveryProbe(tracking); }
+      catch (probeErr) {
+        return res.json({ level: 'warn', provider, tracking,
+          title: `Couldn’t reach ${pName}`, detail: `The request to ${pName} failed before a reply: ${probeErr?.message || probeErr}. Try again in a moment.` });
+      }
+      const http = p.httpStatus;
+      const status = p?.parsed?.status || '';
+      const ok2xx = http >= 200 && http < 300;
+      if (p.tokenError) {
+        return res.json({ level: 'err', provider, tracking, title: 'Credentials rejected',
+          detail: `${pName} refused the client id/secret (OAuth token failed): ${p.tokenError}` });
+      }
+      if (ok2xx && p.parsed) {
+        return res.json({ level: 'ok', provider, tracking, status,
+          title: 'Connected ✓', detail: `${pName} returned live data. Latest status for the newest shipment: ${status || 'received'}.` });
+      }
+      if (http === 404) {
+        return res.json({ level: 'ok', provider, tracking,
+          title: 'Connected ✓ — no scans yet', detail: `Authentication works; ${pName} just has no tracking events for this number yet. It fills in once the package is scanned.` });
+      }
+      if (http === 401 || http === 403) {
+        const detail = provider === 'usps'
+          ? `The keys work but this app can’t read tracking. At developer.usps.com, add the Tracking API to your app, and make sure the credentials are Production (not the test/CAT environment).`
+          : `EasyPost rejected the request (${http}). Check that EASYPOST_API_KEY is your live key and is active.`;
+        return res.json({ level: 'err', provider, tracking, title: `${pName} ${http} — tracking not authorized`, detail });
+      }
+      const snip = typeof p.raw === 'string' ? p.raw.slice(0, 180) : (p.raw ? JSON.stringify(p.raw).slice(0, 180) : '');
+      return res.json({ level: 'warn', provider, tracking, status,
+        title: `Unexpected response${http ? ` (HTTP ${http})` : ''}`, detail: snip || `${pName} returned something we didn’t recognize.` });
+    } catch (e) { console.error('[shipping/test]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Pirate Ship export: paid orders → bulk-import CSV ─────────

@@ -1558,12 +1558,17 @@ async function showShipping() {
 
     const refreshCtrl = d.deliveryEnabled
       ? `<button class="btn" id="ship-refresh">Refresh delivery status</button><span class="note" id="ship-refresh-msg">${d.lastChecked ? 'Last checked ' + esc(ago(d.lastChecked)) : 'Not checked yet'}</span>`
-      : `<span class="note">⚠️ Delivery status is off — add <code>EASYPOST_API_KEY</code> in Render to turn on automatic “delivered” tracking. Everything else here works now.</span>`;
+      : `<span class="note">⚠️ Delivery status is off — add <code>USPS_CLIENT_ID</code>/<code>USPS_CLIENT_SECRET</code> (or <code>EASYPOST_API_KEY</code>) in Render to turn on automatic tracking. Everything else here works now.</span>`;
 
     content().innerHTML = `
       <h3 style="margin-top:0">Delivery by batch</h3>
       <div class="ship-batches">${cards}</div>
-      <div class="row-actions" style="align-items:center;margin-bottom:14px">${refreshCtrl}</div>
+      <div class="row-actions" style="align-items:center;margin-bottom:6px">${refreshCtrl}</div>
+      <div class="row-actions" style="align-items:center;margin-bottom:14px">
+        <button class="btn ghost" id="ship-test">Test USPS connection</button>
+        <span class="note" id="ship-test-msg"></span>
+      </div>
+      <div id="ship-test-result" style="margin:-4px 0 14px"></div>
       <h3>Shipments <span class="note">— <select id="shipDrop" style="${FLD_DARK}">${opts}</select></span></h3>
       <table><thead><tr><th>Customer</th><th>Destination</th><th>Batch</th><th class="num">Qty</th><th>Status</th><th>Tracking</th><th>Updated</th></tr></thead>
         <tbody>${rows}</tbody></table>`;
@@ -1579,6 +1584,25 @@ async function showShipping() {
         if (msg) msg.textContent = `Checked ${num(r.checked)} · ${num(r.delivered)} newly delivered`;
         setTimeout(showShipping, 800);
       } catch (e) { if (msg) msg.textContent = 'Refresh failed: ' + e.message; rf.disabled = false; }
+    });
+    // "Test USPS connection" — one-tap plain-language verdict from the probe.
+    const tb = document.getElementById('ship-test');
+    if (tb) tb.addEventListener('click', async () => {
+      const out = document.getElementById('ship-test-result');
+      const tmsg = document.getElementById('ship-test-msg');
+      tb.disabled = true; if (tmsg) tmsg.textContent = 'Checking…'; if (out) out.innerHTML = '';
+      try {
+        const r = await api('/api/admin/shipping/test');
+        const tone = { ok: '#2f7d46', idle: '#b8922f', off: '#b8922f', warn: '#c0642a', err: '#c0392b' }[r.level] || '#b8922f';
+        const bg = { ok: 'rgba(47,125,70,.08)', idle: 'rgba(184,146,47,.08)', off: 'rgba(184,146,47,.08)', warn: 'rgba(192,100,42,.08)', err: 'rgba(192,57,43,.08)' }[r.level] || 'rgba(184,146,47,.08)';
+        if (tmsg) tmsg.textContent = '';
+        if (out) out.innerHTML = `<div style="border:1px solid ${tone}55;background:${bg};border-radius:10px;padding:11px 14px">
+          <div style="font-weight:600;color:${tone}">${esc(r.title || '')}</div>
+          ${r.detail ? `<div class="note" style="margin-top:4px">${esc(r.detail)}</div>` : ''}
+          ${r.tracking ? `<div class="note" style="margin-top:4px;font-family:var(--mono,monospace);font-size:11px">tested against ${esc(String(r.tracking).slice(0, 22))}${String(r.tracking).length > 22 ? '…' : ''}</div>` : ''}
+        </div>`;
+      } catch (e) { if (tmsg) tmsg.textContent = ''; if (out) out.innerHTML = `<div class="note" style="color:#c0392b">Test failed: ${esc(e.message)}</div>`; }
+      tb.disabled = false;
     });
   } catch (e) { content().innerHTML = `<div class="note">Failed to load shipping: ${esc(e.message)}</div>`; }
 }

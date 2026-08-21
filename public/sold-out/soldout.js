@@ -174,4 +174,58 @@
       joined.hidden = false;
     });
   });
+
+  // ── Early-access SMS opt-in cards (thanks state + between-batches countdown) ──
+  // Same concept as /drink: text the buy link 15 min before the email list. This
+  // page has no email in hand (unlike /drink's post-signup card), so the card
+  // takes email + number and posts to /api/subscribe — attaching SMS to an
+  // existing subscriber, or adding them if they weren't on the list yet.
+  var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  function wireSmsCards() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sms-card]'), function (card) {
+      if (card.getAttribute('data-wired') === '1') return;
+      card.setAttribute('data-wired', '1');
+      var form = card.querySelector('.sms-card-form');
+      var emailEl = card.querySelector('.sms-email');
+      var phoneEl = card.querySelector('.sms-phone');
+      var btn = card.querySelector('[data-sms-submit]');
+      var errEl = card.querySelector('[data-sms-error]');
+      var doneEl = card.querySelector('[data-sms-done]');
+      if (!form || !phoneEl || !emailEl) return;
+      var BTN = btn ? btn.textContent : '';
+      function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } }
+      function clearErr() { if (errEl) { errEl.hidden = true; errEl.textContent = ''; } }
+      emailEl.addEventListener('input', clearErr);
+      phoneEl.addEventListener('input', clearErr);
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var email = (emailEl.value || '').trim();
+        var raw = (phoneEl.value || '').trim();
+        var digits = raw.replace(/\D/g, '');
+        // 10 US digits, 11 starting with 1, or an 8–15 digit international +number.
+        var phoneOk = raw.charAt(0) === '+' ? (digits.length >= 8 && digits.length <= 15)
+                                            : (digits.length === 10 || (digits.length === 11 && digits.charAt(0) === '1'));
+        if (!EMAIL_RE.test(email)) { showErr('Enter a valid email.'); emailEl.focus(); return; }
+        if (!phoneOk) { showErr(raw ? 'That mobile number doesn’t look right.' : 'Enter your mobile number.'); phoneEl.focus(); return; }
+        clearErr();
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        fetch('/api/subscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, phone: raw, smsConsent: true, variant: variant() })
+        }).then(function (res) {
+          if (!res.ok) throw new Error('sms ' + res.status);
+          fund('soldout_sms_optin', { variant: variant() });
+          try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e2) {}
+          form.hidden = true;
+          var fine = card.querySelector('.sms-fine'); if (fine) fine.hidden = true;
+          var badge = card.querySelector('.sms-badge'); if (badge) badge.hidden = true;
+          if (doneEl) doneEl.hidden = false;
+        }).catch(function () {
+          if (btn) { btn.disabled = false; btn.textContent = BTN; }
+          showErr('Something went wrong — try again.');
+        });
+      });
+    });
+  }
+  wireSmsCards();
 })();

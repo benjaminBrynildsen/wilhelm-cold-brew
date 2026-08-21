@@ -74,6 +74,21 @@
         <div class="feedback-btns" style="margin-top:20px">
           <a class="btn-secondary" href="/account/">Track your orders in your Cellar</a>
         </div>
+
+        <!-- Early-access SMS upsell — same card as the thanks state. -->
+        <div class="sms-card" data-sms-card>
+          <div class="sms-badge">⚡ 15 minutes early</div>
+          <h3 class="sms-card-h">Get the link <em>first.</em></h3>
+          <p class="sms-card-p">Drop your email + number and we'll <strong>text you the buy link 15 minutes before</strong> it hits the email list.</p>
+          <form class="sms-card-form" novalidate>
+            <input class="sms-email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" aria-label="Email address"/>
+            <input class="sms-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 123-4567" aria-label="Mobile number for early-access texts"/>
+            <button type="submit" data-sms-submit>Text me first →</button>
+            <div class="sms-err" data-sms-error hidden role="alert"></div>
+          </form>
+          <p class="sms-fine">Recurring automated drop texts from Wilhelm Cold Brew. Consent isn't a condition of purchase. Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.</p>
+          <div class="sms-done" data-sms-done hidden><span class="sms-done-check" aria-hidden="true">✓</span> You're on the early list — watch for a text before the next drop.</div>
+        </div>
       </div>
 
       <!-- MISSED IT — ask for demand signal (everyone here is already on the list) -->
@@ -110,6 +125,22 @@
         </div>
         <h1 class="confirm-h" id="fb-h">Noted.</h1>
         <p class="confirm-p" id="fb-p">Thanks for the read. You'll get the next drop's link first.</p>
+
+        <!-- Early-access SMS upsell — same concept as /drink: beat the email list by 15 min. -->
+        <div class="sms-card" data-sms-card>
+          <div class="sms-badge">⚡ 15 minutes early</div>
+          <h3 class="sms-card-h">Beat the list <em>next time.</em></h3>
+          <p class="sms-card-p">Drop your email + number and we'll <strong>text you the buy link 15 minutes before</strong> it hits the email list.</p>
+          <form class="sms-card-form" novalidate>
+            <input class="sms-email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" aria-label="Email address"/>
+            <input class="sms-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 123-4567" aria-label="Mobile number for early-access texts"/>
+            <button type="submit" data-sms-submit>Text me first →</button>
+            <div class="sms-err" data-sms-error hidden role="alert"></div>
+          </form>
+          <p class="sms-fine">Recurring automated drop texts from Wilhelm Cold Brew. Consent isn't a condition of purchase. Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help.</p>
+          <div class="sms-done" data-sms-done hidden><span class="sms-done-check" aria-hidden="true">✓</span> You're on the early list — watch for a text before the next drop.</div>
+        </div>
+
         <div class="meta" id="joined-meta">SEE YOU FRIDAY · 9:00 AM CT</div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
-import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone } from './util.js';
+import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone, correctEmailDomain } from './util.js';
 import { sendWelcome, sendSignupAlert } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
 import { redditTrackAsync } from './reddit.js';
@@ -60,7 +60,9 @@ export async function receiveJourney(req, res) {
 // POST /api/subscribe  body: { email, variant, utm_source?, utm_medium?,
 //                              utm_campaign?, utm_content?, utm_term?, twclid? }
 export async function subscribe(req, res) {
-  const email = String(req.body?.email || '').trim().toLowerCase();
+  // Fix an obvious mistyped domain (e.g. hmail.com → gmail.com) before anything
+  // else, so the welcome email actually reaches them instead of hard-bouncing.
+  const email = correctEmailDomain(String(req.body?.email || '').trim().toLowerCase());
   const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
   if (!EMAIL_RE.test(email) || email.length > 254) {
     return res.status(400).json({ error: 'invalid email' });

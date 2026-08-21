@@ -1816,8 +1816,11 @@ async function showOrders() {
     const psSplit = document.getElementById('ps-split');
     if (psSplit) psSplit.addEventListener('change', () => {
       state.shipSplit = psSplit.checked;
+      const qs = `${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}`;
       const a = document.getElementById('ps-export');
-      if (a) a.href = `/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}`;
+      if (a) a.href = `/api/admin/orders/pirateship.csv${qs}`;
+      const u = document.getElementById('usps-export');
+      if (u) u.href = `/api/admin/orders/usps.csv${qs}`;
     });
     const markShipped = document.getElementById('markshipped');
     if (markShipped) markShipped.addEventListener('click', async () => {

@@ -118,7 +118,9 @@ function looksSuspicious(email) {
 }
 
 // `variant` is recorded with the subscriber so conversions are attributable per arm.
-async function subscribeEmail(email, variant) {
+// `sms` (optional) carries the drop-alert opt-in: { consent:boolean, phone:string }.
+// Only our own endpoint stores it — external providers get the email as before.
+async function subscribeEmail(email, variant, sms) {
   switch (PROVIDER) {
     case 'mock':
       await wait(500);
@@ -126,10 +128,11 @@ async function subscribeEmail(email, variant) {
       return;
 
     case 'endpoint': {
+      const smsFields = (sms && sms.consent && sms.phone) ? { smsConsent: true, phone: sms.phone } : {};
       const res = await fetch(CONFIG.endpoint.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, attribution(), botSignals())),
+        body: JSON.stringify(Object.assign({ email, variant, sessionId: (window.wilhelmSessionId || null) }, smsFields, attribution(), botSignals())),
       });
       if (!res.ok) throw new Error(`Subscribe failed (${res.status})`);
       return;
@@ -341,6 +344,22 @@ function funnel(event, props) {
     const BTN_LABEL = button.textContent;
     const showError = (m) => { errorEl.textContent = m; errorEl.hidden = false; };
 
+    // Optional SMS drop-alert opt-in. The checkbox is the affirmative consent
+    // (TCPA); ticking it reveals the phone field + the disclosure fineprint.
+    const smsConsentEl = form.querySelector('.sms-consent');
+    const smsPhoneEl = form.querySelector('.sms-phone');
+    const smsFineEl = form.querySelector('.sms-fine');
+    if (smsConsentEl && smsPhoneEl) {
+      smsConsentEl.addEventListener('change', () => {
+        const on = smsConsentEl.checked;
+        smsPhoneEl.hidden = !on;
+        if (smsFineEl) smsFineEl.hidden = !on;
+        if (on) { try { smsPhoneEl.focus({ preventScroll: true }); } catch (e) { smsPhoneEl.focus(); } funnel('sms_optin_check', { variant: VARIANT }); }
+        else { errorEl.hidden = true; errorEl.textContent = ''; }
+      });
+      smsPhoneEl.addEventListener('input', () => { errorEl.hidden = true; errorEl.textContent = ''; });
+    }
+
     input.addEventListener('input', () => { errorEl.hidden = true; errorEl.textContent = ''; });
     input.addEventListener('focus', () => {
       if (focusFired) return;
@@ -389,6 +408,26 @@ function funnel(event, props) {
         }
       }
       errorEl.hidden = true;
+      // SMS opt-in gathered here so an invalid number is caught before we submit.
+      // A ticked box needs a usable number (10 US digits, or 11 starting with 1,
+      // or an 8–15 digit international number with +). We don't block the email
+      // signup over it — but since they asked for texts, prompt for a real number
+      // rather than silently dropping the opt-in.
+      let sms = null;
+      if (smsConsentEl && smsConsentEl.checked) {
+        const raw = (smsPhoneEl && smsPhoneEl.value || '').trim();
+        const digits = raw.replace(/\D/g, '');
+        const ok = raw[0] === '+' ? (digits.length >= 8 && digits.length <= 15)
+                                  : (digits.length === 10 || (digits.length === 11 && digits[0] === '1'));
+        if (!ok) {
+          funnel('sms_optin_invalid', { variant: VARIANT });
+          showError(raw ? 'That mobile number doesn’t look right — check it, or untick the text-alerts box.'
+                        : 'Add your mobile number for text alerts, or untick that box.');
+          if (smsPhoneEl) { try { smsPhoneEl.focus({ preventScroll: true }); } catch (e) { smsPhoneEl.focus(); } }
+          return;
+        }
+        sms = { consent: true, phone: raw };
+      }
       // Soft bot challenge: an impossibly-fast submit (under 2s from page open —
       // the bot signature Ben wants to gate on) gets ONE "try again" before we
       // accept it. A real person just taps once more; the second submit goes
@@ -403,8 +442,9 @@ function funnel(event, props) {
       }
       setLoading(true);
       try {
-        await subscribeEmail(email, VARIANT);
+        await subscribeEmail(email, VARIANT, sms);
         funnel('subscribed', { variant: VARIANT });
+        if (sms) funnel('sms_subscribed', { variant: VARIANT });
         try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
         try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
         if (stateEl) stateEl.hidden = true;

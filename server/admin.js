@@ -7,7 +7,7 @@ import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
-import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
+import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { deliveryEnabled, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
@@ -1022,6 +1022,25 @@ export function mountAdmin(app) {
         try { await mcMarkUnsubscribed(e); optedOutInMc++; }
         catch (err) { pushErrors.push(`${e} (${mcReason(err)})`); }
       }
+
+      // SMS catch-up — any subscriber who opted into drop-alert texts but whose
+      // opt-in never confirmed to Mailchimp (sms_synced_at NULL: predates the key,
+      // Mailchimp was down, or the SMS add-on was off at the time). Re-push the
+      // number so the "Signs up for SMS" journey fires, and stamp sms_synced_at on
+      // success. Skips anyone who has since email-unsubscribed or been archived.
+      const smsPending = (await q(
+        `SELECT LOWER(email) email, phone FROM subscribers
+          WHERE sms_consent = TRUE AND phone IS NOT NULL AND sms_synced_at IS NULL
+            AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}
+          ORDER BY sms_consent_at ASC NULLS LAST`)).rows;
+      let smsAdded = 0;
+      for (const s of smsPending) {
+        try {
+          await mcSubscribeSms(s.email, s.phone);
+          await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [s.email]);
+          smsAdded++;
+        } catch (err) { pushErrors.push(`${s.email} SMS (${mcReason(err)})`); }
+      }
       if (pushErrors.length) console.warn('[mailchimp-sync] push errors:', pushErrors.slice(0, 10));
 
       // Stamp "last manual sync" so the admin can see when the catch-up last ran.
@@ -1031,7 +1050,7 @@ export function mountAdmin(app) {
 
       res.json({
         ok: true, applied: true, audiences, ...result,
-        push: { audience: listName, added, optedOut: optedOutInMc, errors: pushErrors.slice(0, 100), errorCount: pushErrors.length },
+        push: { audience: listName, added, optedOut: optedOutInMc, smsAdded, errors: pushErrors.slice(0, 100), errorCount: pushErrors.length },
       });
     } catch (e) { console.error('[mailchimp-sync]', e); res.status(500).json({ error: e.message }); }
   });

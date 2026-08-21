@@ -1,8 +1,8 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
-import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail } from './util.js';
+import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone } from './util.js';
 import { sendWelcome, sendSignupAlert } from './mailer.js';
-import { mcPushSignup } from './mailchimp.js';
+import { mcPushSignup, mcPushSms } from './mailchimp.js';
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
 export async function receiveJourney(req, res) {
@@ -101,15 +101,25 @@ export async function subscribe(req, res) {
   // Store the timing on every signup (not just flagged-fast ones) so the Bot
   // Catcher can show how long real humans actually take.
   const elapsedVal = (Number.isFinite(elapsed) && elapsed >= 0) ? elapsed : null;
+  // Optional SMS opt-in from the signup form. We only treat it as an opt-in when
+  // BOTH the "text me drop alerts" box was checked AND the number normalizes to a
+  // real phone — TCPA requires affirmative consent, so a phone alone is never
+  // enough. phone stored E.164; smsOptIn drives the Mailchimp push + DB stamp.
+  const smsConsent = req.body?.smsConsent === true;
+  const phone = smsConsent ? normalizePhone(req.body?.phone) : null;
+  const smsOptIn = smsConsent && !!phone;
   try {
     const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country,
-                                twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag, elapsed_ms)
-       VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                                twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag, elapsed_ms,
+                                phone, sms_consent, sms_consent_at)
+       VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+               $13,$14,CASE WHEN $14 THEN now() ELSE NULL END)
        ON CONFLICT (email) DO NOTHING
        RETURNING id`,
       [email, variant, hashIp(getClientIp(req)), countryFrom(req),
-       twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag, elapsedVal]
+       twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag, elapsedVal,
+       smsOptIn ? phone : null, smsOptIn]
     );
     // They passed the "try again" challenge — close out the matching attempt so
     // it counts as confirmed (not abandoned) in the Bot Catcher. Match on session
@@ -145,6 +155,26 @@ export async function subscribe(req, res) {
       sendSignupAlert(email, { variant, country: countryFrom(req) })
         .catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
       mcPushSignup(email);   // keep the Mailchimp audience current with new signups
+    }
+    // SMS opt-in — runs for NEW and RETURNING subscribers alike (someone already
+    // on the email list can come back and add SMS, in which case the INSERT above
+    // was a no-op). The UPDATE persists the number/consent idempotently, then we
+    // push to Mailchimp so the "Signs up for SMS" journey fires. sms_synced_at is
+    // set on a successful push and cleared if it fails, so the admin full sync can
+    // reconcile anything Mailchimp rejected. Fire-and-forget; never blocks the
+    // response, never affects the email opt-in.
+    if (smsOptIn) {
+      (async () => {
+        await q(`UPDATE subscribers
+                    SET phone = $2,
+                        sms_consent = TRUE,
+                        sms_consent_at = COALESCE(sms_consent_at, now())
+                  WHERE norm_email(email) = norm_email($1)`, [email, phone]);
+        const ok = await mcPushSms(email, phone);   // resolves true only on a confirmed push
+        if (ok) {
+          await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [email]);
+        }
+      })().catch((e) => console.warn('[subscribe] SMS opt-in persist failed:', e?.message || e));
     }
   } catch (err) {
     console.warn('[subscribe] insert failed:', err?.message || err);

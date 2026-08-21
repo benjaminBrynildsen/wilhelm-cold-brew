@@ -108,6 +108,27 @@ export async function mcMarkUnsubscribed(email) {
   });
 }
 
+// Opt a member into SMS. On an SMS-enabled Mailchimp audience each member carries
+// sms_phone_number + sms_subscription_status ('subscribed' | 'unsubscribed' |
+// 'nonsubscribed'); setting the number and flipping the status to 'subscribed' is
+// what fires the "Signs up for SMS" Customer Journey. We PUT (upsert) so the same
+// call also creates/ensures the email member — status_if_new only, so it can
+// never resurrect an email opt-out. phone must already be E.164 (see
+// normalizePhone). Requires the paid SMS Marketing add-on and a registered
+// sending number on the account; without them Mailchimp rejects the SMS fields
+// and mcFetch throws (handled fire-and-forget by the caller).
+export async function mcSubscribeSms(email, phone) {
+  return mcFetch(`/lists/${await mcListId()}/members/${emailHash(email)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      email_address: email,
+      status_if_new: 'subscribed',
+      sms_phone_number: phone,
+      sms_subscription_status: 'subscribed',
+    }),
+  });
+}
+
 // Friday is drop day. Mailchimp lags when contacts are added right before a
 // campaign — a signup pushed minutes before the send isn't "ready" in time, so
 // the whole send slips (~9 min late). To avoid that, the automatic new-signup
@@ -135,4 +156,24 @@ export function mcPushUnsubscribe(email) {
   if (!KEY) return;
   noteAutoSync('unsubscribe', email);
   mcMarkUnsubscribed(email).catch((e) => console.warn('[mailchimp] push unsubscribe failed for', email, '—', e?.message || e));
+}
+
+// Push an SMS opt-in the moment it happens so the "Signs up for SMS" journey
+// fires automatically. Unlike the email signup push this is NOT held on Fridays:
+// an explicit SMS opt-in is like an unsubscribe — a deliberate consent choice
+// that must propagate right away, and its welcome SMS ("drop alerts are on") is
+// the whole point. Never throws: resolves true on a confirmed Mailchimp success,
+// false otherwise (no key, no number, or an API rejection — e.g. the account
+// isn't actually SMS-enabled), so the caller can stamp sms_synced_at accurately
+// and the email opt-in is never affected.
+export async function mcPushSms(email, phone) {
+  if (!KEY || !phone) return false;
+  noteAutoSync('sms', email);
+  try {
+    await mcSubscribeSms(email, phone);
+    return true;
+  } catch (e) {
+    console.warn('[mailchimp] push SMS opt-in failed for', email, '—', e?.message || e);
+    return false;
+  }
 }

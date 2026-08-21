@@ -349,6 +349,36 @@ html:not([data-drink-variant]) .optin-image { display: block; }
 .optin-form button:hover { filter: brightness(1.08); }
 .optin-form button:active { transform: translateY(1px); }
 
+/* SMS drop-alert opt-in — checkbox (affirmative consent) reveals the phone
+   field + disclosure. Kept visually secondary to the email so it never competes
+   with the primary conversion. */
+.sms-optin {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  font-family: var(--body); font-size: clamp(12.5px, 1.7vh, 14px);
+  color: rgba(246,239,218,0.82); text-align: left; line-height: 1.35;
+  padding: 2px 2px 0;
+}
+.sms-optin input[type="checkbox"] {
+  flex: none; width: 18px; height: 18px; margin: 0; cursor: pointer;
+  accent-color: var(--gold);
+}
+.sms-phone {
+  width: 100%; height: clamp(46px, 6.6vh, 54px); padding: 0 20px;
+  background: rgba(232,217,181,0.06); border: 1px solid rgba(232,194,74,0.35);
+  color: var(--parchment); font-family: var(--body); font-size: clamp(15px, 2vh, 17px); text-align: center;
+  outline: none; transition: border-color .2s, background .2s;
+}
+.sms-phone::placeholder { color: rgba(246,239,218,0.6); font-style: normal; }
+.sms-phone:focus { border-color: var(--gold); background: rgba(232,217,181,0.1); }
+.sms-fine {
+  font-family: var(--mono); font-size: clamp(9.5px, 1.2vh, 10.5px); letter-spacing: 0.4px;
+  color: rgba(246,239,218,0.5); line-height: 1.5; text-align: left; margin: 0 2px;
+}
+html[data-drink-bg="light"] .optin-hero .sms-optin { color: rgba(12,10,8,0.72); }
+html[data-drink-bg="light"] .optin-hero .sms-phone { background: #fff; color: var(--ink); border-color: rgba(12,10,8,0.28); }
+html[data-drink-bg="light"] .optin-hero .sms-phone::placeholder { color: rgba(12,10,8,0.45); }
+html[data-drink-bg="light"] .optin-hero .sms-fine { color: rgba(12,10,8,0.5); }
+
 .fineprint { font-family: var(--mono); font-size: clamp(10px, 1.3vh, 11px); letter-spacing: 1.5px; color: rgba(246,239,218,0.6); margin-top: clamp(10px, 1.8vh, 18px); line-height: 1.6; }
 
 /* bullets (variant) */

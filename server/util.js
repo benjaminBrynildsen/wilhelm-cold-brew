@@ -55,6 +55,27 @@ export function normUtm(v) {
 
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+// Normalize a phone number to E.164 for SMS (Mailchimp wants +country format).
+// The SMS opt-in is US-facing, so a bare 10-digit number is assumed +1; an
+// 11-digit number starting with 1 is treated the same. A number already given
+// with a + is passed through (digits only, 8–15 long per E.164). Anything that
+// doesn't look like a real phone returns null — the caller then skips SMS
+// rather than pushing garbage to Mailchimp.
+export function normalizePhone(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const intl = s.startsWith('+');
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return null;
+  if (intl) {
+    return (digits.length >= 8 && digits.length <= 15) ? '+' + digits : null;
+  }
+  if (digits.length === 10) return '+1' + digits;              // bare US number
+  if (digits.length === 11 && digits[0] === '1') return '+' + digits;  // 1 + US number
+  return null;   // not a shape we can trust — don't guess a country code
+}
+
 // Known disposable / throwaway email domains — temp-mail services a real
 // customer would never use for a coffee subscription. Used to flag (for review,
 // never auto-reject) both live and historical signups in the Bot Catcher.

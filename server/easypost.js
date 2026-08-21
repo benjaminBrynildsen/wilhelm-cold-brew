@@ -32,8 +32,16 @@ function epCarrier(c) {
 // EasyPost tracker.status is a stable enum: pre_transit | in_transit |
 // out_for_delivery | delivered | available_for_pickup | return_to_sender |
 // failure | cancelled | unknown | error. 'delivered' is unambiguous.
+function epLocation(loc) {
+  if (!loc || typeof loc !== 'object') return '';
+  const city = String(loc.city || '').trim();
+  const st = String(loc.state || '').trim();
+  const zip = String(loc.zip || '').trim();
+  return [city, st].filter(Boolean).join(', ') || zip || String(loc.country || '').trim();
+}
+
 export function parseEpTracker(t) {
-  if (!t || typeof t !== 'object') return { delivered: false, deliveredAt: null, status: 'Unknown' };
+  if (!t || typeof t !== 'object') return { delivered: false, deliveredAt: null, status: 'Unknown', eta: null, events: [] };
   const status = String(t.status || '').toLowerCase();
   const delivered = status === 'delivered';
   const details = Array.isArray(t.tracking_details) ? t.tracking_details : [];
@@ -48,7 +56,18 @@ export function parseEpTracker(t) {
     pre_transit: 'Pre-transit', available_for_pickup: 'Available for pickup',
     return_to_sender: 'Return to sender', failure: 'Delivery issue', cancelled: 'Cancelled',
   }[status] || (t.status_detail || t.status || 'Unknown');
-  return { delivered, deliveredAt, status: label };
+  // Normalized, newest-first timeline for the on-site view.
+  const events = details
+    .map((d) => {
+      const dt = d?.datetime ? new Date(d.datetime) : null;
+      return dt && !isNaN(dt.getTime())
+        ? { ts: dt.toISOString(), status: String(d.message || d.status || '').trim() || 'Update', location: epLocation(d.tracking_location) }
+        : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  const eta = t.est_delivery_date ? new Date(t.est_delivery_date) : null;
+  return { delivered, deliveredAt, status: label, eta: eta && !isNaN(eta.getTime()) ? eta : null, events };
 }
 
 // Look up (create-or-refresh) a tracker. EasyPost dedupes by tracking_code, so

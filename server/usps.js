@@ -62,23 +62,45 @@ export async function uspsTrack(trackingNumber) {
   return { ok: true, found: true, ...parseTracking(r.json) };
 }
 
-// Turn a USPS tracking response into { delivered, deliveredAt, status, category }.
-// Deliberately tolerant of field-name variants so a schema tweak can't silently
-// break delivered detection. Exported so the diagnostic can show its verdict.
+// Human-readable "City, ST" from a USPS event's location fields.
+function eventLocation(ev) {
+  const city = String(ev?.eventCity || '').trim();
+  const st = String(ev?.eventState || '').trim();
+  const zip = String(ev?.eventZIP || '').trim();
+  const loc = [city, st].filter(Boolean).join(', ');
+  return loc || (zip ? zip : (String(ev?.eventCountry || '').trim() || ''));
+}
+
+// Turn a USPS tracking response into { delivered, deliveredAt, status, category,
+// eta, events }. events is a normalized, newest-first [{ ts, status, location }]
+// for the on-site timeline. Deliberately tolerant of field-name variants so a
+// schema tweak can't silently break delivered detection. Exported so the
+// diagnostic can show its verdict.
 export function parseTracking(d) {
-  if (!d || typeof d !== 'object') return { delivered: false, deliveredAt: null, status: 'Unknown', category: '' };
+  if (!d || typeof d !== 'object') return { delivered: false, deliveredAt: null, status: 'Unknown', category: '', eta: null, events: [] };
   const category = String(d.statusCategory || '');
   const statusText = String(d.status || d.statusSummary || category || '').trim();
-  const events = Array.isArray(d.trackingEvents) ? d.trackingEvents : [];
+  const rawEvents = Array.isArray(d.trackingEvents) ? d.trackingEvents : [];
   const isDelivered = /delivered/i.test(category) || /delivered/i.test(statusText)
-    || events.some((e) => /delivered/i.test(e?.eventType || e?.status || ''));
+    || rawEvents.some((e) => /delivered/i.test(e?.eventType || e?.status || ''));
   let deliveredAt = null;
   if (isDelivered) {
-    const ev = events.find((e) => /delivered/i.test(e?.eventType || e?.status || ''));
+    const ev = rawEvents.find((e) => /delivered/i.test(e?.eventType || e?.status || ''));
     deliveredAt = eventDate(ev) || (d.expectedDeliveryDate ? new Date(d.expectedDeliveryDate) : null) || new Date();
     if (deliveredAt && isNaN(deliveredAt.getTime())) deliveredAt = new Date();
   }
-  return { delivered: isDelivered, deliveredAt, status: statusText || category || 'Unknown', category };
+  // Normalize + sort newest-first, dropping any event we can't date.
+  const events = rawEvents
+    .map((e) => {
+      const dt = eventDate(e);
+      return dt ? { ts: dt.toISOString(), status: String(e?.eventType || e?.status || '').trim() || 'Update', location: eventLocation(e) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  const etaRaw = d.expectedDeliveryDate || d.guaranteedDeliveryDate || d.predictedDeliveryDate || null;
+  const eta = etaRaw ? new Date(etaRaw) : null;
+  return { delivered: isDelivered, deliveredAt, status: statusText || category || 'Unknown', category,
+    eta: eta && !isNaN(eta.getTime()) ? eta : null, events };
 }
 
 // Diagnostic: fetch USPS's raw response for one tracking number plus how we read

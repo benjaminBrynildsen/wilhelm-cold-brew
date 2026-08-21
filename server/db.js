@@ -256,6 +256,12 @@ export async function ensureSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at        TIMESTAMPTZ;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_status     TEXT;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_checked_at TIMESTAMPTZ;
+    -- Full carrier scan history so the account page can show the whole journey
+    -- on-site (no bounce to USPS). tracking_events is a normalized, newest-first
+    -- list of { ts, status, location }; tracking_eta is the carrier's estimated
+    -- delivery date. Both refreshed by the delivery poller alongside the status.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_events     JSONB;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_eta        TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS orders_delivery_idx ON orders (drop_id, delivered_at);
 
     -- Autopilot bookkeeping on split arms: set when the bandit turns an arm off

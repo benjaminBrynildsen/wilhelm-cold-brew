@@ -122,6 +122,34 @@
     .chip.good{color:#2f7d46;border-color:rgba(47,125,70,.4);background:rgba(47,125,70,.07)}
     .trackrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
     .trackrow .btn{min-height:38px;padding:8px 16px;font-size:13px;border-radius:10px}
+    /* ── On-site delivery tracking ── */
+    .track{margin-top:13px;padding-top:13px;border-top:1px dashed var(--line-soft)}
+    .track-rail{list-style:none;display:flex;margin:2px 0 4px;padding:0;counter-reset:none}
+    .track-rail li{flex:1;position:relative;text-align:center;min-width:0}
+    .track-rail .tr-dot{display:block;width:13px;height:13px;border-radius:50%;margin:0 auto 7px;background:#fff;border:2px solid var(--line);position:relative;z-index:1;transition:background .2s,border-color .2s}
+    .track-rail li::before{content:"";position:absolute;top:6px;left:-50%;width:100%;height:2px;background:var(--line-soft);z-index:0}
+    .track-rail li:first-child::before{display:none}
+    .track-rail .tr-lab{font-family:var(--mono);font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--dim);line-height:1.3;display:block}
+    .track-rail li.done .tr-dot,.track-rail li.now .tr-dot{background:var(--gold-deep);border-color:var(--gold-deep)}
+    .track-rail li.done::before{background:var(--gold-deep)}
+    .track-rail li.now .tr-dot{box-shadow:0 0 0 4px rgba(184,146,47,.18)}
+    .track-rail li.now .tr-lab{color:var(--gold-ink);font-weight:600}
+    .track-eta{font-size:13.5px;color:var(--body);margin:10px 0 2px}
+    .track-events{list-style:none;margin:12px 0 0;padding:0}
+    .track-events li{display:flex;gap:10px;padding:0 0 12px;position:relative}
+    .track-events li::before{content:"";position:absolute;left:5px;top:13px;bottom:-1px;width:1px;background:var(--line-soft)}
+    .track-events li:last-child{padding-bottom:0}
+    .track-events li:last-child::before{display:none}
+    .track-events .te-dot{flex:none;width:11px;height:11px;border-radius:50%;margin-top:3px;background:#fff;border:2px solid var(--line);position:relative;z-index:1}
+    .track-events li.cur .te-dot{background:var(--gold-deep);border-color:var(--gold-deep)}
+    .track-events .te-status{font-size:13.5px;color:var(--ink);line-height:1.35}
+    .track-events li.cur .te-status{font-weight:600}
+    .track-events .te-meta{font-family:var(--mono);font-size:10.5px;letter-spacing:.4px;color:var(--dim);margin-top:2px}
+    .track-pending{margin-top:10px}
+    .track-nums{margin-top:12px;display:flex;flex-direction:column;gap:3px}
+    .track-num{font-family:var(--mono);font-size:11px;letter-spacing:.3px;color:var(--dim);word-break:break-all}
+    .track-num b{color:var(--body);font-weight:500}
+    .track-ext{margin-left:5px;text-decoration:none;color:var(--gold-deep);font-weight:700}
     .ship{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line-soft)}
     .ship .addr{font-size:14px;color:var(--body);margin:4px 0 10px;line-height:1.5}
     .ship .btn.ghost.editaddr{min-height:36px;padding:7px 15px;font-size:13px;border-radius:10px}

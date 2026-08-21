@@ -121,6 +121,69 @@
     if (c.includes('dhl')) return 'https://www.dhl.com/us-en/home/tracking.html?tracking-id=' + encodeURIComponent(n);
     return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + encodeURIComponent(n);
   }
+  const carrierName = (c) => {
+    const s = String(c || '').toLowerCase();
+    if (s.includes('ups')) return 'UPS'; if (s.includes('fedex')) return 'FedEx';
+    if (s.includes('dhl')) return 'DHL'; return 'USPS';
+  };
+  const fmtDT = (t) => new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  // Which of the four delivery stages the package has reached, from the stored
+  // status + events. -1 = not shipped yet.
+  function shipStage(o) {
+    const st = String(o.tracking_status || '').toLowerCase();
+    const hasEvents = Array.isArray(o.tracking_events) && o.tracking_events.length > 0;
+    if (o.delivered_at || /delivered/.test(st)) return 3;
+    if (/out for delivery/.test(st)) return 2;
+    if (hasEvents || /in.?transit|arriv|depart|process|accept|picked up|en route|transit/.test(st)) return 1;
+    if (o.shipped_at) return 0;
+    return -1;
+  }
+
+  // The whole on-site tracking panel for one order: progress rail + ETA + the
+  // carrier's scan history, so nobody has to leave for USPS. `boxes` is the list
+  // of {tracking, carrier} (usually one; more for split shipments).
+  function trackingBlock(o, boxes) {
+    if (!boxes.length) return '';
+    const stage = shipStage(o);
+    const STAGES = ['Shipped', 'In transit', 'Out for delivery', 'Delivered'];
+    const rail = `<ol class="track-rail" aria-label="Delivery progress">${STAGES.map((label, i) => {
+      const cls = i < stage ? 'done' : (i === stage ? 'now' : '');
+      return `<li class="${cls}"><span class="tr-dot"></span><span class="tr-lab">${label}</span></li>`;
+    }).join('')}</ol>`;
+
+    // ETA line — only while in flight and known.
+    const etaTxt = (!o.delivered_at && o.tracking_eta)
+      ? `<div class="track-eta">Estimated delivery <b>${esc(fmtD(o.tracking_eta))}</b></div>` : '';
+
+    // Scan history (newest first). Present only once the carrier has scanned it.
+    const events = Array.isArray(o.tracking_events) ? o.tracking_events : [];
+    const history = events.length
+      ? `<ul class="track-events">${events.map((e, i) =>
+          `<li class="${i === 0 ? 'cur' : ''}"><span class="te-dot"></span><div class="te-b">
+             <div class="te-status">${esc(e.status || 'Update')}</div>
+             <div class="te-meta">${[e.location && esc(e.location), e.ts && esc(fmtDT(e.ts))].filter(Boolean).join(' · ')}</div>
+           </div></li>`).join('')}</ul>`
+      : `<div class="note track-pending">${o.shipped_at
+          ? 'On its way — the carrier’s scans will appear here as it moves.'
+          : 'Tracking will appear here the moment your label is scanned.'}</div>`;
+
+    // Tracking number(s) + a quiet carrier-site fallback link.
+    const nums = boxes.map((b, i) => {
+      const label = boxes.length > 1 ? `Box ${i + 1} — ` : '';
+      const cn = carrierName(b.carrier);
+      return `<div class="track-num">${label}${cn} <b>${esc(b.tracking)}</b>
+        <a class="track-ext" target="_blank" rel="noopener" href="${esc(trackUrl(b.tracking, b.carrier))}" title="Open on ${cn}.com">↗</a></div>`;
+    }).join('');
+
+    // Multi-box: show one rail (whole-order status) and each box's number.
+    return `<div class="track">
+      ${rail}
+      ${etaTxt}
+      ${history}
+      <div class="track-nums">${nums}</div>
+    </div>`;
+  }
 
   let countdownTimer = null;
   function dropFacts(drop) {
@@ -209,10 +272,7 @@
       const boxes = (Array.isArray(o.tracking_numbers) && o.tracking_numbers.length)
         ? o.tracking_numbers
         : (o.tracking_number ? [{ tracking: o.tracking_number, carrier: o.tracking_carrier }] : []);
-      const track = boxes.length
-        ? `<div class="trackrow">${boxes.map((b, i) =>
-            `<a class="btn ghost" target="_blank" rel="noopener" href="${esc(trackUrl(b.tracking, b.carrier))}">Track${boxes.length > 1 ? ' box ' + (i + 1) : ''} →</a>`).join('')}</div>`
-        : '';
+      const track = trackingBlock(o, boxes);
       const lines = addrLines(o.shipping_address);
       const ship = lines.length ? `
         <div class="ship" data-id="${esc(o.id)}">
@@ -540,8 +600,22 @@
       drop: { name: 'Batch 66', status: 'scheduled', opens_at: nf.toISOString(), price_cents: 2200, origin: 'Ethiopia, Guji', roast: 'Light roast', tasting_notes: 'Stone fruit, jasmine, a long, clean finish.' },
       orders: [
         { id: 'demo1', drop_id: 65, drop_name: 'Batch 65', quantity: 2, amount_total_cents: 4400, paid_at: iso(now - 5 * DAY), shipped_at: null, address_editable: true, shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
-        { id: 'demo2', drop_id: 64, drop_name: 'Batch 64', quantity: 1, amount_total_cents: 2200, paid_at: iso(now - 12 * DAY), shipped_at: iso(now - 10 * DAY), tracking_number: '9400111899223197428491', tracking_carrier: 'USPS', tracking_status: 'In transit', shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
-        { id: 'demo3', drop_id: 63, drop_name: 'Batch 63', quantity: 4, amount_total_cents: 8800, paid_at: iso(now - 26 * DAY), shipped_at: iso(now - 24 * DAY), delivered_at: iso(now - 21 * DAY), tracking_number: '9400111899223197428490', tracking_carrier: 'USPS', shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo2', drop_id: 64, drop_name: 'Batch 64', quantity: 1, amount_total_cents: 2200, paid_at: iso(now - 12 * DAY), shipped_at: iso(now - 10 * DAY), tracking_number: '9400111899223197428491', tracking_carrier: 'USPS', tracking_status: 'In transit', tracking_eta: iso(now + 2 * DAY),
+          tracking_events: [
+            { ts: iso(now - 0.4 * DAY), status: 'In Transit to Next Facility', location: 'Kansas City, MO' },
+            { ts: iso(now - 1.5 * DAY), status: 'Arrived at USPS Regional Facility', location: 'St. Louis, MO' },
+            { ts: iso(now - 2.2 * DAY), status: 'Departed USPS Regional Facility', location: 'Chicago, IL' },
+            { ts: iso(now - 10 * DAY), status: 'Shipping Label Created, USPS Awaiting Item', location: 'Alton, IL' },
+          ],
+          shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
+        { id: 'demo3', drop_id: 63, drop_name: 'Batch 63', quantity: 4, amount_total_cents: 8800, paid_at: iso(now - 26 * DAY), shipped_at: iso(now - 24 * DAY), delivered_at: iso(now - 21 * DAY), tracking_number: '9400111899223197428490', tracking_carrier: 'USPS', tracking_status: 'Delivered',
+          tracking_events: [
+            { ts: iso(now - 21 * DAY), status: 'Delivered, Front Door/Porch', location: 'St. Louis, MO' },
+            { ts: iso(now - 21.3 * DAY), status: 'Out for Delivery', location: 'St. Louis, MO' },
+            { ts: iso(now - 22 * DAY), status: 'Arrived at USPS Facility', location: 'St. Louis, MO' },
+            { ts: iso(now - 24 * DAY), status: 'Shipping Label Created, USPS Awaiting Item', location: 'Alton, IL' },
+          ],
+          shipping_name: 'Ben Brynildsen', shipping_address: addr('1200 Market St', 'Apt 5B', 'St. Louis', 'MO', '63103') },
       ],
     };
   }

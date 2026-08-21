@@ -37,8 +37,16 @@ export async function refreshDeliveryStatuses({ limit = 40, force = false } = {}
       continue;
     }
     await q(
-      `UPDATE orders SET tracking_status=$1, delivered_at=$2, tracking_checked_at=now() WHERE id=$3`,
-      [res.status || null, res.delivered ? (res.deliveredAt || new Date()) : null, o.id]).catch(() => {});
+      `UPDATE orders SET tracking_status=$1, delivered_at=$2, tracking_eta=$3,
+              tracking_events = COALESCE($4::jsonb, tracking_events), tracking_checked_at=now()
+        WHERE id=$5`,
+      [res.status || null,
+       res.delivered ? (res.deliveredAt || new Date()) : null,
+       res.eta || null,
+       // Only overwrite the stored history when this scan actually returned events,
+       // so a transient empty response never wipes a package's timeline.
+       (Array.isArray(res.events) && res.events.length) ? JSON.stringify(res.events) : null,
+       o.id]).catch(() => {});
     updated += 1;
     if (res.delivered) delivered += 1;
   }

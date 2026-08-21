@@ -2391,12 +2391,26 @@ export function mountAdmin(app) {
       if (rows.length < 2) return res.status(400).json({ error: 'file has no data rows' });
       const header = rows[0].map((h) => String(h).trim().toLowerCase());
       const col = (...preds) => { for (const p of preds) { const i = header.findIndex(p); if (i >= 0) return i; } return -1; };
-      const tcol = col((h) => h.includes('tracking') && !/url|link/.test(h), (h) => h.includes('tracking'));
+      // Tracking column — Pirate Ship calls it "Tracking Number"; USPS Click-N-Ship
+      // exports call it "Tracking #" or "Label #"/"Label Number". Exclude any URL/link
+      // variant so we grab the number, not a hyperlink.
+      const tcol = col(
+        (h) => h.includes('tracking') && !/url|link/.test(h),
+        (h) => h.includes('tracking'),
+        (h) => h.includes('label') && /#|number|no\b/.test(h) && !/url|link/.test(h));
       const idcol = col((h) => h === 'order id' || h === 'order_id' || h === 'orderid', (h) => /order\s*id/.test(h));
       const ecol = col((h) => h === 'email', (h) => h.includes('email'));
       const ccol = col((h) => h.includes('carrier') || h.includes('provider') || h === 'service');
+      // Reference column — the USPS bulk file we export stamps each label with
+      // "Reference ID" = WCB-<orderId>, and Click-N-Ship echoes it back in its
+      // shipping-history export. That's how a USPS file (which never carries our
+      // Order ID or, usually, the customer email) matches back to an order. Skip
+      // "Reference ID 2" (the batch name) and the customs "reference #" fields.
+      const refcol = col(
+        (h) => h === 'reference id' || h === 'reference number' || h === 'reference #' || h === 'reference no' || h === 'reference no.' || h === 'reference',
+        (h) => h.includes('reference') && !h.includes('2') && !h.includes('customs') && !h.includes('type'));
       if (tcol < 0) return res.status(400).json({ error: 'no "Tracking Number" column found in the file' });
-      if (idcol < 0 && ecol < 0) return res.status(400).json({ error: 'need an "Order ID" or "Email" column to match orders' });
+      if (idcol < 0 && ecol < 0 && refcol < 0) return res.status(400).json({ error: 'need an "Order ID", "Reference ID", or "Email" column to match orders' });
 
       // Scope matching to the batch being shipped (the Orders tab's selected drop)
       // so an email/Order-ID can't match an old order from a different batch.
@@ -2422,7 +2436,11 @@ export function mountAdmin(app) {
         const carrier = ccol >= 0 ? (r[ccol] || '').trim() : '';
         const oid = idcol >= 0 ? (r[idcol] || '').trim() : '';
         const email = ecol >= 0 ? (r[ecol] || '').trim().toLowerCase() : '';
-        let order = (oid && byId.get(oid)) || null;
+        // Recover our order id from the USPS Reference ID (WCB-<id>), tolerating a
+        // bare number or extra text around it.
+        let refId = '';
+        if (refcol >= 0) { const m = String(r[refcol] || '').match(/(?:wcb[-\s]?)?(\d+)/i); if (m) refId = m[1]; }
+        let order = (oid && byId.get(oid)) || (refId && byId.get(refId)) || null;
         if (!order && email && byEmail.has(email)) {
           const cands = byEmail.get(email);
           order = cands.find((o) => !acc.has(o.id)) || cands[0];   // multi-order email: take the next unmatched

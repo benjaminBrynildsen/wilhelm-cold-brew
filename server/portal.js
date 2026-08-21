@@ -117,6 +117,7 @@ export function mountPortal(app) {
         `SELECT o.id, o.drop_id, o.quantity, o.amount_total_cents, o.paid_at, o.created_at,
                 o.shipped_at, o.ship_notified_at, o.tracking_number, o.tracking_carrier,
                 o.tracking_numbers, o.tracking_status, o.delivered_at,
+                o.tracking_events, o.tracking_eta,
                 o.shipping_name, o.shipping_address,
                 -- The address stays editable until we print the label (shipped_at set).
                 (o.shipped_at IS NULL) AS address_editable,

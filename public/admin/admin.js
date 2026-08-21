@@ -1690,14 +1690,14 @@ async function showOrders() {
       <div class="note" style="margin:8px 0 4px">Preview <span class="note">— sample order (Kaleb · Friday Drop)</span></div>
       <iframe id="se-frame" title="shipping email preview" style="width:100%;max-width:600px;height:520px;border:1px solid rgba(232,217,181,0.2);border-radius:6px;background:#fff"></iframe>
 
-      <h3 style="margin-top:26px">Import tracking from Pirate Ship</h3>`;
+      <h3 style="margin-top:26px">Import tracking <span class="note">— Pirate Ship or USPS Click-N-Ship</span></h3>`;
       })()}
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
         <input type="file" id="trackfile" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="${FLD_DARK};padding:6px;max-width:300px"/>
         <button class="btn ghost" id="trackpreview">Preview matches</button>
         <span class="note" id="trackmsg"></span>
       </div>
-      <div class="note">After you buy labels, export the shipments from Pirate Ship (.xlsx or .csv) and upload the file here. It matches each tracking number back to the order (by the Order ID or email column), records it, marks the order shipped, and emails that purchaser their tracking link. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
+      <div class="note">After you buy labels, upload the shipments file here (.xlsx or .csv). <b>Pirate Ship</b>: export the shipments. <b>USPS Click-N-Ship</b>: export your shipping history / label report — our export stamps each label with <code>WCB-&lt;order&gt;</code> in the Reference ID, which USPS echoes back, so it matches even though USPS's file has no Order ID or email. It records each tracking number, marks the order shipped, emails the purchaser their link, and the status then shows on their account page. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
       <div id="trackresult" style="margin-top:8px"></div>
 
       <h3>Recent orders</h3>

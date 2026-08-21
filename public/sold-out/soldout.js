@@ -226,7 +226,12 @@
           if (!res.ok) throw new Error('sms ' + res.status);
           fund('soldout_sms_optin', { variant: variant() });
           try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e2) {}
-          try { if (window.rdt) window.rdt('track', 'SignUp', { conversionId: rdtEventId }); } catch (e2) {}
+          try {
+            if (window.rdt) {
+              if (window.__RDT_PIXEL_ID) window.rdt('init', window.__RDT_PIXEL_ID, { email: email });
+              window.rdt('track', 'SignUp', { conversionId: rdtEventId });
+            }
+          } catch (e2) {}
           form.hidden = true;
           var fine = card.querySelector('.sms-fine'); if (fine) fine.hidden = true;
           var badge = card.querySelector('.sms-badge'); if (badge) badge.hidden = true;

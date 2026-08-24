@@ -1323,6 +1323,42 @@ async function showSplit() {
 }
 
 // ───────── Traffic ─────────
+// X Ads spend/performance card on the Traffic tab. Loads from /api/admin/xads
+// independently of the traffic data so a slow or unconfigured Ads API can't hold
+// up (or error out) the rest of the tab. Its own 7/30/90-day toggle.
+async function loadXAds(days) {
+  const el = document.getElementById('xads-panel');
+  if (!el) return;
+  days = days || state.xadsDays || 30;
+  state.xadsDays = days;
+  const usd = (n) => '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pctf = (n) => ((Number(n) || 0) * 100).toFixed(2) + '%';
+  el.innerHTML = '<h3 style="margin-bottom:2px">𝕏 Ads <span class="note">— loading…</span></h3>';
+  try {
+    const x = await api('/api/admin/xads?days=' + days);
+    if (!x.enabled) { el.innerHTML = `<h3 style="margin-bottom:2px">𝕏 Ads</h3><div class="note">${esc(x.reason || 'Not configured.')}</div>`; return; }
+    if (!x.ok) { el.innerHTML = `<h3 style="margin-bottom:2px">𝕏 Ads</h3><div class="note" style="color:#c0642a">Couldn’t load X Ads: ${esc(x.error || 'error')}</div>`; return; }
+    const daysSel = [7, 30, 90].map((dd) => `<button class="win${days === dd ? ' active' : ''}" data-xd="${dd}">${dd}d</button>`).join('');
+    const rows = (x.campaigns || []).map((c) =>
+      `<tr><td>${esc(c.name)}</td><td class="num">${usd(c.spend)}</td><td class="num">${num(c.impressions)}</td><td class="num">${num(c.clicks)}</td></tr>`).join('')
+      || '<tr><td class="note">No campaigns in this window</td><td></td><td></td><td></td></tr>';
+    el.innerHTML = `
+      <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">𝕏 Ads <span class="winbar" style="margin:0">${daysSel}</span></h3>
+      <div class="cards">
+        <div class="card" style="border-color:var(--gold)"><div class="k">Spend (${days}d)</div><div class="v">${usd(x.spend)}</div></div>
+        <div class="card"><div class="k">Impressions</div><div class="v">${num(x.impressions)}</div></div>
+        <div class="card"><div class="k">Clicks</div><div class="v">${num(x.clicks)}</div></div>
+        <div class="card"><div class="k">CTR</div><div class="v">${pctf(x.ctr)}</div></div>
+        <div class="card"><div class="k">Avg CPC</div><div class="v">${usd(x.cpc)}</div></div>
+        <div class="card"><div class="k">Signups (X)</div><div class="v">${num(x.signups)}</div></div>
+        <div class="card" style="border-color:var(--gold)"><div class="k">Cost / signup</div><div class="v">${x.costPerSignup != null ? usd(x.costPerSignup) : '—'}</div></div>
+      </div>
+      <table style="margin-top:6px"><thead><tr><th>Campaign</th><th class="num">Spend</th><th class="num">Impr.</th><th class="num">Clicks</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="note" style="margin-top:6px">Spend, impressions & clicks are X's own numbers; “Signups (X)” and “Cost / signup” pair them with our first-party twclid signups in the same window.</div>`;
+    el.querySelectorAll('[data-xd]').forEach((b) => b.addEventListener('click', () => loadXAds(parseInt(b.dataset.xd, 10))));
+  } catch (e) { el.innerHTML = `<h3 style="margin-bottom:2px">𝕏 Ads</h3><div class="note" style="color:#c0392b">Failed to load: ${esc(e.message)}</div>`; }
+}
+
 async function showTraffic() {
   loading();
   try {
@@ -1380,6 +1416,7 @@ async function showTraffic() {
         <div class="card"><div class="k">Visitors (30d)</div><div class="v">${num(vis.last30d)}</div></div>
         <div class="card"><div class="k">Views (total)</div><div class="v">${num(v.total)}</div></div>
       </div>
+      <div id="xads-panel" style="margin:2px 0 6px"></div>
       <div class="grid2">
         <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juBody, [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
           ${ju.length > JU_PAGE ? `<button class="btn ghost sm" id="ju-more" style="margin-top:8px">Show 25 more (${ju.length - JU_PAGE} hidden)</button>` : ''}
@@ -1391,6 +1428,9 @@ async function showTraffic() {
         <div>${tbl(`Top cities (${esc(w('30d'))})`, (d.topCities || []).map((r) => `<tr><td>${esc(r.city)}${r.region ? ', ' + esc(r.region) : ''}${r.country ? ' (' + esc(r.country) + ')' : ''}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">no city data yet</td><td></td></tr>', [{ h: 'City' }, { h: 'Visitors', num: 1 }])}</div>
       </div>
       <h3>${rlab ? esc(rlab) : 'Last 14 days'}</h3><div class="spark">${spark || '<span class="note">no data yet</span>'}</div>`;
+
+    // X Ads spend/performance — loaded async so it never blocks or breaks the tab.
+    loadXAds();
 
     // reveal hidden channel rows 25 at a time
     const juMore = document.getElementById('ju-more');

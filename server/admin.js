@@ -9,6 +9,7 @@ import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEma
 import { getShippingFromStripe } from './checkout.js';
 import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
+import { xadsEnabled, xadsSummary } from './xads.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -839,6 +840,42 @@ export function mountAdmin(app) {
         daily: daily.map((r) => ({ day: r.bucket, views: r.views, visitors: r.visitors })),
       });
     } catch (e) { console.error('[traffic]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // X (Twitter) Ads spend/performance for the Traffic tab. Pulls from the Ads API
+  // (no-op with a clear reason until the X_ADS_* creds are set) and pairs X's own
+  // numbers with our first-party twclid signups so cost-per-signup is real. Cached
+  // a few minutes so the tab never waits on the Ads API twice in a row.
+  let xadsCache = { at: 0, key: '', data: null };
+  app.get('/api/admin/xads', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!xadsEnabled()) {
+        return res.json({ enabled: false, reason: 'Add the X_ADS_* credentials in Render to pull X Ads spend and performance here.' });
+      }
+      const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 30));
+      const key = 'd' + days;
+      let summary = (Date.now() - xadsCache.at < 5 * 60 * 1000 && xadsCache.key === key) ? xadsCache.data : null;
+      if (!summary) {
+        summary = await xadsSummary({ days });
+        if (summary.ok) xadsCache = { at: Date.now(), key, data: summary };
+      }
+      if (!summary.ok) return res.json({ enabled: true, ok: false, error: summary.error || `X Ads API error${summary.status ? ' (HTTP ' + summary.status + ')' : ''}` });
+      // First-party signups we can attribute to X in the same window (twclid present,
+      // or utm_source flagged as an X source), excluding internal/test traffic.
+      const signups = (await q(
+        `SELECT COUNT(*)::int n FROM subscribers
+          WHERE created_at >= now() - ($1::int || ' days')::interval
+            AND (NULLIF(twclid,'') IS NOT NULL OR lower(utm_source) IN ('x','twitter','x_ads','twitter_ads'))
+            ${EXCL_EM}`, [days])).rows[0].n;
+      res.json({
+        enabled: true, ok: true, days, window: summary.window, currency: summary.currency,
+        spend: summary.spend, impressions: summary.impressions, clicks: summary.clicks,
+        conversions: summary.conversions, ctr: summary.ctr, cpc: summary.cpc,
+        signups, costPerSignup: signups ? summary.spend / signups : null,
+        campaigns: summary.campaigns,
+      });
+    } catch (e) { console.error('[xads]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── subscribers (list / counts / CSV) ─────────

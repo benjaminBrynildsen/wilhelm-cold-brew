@@ -880,7 +880,7 @@ async function showOverview() {
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
         <div class="card"><div class="k">Replied to welcome</div>
           <div class="v">${num(w.welcomeReplies || 0)}</div>
-          <div class="k2">${w.signups ? Math.round((100 * (w.welcomeReplies || 0)) / w.signups) + '% of this window’s signups replied' : 'no signups in window'}</div></div>
+          <div class="k2">replies received this window${d.welcomeRepliesTotal ? ' · ' + num(d.welcomeRepliesTotal) + ' all-time' : ''}</div></div>
         ${organicCard}
         ${timingCard}
       </div>

@@ -10,6 +10,7 @@ import { getClientIp, hashIp, countryFrom, hostFrom, normUtm, BOT_RE, EMAIL_DOMA
 import { receiveJourney, subscribe, recordChallenge } from './ingest.js';
 import { sendWelcome } from './mailer.js';
 import { mcPushSignup } from './mailchimp.js';
+import { syncInbox, inboxConfigured } from './inbox.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin } from './admin.js';
 import { mountPortal } from './portal.js';
@@ -391,6 +392,15 @@ ensureSchema()
         const poll = () => refreshDeliveryStatuses({ limit: 30 }).catch(() => {});
         setTimeout(poll, 20 * 1000);
         setInterval(poll, 30 * 60 * 1000).unref();
+      }
+      // Keep the inbox current in the background (customer replies → email_messages),
+      // so the Overview "replied to welcome" count and the Thank-you tab stay fresh
+      // without anyone opening a tab to trigger it. No-op until IMAP is configured;
+      // syncInbox self-guards against overlapping runs.
+      if (inboxConfigured()) {
+        const pull = () => syncInbox().catch(() => {});
+        setTimeout(pull, 25 * 1000);
+        setInterval(pull, 15 * 60 * 1000).unref();
       }
     });
   })

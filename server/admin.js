@@ -597,12 +597,21 @@ export function mountAdmin(app) {
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
       })();
 
-      const [totalSubs, daily] = await Promise.all([
+      const [totalSubs, welcomeReplies, daily] = await Promise.all([
         q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
+        // Active subscribers who've emailed us back at least once — the welcome
+        // email asks for a reply (it's what keeps Friday's drop out of spam), so an
+        // inbound message is the engagement signal. norm_email matches across the
+        // gmail dot/+ variations. No-ops to 0 until the inbox sync is configured.
+        q(`SELECT COUNT(*)::int n FROM subscribers
+             WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
+               AND EXISTS (SELECT 1 FROM email_messages em
+                            WHERE em.direction = 'in'
+                              AND norm_email(em.customer_email) = norm_email(subscribers.email))`),
         dailyJob,
         ...winJobs,
       ]);
-      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, daily });
+      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, welcomeReplies: welcomeReplies.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -599,14 +599,18 @@ export function mountAdmin(app) {
 
       const [totalSubs, welcomeReplies, daily] = await Promise.all([
         q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
-        // Active subscribers who've emailed us back at least once — the welcome
-        // email asks for a reply (it's what keeps Friday's drop out of spam), so an
-        // inbound message is the engagement signal. norm_email matches across the
-        // gmail dot/+ variations. No-ops to 0 until the inbox sync is configured.
+        // Active subscribers who replied to the WELCOME email specifically (subject
+        // "One last step so you don't miss the drop"). A reply keeps Friday's drop
+        // out of their spam, so it's the engagement signal. We match inbound
+        // messages whose subject contains the distinctive "one last step" phrase —
+        // apostrophe-free and case-insensitive, so it catches the "Re:" prefix and
+        // straight/curly-quote variants. norm_email lines up the gmail dot/+ forms.
+        // Reads 0 until the inbox sync is configured.
         q(`SELECT COUNT(*)::int n FROM subscribers
              WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
                AND EXISTS (SELECT 1 FROM email_messages em
                             WHERE em.direction = 'in'
+                              AND em.subject ILIKE '%one last step%'
                               AND norm_email(em.customer_email) = norm_email(subscribers.email))`),
         dailyJob,
         ...winJobs,

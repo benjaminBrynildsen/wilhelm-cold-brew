@@ -497,15 +497,18 @@ export function mountAdmin(app) {
             [w.from, w.to, DRINK_PAGES]),
           q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
           // Of the signups in THIS window, how many replied to the welcome email
-          // ("one last step") — a cohort engagement count so the box follows the
+          // ("one last step") — a cohort count so the box follows the
           // today/7d/30d/all-time selector like the others. Reply comes shortly
           // after signup, so cohort ≈ replied-in-window. 0 until the inbox syncs.
+          // The reply-email set is a NON-correlated subquery, so the email table is
+          // scanned once (it's tiny — only inbound customer mail) and hashed; the
+          // outer side is then just the window's subscribers probing that set — no
+          // per-subscriber rescan. (em_welcome_reply_idx backs the subject filter.)
           q(`SELECT COUNT(*)::int n FROM subscribers
                WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}
-                 AND EXISTS (SELECT 1 FROM email_messages em
-                              WHERE em.direction = 'in'
-                                AND em.subject ILIKE '%one last step%'
-                                AND norm_email(em.customer_email) = norm_email(subscribers.email))`, p),
+                 AND norm_email(email) IN (
+                   SELECT norm_email(customer_email) FROM email_messages
+                    WHERE direction = 'in' AND subject ILIKE '%one last step%')`, p),
           // How each signup arrived. Tagged links classify by the UTM captured at
           // signup (drinkup = X profile bio link, join = the /join reply link,
           // referral = member link, anything else tagged = a paid ad link —

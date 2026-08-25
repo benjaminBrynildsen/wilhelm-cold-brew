@@ -491,11 +491,21 @@ export function mountAdmin(app) {
       const winList = requested ? allWins.filter((w) => w.key === requested) : allWins;
       const winJobs = (winList.length ? winList : allWins).map(async (w) => {
         const p = [w.from, w.to];
-        const [sessions, drinkSessions, signups, joinPaths, pageTiming] = await Promise.all([
+        const [sessions, drinkSessions, signups, welcomeReplies, joinPaths, pageTiming] = await Promise.all([
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
             [w.from, w.to, DRINK_PAGES]),
           q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
+          // Of the signups in THIS window, how many replied to the welcome email
+          // ("one last step") — a cohort engagement count so the box follows the
+          // today/7d/30d/all-time selector like the others. Reply comes shortly
+          // after signup, so cohort ≈ replied-in-window. 0 until the inbox syncs.
+          q(`SELECT COUNT(*)::int n FROM subscribers
+               WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}
+                 AND EXISTS (SELECT 1 FROM email_messages em
+                              WHERE em.direction = 'in'
+                                AND em.subject ILIKE '%one last step%'
+                                AND norm_email(em.customer_email) = norm_email(subscribers.email))`, p),
           // How each signup arrived. Tagged links classify by the UTM captured at
           // signup (drinkup = X profile bio link, join = the /join reply link,
           // referral = member link, anything else tagged = a paid ad link —
@@ -543,6 +553,7 @@ export function mountAdmin(app) {
           sessions: sessions.rows[0].n,
           drinkSessions: ds,
           signups: su,
+          welcomeReplies: welcomeReplies.rows[0].n,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
           joinPaths: joinPaths.rows[0],
           pageTiming: pageTiming.rows[0],
@@ -597,25 +608,12 @@ export function mountAdmin(app) {
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
       })();
 
-      const [totalSubs, welcomeReplies, daily] = await Promise.all([
+      const [totalSubs, daily] = await Promise.all([
         q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
-        // Active subscribers who replied to the WELCOME email specifically (subject
-        // "One last step so you don't miss the drop"). A reply keeps Friday's drop
-        // out of their spam, so it's the engagement signal. We match inbound
-        // messages whose subject contains the distinctive "one last step" phrase —
-        // apostrophe-free and case-insensitive, so it catches the "Re:" prefix and
-        // straight/curly-quote variants. norm_email lines up the gmail dot/+ forms.
-        // Reads 0 until the inbox sync is configured.
-        q(`SELECT COUNT(*)::int n FROM subscribers
-             WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
-               AND EXISTS (SELECT 1 FROM email_messages em
-                            WHERE em.direction = 'in'
-                              AND em.subject ILIKE '%one last step%'
-                              AND norm_email(em.customer_email) = norm_email(subscribers.email))`),
         dailyJob,
         ...winJobs,
       ]);
-      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, welcomeReplies: welcomeReplies.rows[0].n, daily });
+      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 

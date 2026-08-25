@@ -424,6 +424,10 @@ export async function ensureSchema() {
     -- (norm_email is IMMUTABLE, so it's indexable.)
     CREATE INDEX IF NOT EXISTS sub_norm_email_idx    ON subscribers (norm_email(email));
     CREATE INDEX IF NOT EXISTS orders_norm_email_idx ON orders      (norm_email(email));
+    -- Backs the Overview "replied to welcome" count: a partial functional index over
+    -- inbound messages' normalized sender, so the reply-email set is gathered from an
+    -- index instead of a full table scan and joins to subscribers on norm_email cheaply.
+    CREATE INDEX IF NOT EXISTS em_welcome_reply_idx  ON email_messages (norm_email(customer_email)) WHERE direction = 'in';
   `);
   console.log('[db] schema ready');
 

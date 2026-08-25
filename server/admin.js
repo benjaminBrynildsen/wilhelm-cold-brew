@@ -496,19 +496,19 @@ export function mountAdmin(app) {
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
             [w.from, w.to, DRINK_PAGES]),
           q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
-          // Of the signups in THIS window, how many replied to the welcome email
-          // ("one last step") — a cohort count so the box follows the
-          // today/7d/30d/all-time selector like the others. Reply comes shortly
-          // after signup, so cohort ≈ replied-in-window. 0 until the inbox syncs.
-          // The reply-email set is a NON-correlated subquery, so the email table is
-          // scanned once (it's tiny — only inbound customer mail) and hashed; the
-          // outer side is then just the window's subscribers probing that set — no
-          // per-subscriber rescan. (em_welcome_reply_idx backs the subject filter.)
+          // Subscribers whose welcome-email reply ("one last step") ARRIVED in this
+          // window — counted by the reply's timestamp, so "today" means replies
+          // received today (not people who signed up today). Follows the
+          // today/7d/30d/all-time selector. The reply set is a NON-correlated
+          // subquery, so the email table is scanned once (it's tiny — inbound
+          // customer mail only) and hashed; subscribers just probe that set — no
+          // per-subscriber rescan. 0 until the inbox sync has pulled the replies in.
           q(`SELECT COUNT(*)::int n FROM subscribers
-               WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}
+               WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
                  AND norm_email(email) IN (
                    SELECT norm_email(customer_email) FROM email_messages
-                    WHERE direction = 'in' AND subject ILIKE '%one last step%')`, p),
+                    WHERE direction = 'in' AND subject ILIKE '%one last step%'
+                      AND sent_at >= $1 AND sent_at < $2)`, p),
           // How each signup arrived. Tagged links classify by the UTM captured at
           // signup (drinkup = X profile bio link, join = the /join reply link,
           // referral = member link, anything else tagged = a paid ad link —
@@ -611,12 +611,18 @@ export function mountAdmin(app) {
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
       })();
 
-      const [totalSubs, daily] = await Promise.all([
+      const [totalSubs, welcomeRepliesTotal, daily] = await Promise.all([
         q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
+        // All-time welcome-reply total (window-independent), for the card's subline.
+        q(`SELECT COUNT(*)::int n FROM subscribers
+             WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
+               AND norm_email(email) IN (
+                 SELECT norm_email(customer_email) FROM email_messages
+                  WHERE direction = 'in' AND subject ILIKE '%one last step%')`),
         dailyJob,
         ...winJobs,
       ]);
-      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, daily });
+      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, welcomeRepliesTotal: welcomeRepliesTotal.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 

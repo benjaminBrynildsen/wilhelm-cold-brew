@@ -730,6 +730,7 @@ const OV_METRICS = [
   ['sessions', 'Sessions', '#3987e5', 0],
   ['drinkSessions', 'Drink visits', '#199e70', 0],
   ['signups', 'Signups', '#c98500', 0],
+  ['replies', 'Replies', '#2fa39a', 0],
   ['conversionPct', 'Conv. %', '#9085e9', 1],
   ['organicPct', 'Organic %', '#d55181', 1],
 ];
@@ -820,11 +821,12 @@ async function showOverview() {
         <td class="num">${num(r.sessions)}</td>
         <td class="num">${num(r.drinkSessions)}</td>
         <td class="num">${num(r.signups)}</td>
+        <td class="num">${num(r.replies || 0)}</td>
         <td class="num">${r.conversionPct}%</td>
         <td class="num">${r.organicPct === null || r.organicPct === undefined ? '—' : r.organicPct + '%'}</td></tr>`).join('');
     const dailyTable = dailyRows ? `
       <table><thead><tr><th>Day</th><th class="num">Sessions</th><th class="num">Drink visits</th>
-        <th class="num">Signups</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
+        <th class="num">Signups</th><th class="num">Replies</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
 
     // List ⇄ Dots ⇄ Line toggle. Both graph modes render one small panel per

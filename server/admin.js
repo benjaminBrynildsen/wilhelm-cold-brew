@@ -576,7 +576,12 @@ export function mountAdmin(app) {
         const fold = (byDay, rows, field) => rows.forEach((r) => { (byDay[r.day] = byDay[r.day] || {})[field] = r.n; });
         const slice = async (frag, params) => {
           const byDay = {};
-          const [s, d, j, org] = await Promise.all([
+          // Welcome replies per day are keyed off the REPLY's arrival (sent_at),
+          // not signup date or the page-view hour slice — so reuse the same date
+          // boundary on sent_at and skip hourFrag. Distinct sender per day.
+          const sentFrag = frag.replaceAll('created_at', 'sent_at');
+          const sentDayExpr = `TO_CHAR(sent_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
+          const [s, d, j, org, rep] = await Promise.all([
             q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE ${frag} ${EXCL_JE}${hourFrag} GROUP BY 1`, params),
             q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE ${frag} AND page = ANY($${params.length + 1}) ${EXCL_JE}${hourFrag} GROUP BY 1`, [...params, DRINK_PAGES]),
             q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE ${frag} ${EXCL_PV}${hourFrag} GROUP BY 1`, params),
@@ -592,9 +597,14 @@ export function mountAdmin(app) {
                    FROM subscribers s
                   WHERE ${frag.replaceAll('created_at', 's.created_at')} ${EXCL_PV}${hourFrag}
                ) t GROUP BY day`, params),
+            q(`SELECT ${sentDayExpr} AS day, COUNT(DISTINCT norm_email(customer_email))::int n
+                 FROM email_messages
+                WHERE direction = 'in' AND subject ILIKE '%one last step%' AND ${sentFrag}
+                GROUP BY 1`, params),
           ]);
           fold(byDay, s.rows, 'sessions'); fold(byDay, d.rows, 'drinkSessions');
           fold(byDay, j.rows, 'signups'); fold(byDay, org.rows, 'organic');
+          fold(byDay, rep.rows, 'replies');
           return byDay;
         };
         if (overviewDailyCache.key !== histKey) {
@@ -606,7 +616,8 @@ export function mountAdmin(app) {
             const ds = v.drinkSessions || 0, su = v.signups || 0, og = v.organic || 0;
             return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
                      conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
-                     organic: og, organicPct: su ? Math.round((100 * og) / su) : null };
+                     organic: og, organicPct: su ? Math.round((100 * og) / su) : null,
+                     replies: v.replies || 0 };
           })
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
       })();

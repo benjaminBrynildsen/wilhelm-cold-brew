@@ -2367,8 +2367,10 @@ async function showBotCatcher() {
     state.botUnseen = 0;
     paintBotBadges();
     const w = d.window || { bots: 0, rejected: 0, real: 0, total: 0, byReason: {} };
-    const botsAll = (w.bots || 0) + (w.rejected || 0);   // flagged (on list) + auto-rejected
-    const botRate = w.total ? Math.round((100 * botsAll) / w.total) : 0;
+    const bailed = (d.challenge && d.challenge.abandoned) || 0;    // saw the sub-2s prompt, never confirmed
+    const botsAll = (w.bots || 0) + (w.rejected || 0) + bailed;    // flagged + auto-rejected + bailed = every bot caught
+    const attemptsAll = (w.real || 0) + botsAll;                   // + real humans = all signup attempts
+    const botRate = attemptsAll ? Math.round((100 * botsAll) / attemptsAll) : 0;
     const br = w.byReason || {};
     const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst'], ['retry', br.retry, 'sent the retry flag']]
       .filter(([, n]) => n > 0).map(([, n, l]) => `${l} ${num(n)}`).join(' · ');
@@ -2385,43 +2387,43 @@ async function showBotCatcher() {
     const cards = `
       <div class="cards">
         <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
-        <div class="card"><div class="k">Bots caught</div><div class="v"${botsAll ? ' style="color:var(--bad)"' : ''}>${num(botsAll)}</div><div class="k2">${w.rejected ? `${num(w.rejected)} auto-rejected · ${num(w.bots)} flagged` : (reasonBits || 'none flagged')}${w.bots && w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} of the flagged replied — real</span>` : ''}</div></div>
-        <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(botsAll)} of ${num(w.total)} attempts</div></div>
+        <div class="card"><div class="k">Bots caught</div><div class="v"${botsAll ? ' style="color:var(--bad)"' : ''}>${num(botsAll)}</div><div class="k2">${[w.rejected && `${num(w.rejected)} auto-rejected`, w.bots && `${num(w.bots)} flagged`, bailed && `${num(bailed)} bailed`].filter(Boolean).join(' · ') || 'none caught'}${w.bots && w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} of the flagged replied — real</span>` : ''}</div></div>
+        <div class="card"><div class="k">Bot rate</div><div class="v">${attemptsAll ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(botsAll)} of ${num(attemptsAll)} attempts</div></div>
         <div class="card"><div class="k">Flagged & purchased</div><div class="v"${w.purchased ? ' style="color:var(--good)"' : ''}>${num(w.purchased || 0)}</div><div class="k2">${w.purchased ? 'flagged signups that bought — real, not bots' : 'none flagged here has purchased'}</div></div>
         <div class="card"><div class="k">Typical real signup</div><div class="v">${t.n ? secs(t.median) : '—'}</div><div class="k2">${t.n ? `median of ${num(t.n)} timed · fastest ${secs(t.fastest)}` : 'no timed signups yet'}</div></div>
         <div class="card"><div class="k">Challenge</div><div class="v"${chBailed ? ' style="color:var(--bad)"' : ''}>${chSaw ? num(chSaw) : '0'}</div><div class="k2">${chSaw ? `saw the prompt · <span style="color:var(--good)">${num(chThrough)} tapped through</span> · ${num(chBailed)} walked away` : 'no real visitor has hit the sub-2s prompt yet'}</div></div>
       </div>`;
-    // One list of every bot caught this window: the soft-flagged ones still on the
-    // list AND the definitive ones auto-rejected (never listed), sorted together.
+    // ONE list of every bot caught this window — soft-flagged (still on the list),
+    // auto-rejected (definitive, never listed), and bailed (saw the sub-2s prompt,
+    // never confirmed) — sorted together. A symbol marks each kind.
+    const SYM = {
+      reject: '<span title="Auto-rejected — definitive bot, never added to the list or counted" style="color:var(--bad,#c0574f);font-weight:800">⛔</span>',
+      bailed: '<span title="Bailed the ‘one more tap’ prompt — never confirmed, never joined" style="color:var(--dim)">🚫</span>',
+      flagged: '<span title="Flagged, but still on the list until you act" style="color:var(--gold,#e8c24a)">⚑</span>',
+    };
     const allBots = [
       ...d.rows.map((r) => ({ ...r, kind: 'flagged' })),
       ...(d.rejects || []).map((r) => ({ ...r, kind: 'reject' })),
+      ...(ch.rows || []).map((r) => ({ ...r, kind: 'bailed' })),
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const under7 = allBots.filter((r) => r.elapsed_ms != null && r.elapsed_ms < 7000).length;
     const rows = allBots.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
-        <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
-        <td style="word-break:break-all">${esc(r.email)}${r.kind === 'flagged' && r.replied ? ' <span style="color:var(--good);font-weight:700" title="This address replied to one of your emails — a real person, not a bot">✉ replied</span>' : ''}${r.kind === 'reject' ? ' <span style="color:var(--bad,#c0574f);font-weight:700;font-size:11px" title="Definitive bot — auto-rejected, never added to the list or counted">· rejected, not on list</span>' : ''}</td>
-        <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(botReasonLabel(f))}</span>`).join('<br/>')}</td>
+        <td style="white-space:nowrap">${SYM[r.kind] || ''} ${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
+        <td style="word-break:break-all">${esc(r.email)}${r.kind === 'flagged' && r.replied ? ' <span style="color:var(--good);font-weight:700" title="This address replied to one of your emails — a real person, not a bot">✉ replied</span>' : ''}</td>
+        <td>${r.kind === 'bailed' ? '<span class="note">bailed the challenge</span>' : String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(botReasonLabel(f))}</span>`).join('<br/>')}</td>
         <td class="num" style="white-space:nowrap">${r.elapsed_ms == null ? '<span class="note">—</span>'
           : `<span style="${r.elapsed_ms < 7000 ? 'color:var(--bad,#c0574f);font-weight:700' : 'color:var(--dim)'}" title="page-open → submit">${secs(r.elapsed_ms)}${r.elapsed_ms < 7000 ? ' ⚡' : ''}</span>`}</td>
-        <td>${r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>'}</td>
+        <td>${r.kind === 'bailed' ? '<span class="note">—</span>' : (r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>')}</td>
         <td class="num" style="white-space:nowrap">${r.kind === 'flagged'
           ? `<button class="btn ghost bc-keep" data-id="${r.id}" style="padding:2px 10px">Looks real</button>
              <button class="btn ghost bc-remove" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px;color:var(--bad,#c0574f)">Remove</button>`
-          : `<button class="btn ghost bc-restore" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px">Not a bot</button>`}</td></tr>`).join('');
+          : r.kind === 'reject'
+          ? `<button class="btn ghost bc-restore" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px">Not a bot</button>`
+          : ''}</td></tr>`).join('');
     content().innerHTML = winbar('botWin') + cards + `
-      <div class="note" style="margin:8px 0 12px">Every bot caught in this window. Rows marked <b style="color:var(--bad,#c0574f)">rejected, not on list</b> were definitive (invisible field + under 7s or the challenge) — auto-rejected, never counted, no alert; <b>Not a bot</b> restores one. The rest are soft-flagged and still on the list until you act: <b>Looks real</b> keeps them, <b>Remove</b> takes them off. <b>Speed</b> is page-open → submit; ⚡ under 7s${allBots.length ? ` (<b style="color:var(--bad,#c0574f)">${num(under7)}</b> of ${num(allBots.length)})` : ''}.${d.rejectsTotal ? ` ${num(d.rejectsTotal)} auto-rejected all-time.` : ''}${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
+      <div class="note" style="margin:8px 0 12px">Every bot caught in this window, in one list. <b style="color:var(--bad,#c0574f)">⛔ auto-rejected</b> — definitive (invisible field + under 7s or the challenge), never added or counted; <b>Not a bot</b> restores one. <b style="color:var(--dim)">🚫 bailed</b> — hit the “one more tap” prompt and never confirmed, so never joined. <b style="color:var(--gold,#e8c24a)">⚑ flagged</b> — still on the list until you act: <b>Looks real</b> keeps them, <b>Remove</b> takes them off. <b>Speed</b> is page-open → submit; ⚡ under 7s${allBots.length ? ` (<b style="color:var(--bad,#c0574f)">${num(under7)}</b> of ${num(allBots.length)})` : ''}.${d.rejectsTotal ? ` ${num(d.rejectsTotal)} auto-rejected all-time.` : ''}${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
       <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th class="num">Speed</th><th>Source</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="6">Nothing caught in this window.</td></tr>'}</tbody></table>
-      <h3 style="margin:30px 0 4px;font-size:16px">Bailed after the challenge</h3>
-      <div class="note" style="margin:0 0 12px">Submitted in under 2s, saw the “one more tap” prompt, and never confirmed — so they never landed on the list. The clearest sign the challenge is working: real people tap once more, most scripts don't.</div>
-      <table><thead><tr><th>When</th><th>Email typed</th><th>Speed</th><th>Country</th></tr></thead>
-        <tbody>${(ch.rows || []).map((r) => `<tr>
-          <td>${ago(r.created_at)}</td>
-          <td style="word-break:break-all">${esc(r.email)}</td>
-          <td style="color:var(--bad)">${secs(r.elapsed_ms)}</td>
-          <td>${r.country ? esc(r.country) : '<span class="note">—</span>'}</td>
-        </tr>`).join('') || '<tr><td class="note" colspan="4">Nobody bailed the challenge in this window.</td></tr>'}</tbody></table>`;
+        <tbody>${rows || '<tr><td class="note" colspan="6">Nothing caught in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showBotCatcher, 'botWin');
     document.querySelectorAll('.bc-restore').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm(`Restore ${b.dataset.email} to the list?\n\nThis adds them as a real subscriber and sends the welcome email.`)) return;

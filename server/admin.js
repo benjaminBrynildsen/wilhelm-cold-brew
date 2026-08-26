@@ -409,8 +409,13 @@ export function mountAdmin(app) {
                   SELECT 1 FROM orders o WHERE o.status = 'paid'
                     AND norm_email(o.email) = norm_email(s.email)))::int purchased
            FROM subscribers s WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
+      // Definitive bots auto-rejected in this window (never entered subscribers) —
+      // so "bots caught" and the bot rate can include them, not just the flagged.
+      const rejected = (await q(
+        `SELECT COUNT(*)::int n FROM bot_rejects WHERE created_at >= $1 AND created_at < $2`, p)).rows[0].n;
       const window = {
-        key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real, replied: agg.replied, purchased: agg.purchased,
+        key: w.key, bots: agg.bots, rejected, real: agg.real, total: agg.bots + agg.real + rejected,
+        replied: agg.replied, purchased: agg.purchased,
         byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted, disposable: agg.disposable, ipburst: agg.ipburst, retry: agg.retry },
       };
       // How long REAL humans actually take to sign up (elapsed_ms now logged on

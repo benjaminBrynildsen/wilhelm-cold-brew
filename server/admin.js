@@ -434,7 +434,7 @@ export function mountAdmin(app) {
           WHERE confirmed = FALSE AND created_at >= $1 AND created_at < $2
           ORDER BY created_at DESC LIMIT 200`, p)).rows;
       const rows = (await q(
-        `SELECT s.id, s.email, s.created_at, s.bot_flag, s.variant, s.utm_source, s.utm_campaign, s.utm_content, s.country,
+        `SELECT s.id, s.email, s.created_at, s.bot_flag, s.variant, s.utm_source, s.utm_campaign, s.utm_content, s.country, s.elapsed_ms,
                 (s.bot_seen_at IS NULL) AS was_new,
                 ${repliedExpr} AS replied
            FROM subscribers s

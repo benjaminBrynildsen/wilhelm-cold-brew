@@ -821,12 +821,13 @@ async function showOverview() {
         <td class="num">${num(r.sessions)}</td>
         <td class="num">${num(r.drinkSessions)}</td>
         <td class="num">${num(r.signups)}</td>
+        <td class="num"${r.actual != null && r.signups && r.actual < r.signups ? ' title="' + (r.signups - r.actual) + ' flagged as bots this day"' : ''}>${num(r.actual != null ? r.actual : r.signups)}</td>
         <td class="num">${num(r.replies || 0)}</td>
         <td class="num">${r.conversionPct}%</td>
         <td class="num">${r.organicPct === null || r.organicPct === undefined ? '—' : r.organicPct + '%'}</td></tr>`).join('');
     const dailyTable = dailyRows ? `
       <table><thead><tr><th>Day</th><th class="num">Sessions</th><th class="num">Drink visits</th>
-        <th class="num">Signups</th><th class="num">Replies</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
+        <th class="num">Signups</th><th class="num" title="Actual = signups that were NOT flagged as bots (real people). It drops the soft-flagged ones still on the list (invisible-field, too-fast, gmail-alias, throwaway-domain, etc.); the definitive bots were auto-rejected and never counted as signups in the first place." style="cursor:help">Actual&nbsp;ⓘ</th><th class="num">Replies</th><th class="num">Conv.</th><th class="num">Organic</th></tr></thead>
         <tbody>${dailyRows}</tbody></table>` : '';
 
     // List ⇄ Dots ⇄ Line toggle. Both graph modes render one small panel per

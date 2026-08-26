@@ -7,7 +7,7 @@ import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
-import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
+import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import { xadsEnabled, xadsSummary } from './xads.js';
 import {
@@ -364,10 +364,12 @@ export function mountAdmin(app) {
       const r = await q(`SELECT COUNT(*)::int n FROM subscribers
         WHERE (created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date ${EXCL_PV}`);
       // Piggyback the Bot Catcher unseen count on this minute-poll so the red
-      // tab badge stays live without a second timer.
-      const b = await q(`SELECT COUNT(*)::int n FROM subscribers
-        WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL`);
-      res.json({ signups: r.rows[0].n, botUnseen: b.rows[0].n });
+      // tab badge stays live without a second timer. Includes hard-rejected bots
+      // (bot_rejects) so the badge notifies us about those too.
+      const b = await q(`SELECT
+          (SELECT COUNT(*) FROM subscribers WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL)
+        + (SELECT COUNT(*) FROM bot_rejects WHERE seen_at IS NULL) AS n`);
+      res.json({ signups: r.rows[0].n, botUnseen: Number(b.rows[0].n) });
     } catch (e) { console.error('[signups-today]', e); res.status(500).json({ error: e.message }); }
   });
 
@@ -402,10 +404,13 @@ export function mountAdmin(app) {
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%disposable%')::int disposable,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%ip-burst%')::int ipburst,
                 COUNT(*) FILTER (WHERE ${isBot} AND bot_flag LIKE '%retry%')::int retry,
-                COUNT(*) FILTER (WHERE ${isBot} AND ${repliedExpr})::int replied
+                COUNT(*) FILTER (WHERE ${isBot} AND ${repliedExpr})::int replied,
+                COUNT(*) FILTER (WHERE ${isBot} AND EXISTS (
+                  SELECT 1 FROM orders o WHERE o.status = 'paid'
+                    AND norm_email(o.email) = norm_email(s.email)))::int purchased
            FROM subscribers s WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}`, p)).rows[0];
       const window = {
-        key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real, replied: agg.replied,
+        key: w.key, bots: agg.bots, real: agg.real, total: agg.bots + agg.real, replied: agg.replied, purchased: agg.purchased,
         byReason: { honeypot: agg.honeypot, instant: agg.instant, dotted: agg.dotted, disposable: agg.disposable, ipburst: agg.ipburst, retry: agg.retry },
       };
       // How long REAL humans actually take to sign up (elapsed_ms now logged on
@@ -448,7 +453,18 @@ export function mountAdmin(app) {
       const cleared = (await q(
         `SELECT COUNT(*)::int n FROM subscribers WHERE bot_flag = 'cleared'`)).rows[0].n;
       const challenge = { abandoned: abandonedCount, confirmed: confirmedCount, rows: abandoned };
-      res.json({ window, rows, cleared, timing, challenge });
+      // Hard-rejected bots (honeypot + under 7s) for this window — never on the
+      // list, shown here only. was_new marks the just-arrived ones like the flagged
+      // table; opening the tab clears their unseen state (all windows) too.
+      const rejects = (await q(
+        `SELECT id, email, bot_flag, elapsed_ms, country, variant, utm_source, utm_content, created_at,
+                (seen_at IS NULL) AS was_new
+           FROM bot_rejects
+          WHERE created_at >= $1 AND created_at < $2
+          ORDER BY created_at DESC LIMIT 200`, p)).rows;
+      const rejectsTotal = (await q(`SELECT COUNT(*)::int n FROM bot_rejects`)).rows[0].n;
+      await q(`UPDATE bot_rejects SET seen_at = now() WHERE seen_at IS NULL`);
+      res.json({ window, rows, cleared, timing, challenge, rejects, rejectsTotal });
     } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
   });
 
@@ -472,6 +488,28 @@ export function mountAdmin(app) {
       if (!r.rows.length) return res.status(404).json({ error: 'not found' });
       res.json({ ok: true, removed: r.rows[0].email });
     } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Escape hatch: a hard-rejected bot was actually a real person. Promote it onto
+  // the list (flagged 'cleared' so it never re-flags), send the welcome it never
+  // got, and drop the reject record.
+  app.post('/api/admin/botcatcher/reject/:id/restore', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rej = (await q(`SELECT * FROM bot_rejects WHERE id = $1`, [parseInt(req.params.id, 10) || 0])).rows[0];
+      if (!rej) return res.status(404).json({ error: 'not found' });
+      await q(
+        `INSERT INTO subscribers (email, variant, source, ip_hash, country, utm_source, utm_campaign, utm_content, bot_flag, elapsed_ms)
+         VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,'cleared',$8)
+         ON CONFLICT (email) DO UPDATE SET bot_flag = 'cleared'`,
+        [rej.email, rej.variant, rej.ip_hash, rej.country, rej.utm_source, rej.utm_campaign, rej.utm_content, rej.elapsed_ms]);
+      await q(`DELETE FROM bot_rejects WHERE id = $1`, [rej.id]);
+      if (rej.email) {
+        sendWelcome(rej.email).catch((e) => console.warn('[botcatcher/restore] welcome failed:', e?.message || e));
+        mcPushSignup(rej.email);
+      }
+      res.json({ ok: true, restored: rej.email });
+    } catch (e) { console.error('[botcatcher/restore]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── overview ─────────

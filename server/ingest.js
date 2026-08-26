@@ -111,6 +111,20 @@ export async function subscribe(req, res) {
   const smsConsent = req.body?.smsConsent === true;
   const phone = smsConsent ? normalizePhone(req.body?.phone) : null;
   const smsOptIn = smsConsent && !!phone;
+
+  // Hard bot: the invisible honeypot was filled AND the submit came in under 7s.
+  // No human can do the first, and the pairing is conclusive — so this never
+  // enters the list: no subscriber row, no signup count, no welcome, no alert to
+  // us. We log it to bot_rejects instead, so the Bot Catcher still shows it (and
+  // badges it) as caught. Answer ok so the bot learns nothing from the response.
+  const hardBot = !!hp && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 7000;
+  if (hardBot) {
+    q(`INSERT INTO bot_rejects (email, bot_flag, elapsed_ms, ip_hash, country, variant, utm_source, utm_campaign, utm_content)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [email, botFlag, elapsedVal, hashIp(getClientIp(req)), countryFrom(req), variant, utm_source, utm_campaign, utm_content])
+      .catch((e) => console.warn('[subscribe] bot reject insert failed:', e?.message || e));
+    return res.json({ ok: true });
+  }
   try {
     const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country,

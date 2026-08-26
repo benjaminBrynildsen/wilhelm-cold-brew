@@ -179,6 +179,26 @@ export async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS challenge_created_idx ON challenge_attempts (created_at);
     CREATE INDEX IF NOT EXISTS challenge_session_idx ON challenge_attempts (session_id);
+    -- Hard-rejected bots: a signup that filled the invisible honeypot AND submitted
+    -- in under 7s is conclusively automated, so it never enters subscribers — no
+    -- list row, no signup count, no welcome, no alert. It's logged HERE instead, so
+    -- the Bot Catcher can still show it (and badge it) without polluting any metric.
+    -- seen_at drives the same unseen badge as flagged subscribers.
+    CREATE TABLE IF NOT EXISTS bot_rejects (
+      id           BIGSERIAL PRIMARY KEY,
+      email        TEXT,
+      bot_flag     TEXT,
+      elapsed_ms   INTEGER,
+      ip_hash      TEXT,
+      country      TEXT,
+      variant      TEXT,
+      utm_source   TEXT,
+      utm_campaign TEXT,
+      utm_content  TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      seen_at      TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS bot_rejects_created_idx ON bot_rejects (created_at);
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,

@@ -2385,6 +2385,7 @@ async function showBotCatcher() {
         <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
         <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}${w.bots ? (w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} actually replied — real</span>` : '<br/>none replied — consistent with bots') : ''}</div></div>
         <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(w.bots)} of ${num(w.total)} signups</div></div>
+        <div class="card"><div class="k">Flagged & purchased</div><div class="v"${w.purchased ? ' style="color:var(--good)"' : ''}>${num(w.purchased || 0)}</div><div class="k2">${w.purchased ? 'flagged signups that bought — real, not bots' : 'none flagged here has purchased'}</div></div>
         <div class="card"><div class="k">Typical real signup</div><div class="v">${t.n ? secs(t.median) : '—'}</div><div class="k2">${t.n ? `median of ${num(t.n)} timed · fastest ${secs(t.fastest)}` : 'no timed signups yet'}</div></div>
         <div class="card"><div class="k">Challenge</div><div class="v"${chBailed ? ' style="color:var(--bad)"' : ''}>${chSaw ? num(chSaw) : '0'}</div><div class="k2">${chSaw ? `saw the prompt · <span style="color:var(--good)">${num(chThrough)} tapped through</span> · ${num(chBailed)} walked away` : 'no real visitor has hit the sub-2s prompt yet'}</div></div>
       </div>`;
@@ -2412,8 +2413,25 @@ async function showBotCatcher() {
           <td style="word-break:break-all">${esc(r.email)}</td>
           <td style="color:var(--bad)">${secs(r.elapsed_ms)}</td>
           <td>${r.country ? esc(r.country) : '<span class="note">—</span>'}</td>
-        </tr>`).join('') || '<tr><td class="note" colspan="4">Nobody bailed the challenge in this window.</td></tr>'}</tbody></table>`;
+        </tr>`).join('') || '<tr><td class="note" colspan="4">Nobody bailed the challenge in this window.</td></tr>'}</tbody></table>
+
+      <h3 style="margin:30px 0 4px;font-size:16px">Auto-rejected bots${d.rejectsTotal ? ` <span class="note">— ${num(d.rejectsTotal)} all-time</span>` : ''}</h3>
+      <div class="note" style="margin:0 0 12px">Filled the invisible field <b>and</b> submitted in under 7 seconds — a definitive bot, so it was never added to the list, never counted as a signup, and no alert was sent. Logged here only. <b>Not a bot</b> restores one to the list and sends its welcome (for the rare false positive).</div>
+      <table><thead><tr><th>When</th><th>Email typed</th><th>Why</th><th class="num">Speed</th><th>Source</th><th></th></tr></thead>
+        <tbody>${(d.rejects || []).map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
+          <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
+          <td style="word-break:break-all">${esc(r.email)}</td>
+          <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(botReasonLabel(f))}</span>`).join('<br/>')}</td>
+          <td class="num" style="white-space:nowrap;color:var(--bad,#c0574f);font-weight:700">${secs(r.elapsed_ms)}${r.elapsed_ms != null && r.elapsed_ms < 7000 ? ' ⚡' : ''}</td>
+          <td>${r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>'}</td>
+          <td class="num" style="white-space:nowrap"><button class="btn ghost bc-restore" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px">Not a bot</button></td>
+        </tr>`).join('') || '<tr><td class="note" colspan="6">No auto-rejected bots in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showBotCatcher, 'botWin');
+    document.querySelectorAll('.bc-restore').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm(`Restore ${b.dataset.email} to the list?\n\nThis adds them as a real subscriber and sends the welcome email.`)) return;
+      try { await api(`/api/admin/botcatcher/reject/${b.dataset.id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }
+      catch (e) { alert('Failed: ' + e.message); }
+    }));
     document.querySelectorAll('.bc-keep').forEach((b) => b.addEventListener('click', async () => {
       try { await api(`/api/admin/botcatcher/${b.dataset.id}/keep`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }
       catch (e) { alert('Failed: ' + e.message); }

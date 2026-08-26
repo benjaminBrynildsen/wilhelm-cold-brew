@@ -619,7 +619,7 @@ export function mountAdmin(app) {
           // boundary on sent_at and skip hourFrag. Distinct sender per day.
           const sentFrag = frag.replaceAll('created_at', 'sent_at');
           const sentDayExpr = `TO_CHAR(sent_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD')`;
-          const [s, d, j, org, rep] = await Promise.all([
+          const [s, d, j, org, rep, real] = await Promise.all([
             q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE ${frag} ${EXCL_JE}${hourFrag} GROUP BY 1`, params),
             q(`SELECT ${dayExpr} AS day, COUNT(DISTINCT session_id)::int n FROM journey_events WHERE ${frag} AND page = ANY($${params.length + 1}) ${EXCL_JE}${hourFrag} GROUP BY 1`, [...params, DRINK_PAGES]),
             q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers WHERE ${frag} ${EXCL_PV}${hourFrag} GROUP BY 1`, params),
@@ -639,10 +639,16 @@ export function mountAdmin(app) {
                  FROM email_messages
                 WHERE direction = 'in' AND subject ILIKE '%one last step%' AND ${sentFrag}
                 GROUP BY 1`, params),
+            // "Actual" real signups per day: those NOT flagged as a bot (never
+            // flagged, or cleared as real). Hard-rejected bots aren't in
+            // subscribers at all, so this drops the remaining soft-flagged ones.
+            q(`SELECT ${dayExpr} AS day, COUNT(*)::int n FROM subscribers
+                WHERE ${frag} AND (bot_flag IS NULL OR bot_flag = 'cleared') ${EXCL_PV}${hourFrag}
+                GROUP BY 1`, params),
           ]);
           fold(byDay, s.rows, 'sessions'); fold(byDay, d.rows, 'drinkSessions');
           fold(byDay, j.rows, 'signups'); fold(byDay, org.rows, 'organic');
-          fold(byDay, rep.rows, 'replies');
+          fold(byDay, rep.rows, 'replies'); fold(byDay, real.rows, 'real');
           return byDay;
         };
         if (overviewDailyCache.key !== histKey) {
@@ -655,7 +661,7 @@ export function mountAdmin(app) {
             return { day, sessions: v.sessions || 0, drinkSessions: ds, signups: su,
                      conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
                      organic: og, organicPct: su ? Math.round((100 * og) / su) : null,
-                     replies: v.replies || 0 };
+                     replies: v.replies || 0, actual: v.real || 0 };
           })
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
       })();

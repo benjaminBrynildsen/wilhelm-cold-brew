@@ -2366,8 +2366,9 @@ async function showBotCatcher() {
     const d = await api('/api/admin/botcatcher' + funnelQuery('botWin'));
     state.botUnseen = 0;
     paintBotBadges();
-    const w = d.window || { bots: 0, real: 0, total: 0, byReason: {} };
-    const botRate = w.total ? Math.round((100 * w.bots) / w.total) : 0;
+    const w = d.window || { bots: 0, rejected: 0, real: 0, total: 0, byReason: {} };
+    const botsAll = (w.bots || 0) + (w.rejected || 0);   // flagged (on list) + auto-rejected
+    const botRate = w.total ? Math.round((100 * botsAll) / w.total) : 0;
     const br = w.byReason || {};
     const reasonBits = [['honeypot', br.honeypot, 'invisible field'], ['instant', br.instant, 'too fast'], ['dotted', br.dotted, 'gmail alias'], ['disposable', br.disposable, 'throwaway domain'], ['ipburst', br.ipburst, 'device burst'], ['retry', br.retry, 'sent the retry flag']]
       .filter(([, n]) => n > 0).map(([, n, l]) => `${l} ${num(n)}`).join(' · ');
@@ -2384,8 +2385,8 @@ async function showBotCatcher() {
     const cards = `
       <div class="cards">
         <div class="card"><div class="k">Real signups</div><div class="v"${w.real ? ' style="color:var(--good)"' : ''}>${num(w.real)}</div><div class="k2">humans in this window</div></div>
-        <div class="card"><div class="k">Bots caught</div><div class="v"${w.bots ? ' style="color:var(--bad)"' : ''}>${num(w.bots)}</div><div class="k2">${reasonBits || 'none flagged'}${w.bots ? (w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} actually replied — real</span>` : '<br/>none replied — consistent with bots') : ''}</div></div>
-        <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(w.bots)} of ${num(w.total)} signups</div></div>
+        <div class="card"><div class="k">Bots caught</div><div class="v"${botsAll ? ' style="color:var(--bad)"' : ''}>${num(botsAll)}</div><div class="k2">${w.rejected ? `${num(w.rejected)} auto-rejected · ${num(w.bots)} flagged` : (reasonBits || 'none flagged')}${w.bots && w.replied ? `<br/><span style="color:var(--good)">${num(w.replied)} of the flagged replied — real</span>` : ''}</div></div>
+        <div class="card"><div class="k">Bot rate</div><div class="v">${w.total ? botRate + '<small>%</small>' : '—'}</div><div class="k2">${num(botsAll)} of ${num(w.total)} attempts</div></div>
         <div class="card"><div class="k">Flagged & purchased</div><div class="v"${w.purchased ? ' style="color:var(--good)"' : ''}>${num(w.purchased || 0)}</div><div class="k2">${w.purchased ? 'flagged signups that bought — real, not bots' : 'none flagged here has purchased'}</div></div>
         <div class="card"><div class="k">Typical real signup</div><div class="v">${t.n ? secs(t.median) : '—'}</div><div class="k2">${t.n ? `median of ${num(t.n)} timed · fastest ${secs(t.fastest)}` : 'no timed signups yet'}</div></div>
         <div class="card"><div class="k">Challenge</div><div class="v"${chBailed ? ' style="color:var(--bad)"' : ''}>${chSaw ? num(chSaw) : '0'}</div><div class="k2">${chSaw ? `saw the prompt · <span style="color:var(--good)">${num(chThrough)} tapped through</span> · ${num(chBailed)} walked away` : 'no real visitor has hit the sub-2s prompt yet'}</div></div>

@@ -112,12 +112,17 @@ export async function subscribe(req, res) {
   const phone = smsConsent ? normalizePhone(req.body?.phone) : null;
   const smsOptIn = smsConsent && !!phone;
 
-  // Hard bot: the invisible honeypot was filled AND the submit came in under 7s.
-  // No human can do the first, and the pairing is conclusive — so this never
-  // enters the list: no subscriber row, no signup count, no welcome, no alert to
-  // us. We log it to bot_rejects instead, so the Bot Catcher still shows it (and
-  // badges it) as caught. Answer ok so the bot learns nothing from the response.
-  const hardBot = !!hp && Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 7000;
+  // Hard bot: the invisible honeypot was filled AND either the submit came in
+  // under 7s OR it went through the sub-2s "one more tap" challenge (the retry
+  // flag). No human fills the honeypot, and the challenge only ever fires on an
+  // impossibly-fast first submit — so honeypot + (under-7s OR challenged) is
+  // conclusive. It never enters the list: no subscriber row, no signup count, no
+  // welcome, no alert. We log it to bot_rejects so the Bot Catcher still shows and
+  // badges it. Answer ok so the bot learns nothing from the response. (A challenge
+  // WITHOUT the honeypot is left alone — that soft path exists to let a rare
+  // fast-but-real person through; only the honeypot combo is auto-rejected.)
+  const challenged = req.body?.challenged === true;
+  const hardBot = !!hp && (challenged || (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 7000));
   if (hardBot) {
     q(`INSERT INTO bot_rejects (email, bot_flag, elapsed_ms, ip_hash, country, variant, utm_source, utm_campaign, utm_content)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,

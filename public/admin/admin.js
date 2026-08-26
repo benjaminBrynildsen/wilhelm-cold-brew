@@ -2416,7 +2416,7 @@ async function showBotCatcher() {
         </tr>`).join('') || '<tr><td class="note" colspan="4">Nobody bailed the challenge in this window.</td></tr>'}</tbody></table>
 
       <h3 style="margin:30px 0 4px;font-size:16px">Auto-rejected bots${d.rejectsTotal ? ` <span class="note">— ${num(d.rejectsTotal)} all-time</span>` : ''}</h3>
-      <div class="note" style="margin:0 0 12px">Filled the invisible field <b>and</b> submitted in under 7 seconds — a definitive bot, so it was never added to the list, never counted as a signup, and no alert was sent. Logged here only. <b>Not a bot</b> restores one to the list and sends its welcome (for the rare false positive).</div>
+      <div class="note" style="margin:0 0 12px">Filled the invisible field <b>and</b> either submitted in under 7 seconds <b>or</b> pushed through the “one more tap” prompt — a definitive bot, so it was never added to the list, never counted as a signup, and no alert was sent. Logged here only. <b>Not a bot</b> restores one to the list and sends its welcome (for the rare false positive).</div>
       <table><thead><tr><th>When</th><th>Email typed</th><th>Why</th><th class="num">Speed</th><th>Source</th><th></th></tr></thead>
         <tbody>${(d.rejects || []).map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
           <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>

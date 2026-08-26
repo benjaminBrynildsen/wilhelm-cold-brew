@@ -2388,19 +2388,22 @@ async function showBotCatcher() {
         <div class="card"><div class="k">Typical real signup</div><div class="v">${t.n ? secs(t.median) : '—'}</div><div class="k2">${t.n ? `median of ${num(t.n)} timed · fastest ${secs(t.fastest)}` : 'no timed signups yet'}</div></div>
         <div class="card"><div class="k">Challenge</div><div class="v"${chBailed ? ' style="color:var(--bad)"' : ''}>${chSaw ? num(chSaw) : '0'}</div><div class="k2">${chSaw ? `saw the prompt · <span style="color:var(--good)">${num(chThrough)} tapped through</span> · ${num(chBailed)} walked away` : 'no real visitor has hit the sub-2s prompt yet'}</div></div>
       </div>`;
+    const under7 = d.rows.filter((r) => r.elapsed_ms != null && r.elapsed_ms < 7000).length;
     const rows = d.rows.map((r) => `<tr${r.was_new ? ' style="background:rgba(200,60,40,.07)"' : ''}>
         <td>${ago(r.created_at)}${r.was_new ? ' <span class="redbadge">new</span>' : ''}</td>
         <td style="word-break:break-all">${esc(r.email)}${r.replied ? ' <span style="color:var(--good);font-weight:700" title="This address replied to one of your emails — a real person, not a bot">✉ replied</span>' : ''}</td>
         <td>${String(r.bot_flag || '').split(',').map((f) => `<span class="note">${esc(botReasonLabel(f))}</span>`).join('<br/>')}</td>
+        <td class="num" style="white-space:nowrap">${r.elapsed_ms == null ? '<span class="note">—</span>'
+          : `<span style="${r.elapsed_ms < 7000 ? 'color:var(--bad,#c0574f);font-weight:700' : 'color:var(--dim)'}" title="page-open → submit">${secs(r.elapsed_ms)}${r.elapsed_ms < 7000 ? ' ⚡' : ''}</span>`}</td>
         <td>${r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>'}</td>
         <td class="num" style="white-space:nowrap">
           <button class="btn ghost bc-keep" data-id="${r.id}" style="padding:2px 10px">Looks real</button>
           <button class="btn ghost bc-remove" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px;color:var(--bad,#c0574f)">Remove</button>
         </td></tr>`).join('');
     content().innerHTML = winbar('botWin') + cards + `
-      <div class="note" style="margin:8px 0 12px">Signups that tripped a bot signal in this window. Nothing here was rejected — they're on the list and counted until you remove them. <b>Looks real</b> keeps them and stops flagging that address; <b>Remove</b> takes them off the list (welcome email already went out, but they'll get no future sends).${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
-      <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th>Source</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td class="note" colspan="5">Nothing caught in this window.</td></tr>'}</tbody></table>
+      <div class="note" style="margin:8px 0 12px">Signups that tripped a bot signal in this window. <b>Speed</b> is page-open → submit; ⚡ marks under 7 seconds${d.rows.length ? ` (<b style="color:var(--bad,#c0574f)">${num(under7)}</b> of ${num(d.rows.length)} here)` : ''}. Nothing here was rejected — they're on the list and counted until you remove them. <b>Looks real</b> keeps them and stops flagging that address; <b>Remove</b> takes them off the list (welcome email already went out, but they'll get no future sends).${d.cleared ? ` <span class="note">${num(d.cleared)} previously marked real.</span>` : ''}</div>
+      <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th class="num">Speed</th><th>Source</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td class="note" colspan="6">Nothing caught in this window.</td></tr>'}</tbody></table>
       <h3 style="margin:30px 0 4px;font-size:16px">Bailed after the challenge</h3>
       <div class="note" style="margin:0 0 12px">Submitted in under 2s, saw the “one more tap” prompt, and never confirmed — so they never landed on the list. The clearest sign the challenge is working: real people tap once more, most scripts don't.</div>
       <table><thead><tr><th>When</th><th>Email typed</th><th>Speed</th><th>Country</th></tr></thead>

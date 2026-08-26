@@ -60,6 +60,11 @@ const PAGE_T0 = (window.performance && performance.now) ? performance.now() : Da
 // rare autofill) gets one "try again" before we accept it. Flipped true once the
 // challenge has been shown, so the accepted second submit carries challenged:true.
 let wasChallenged = false;
+// The page-open→submit time of the FIRST (impossibly-fast) attempt, captured when
+// the challenge fires. We report THIS as the speed for a challenged signup instead
+// of the second submit — otherwise our own 5s "one more tap" hold inflates it to
+// ~5s and hides the real sub-2s bot signal.
+let challengeFirstElapsedMs = null;
 function elapsedMs() {
   const nowMs = (window.performance && performance.now) ? performance.now() : Date.now();
   return Math.round(nowMs - PAGE_T0);
@@ -67,7 +72,8 @@ function elapsedMs() {
 function botSignals() {
   let hp = '';
   document.querySelectorAll('.optin-hp').forEach((el) => { if (el.value) hp = String(el.value).slice(0, 100); });
-  return { hp, elapsed_ms: elapsedMs(), challenged: wasChallenged };
+  const elapsed = (wasChallenged && challengeFirstElapsedMs != null) ? challengeFirstElapsedMs : elapsedMs();
+  return { hp, elapsed_ms: elapsed, challenged: wasChallenged };
 }
 
 // Fire the moment the soft-challenge modal is shown, so the server can record
@@ -456,7 +462,8 @@ function funnel(event, props) {
       // Catcher. Only fires once per visit.
       if (!wasChallenged && elapsedMs() < 2000) {
         wasChallenged = true;
-        funnel('challenge_shown', { variant: VARIANT, elapsed_ms: elapsedMs() });
+        challengeFirstElapsedMs = elapsedMs();   // the real (sub-2s) speed, before our 5s hold
+        funnel('challenge_shown', { variant: VARIANT, elapsed_ms: challengeFirstElapsedMs });
         recordChallengeAttempt(email);
         showChallengeModal(form, looksSuspicious(email));
         return;

@@ -2627,6 +2627,11 @@ async function showEmail() {
         <span class="note">two-way — needs MAILCHIMP_API_KEY set on the server</span>
       </div>
       ${mcSyncLine}
+      <div class="row-actions" style="margin-top:12px">
+        <button class="btn" id="mc-sms">Sync SMS contacts to Mailchimp</button>
+        <span class="note">pushes everyone who opted into texts; shows Mailchimp's exact reason if any are rejected</span>
+      </div>
+      <div class="note" id="mc-sms-msg" style="white-space:pre-wrap;margin-top:6px"></div>
       <textarea id="mc-paste" rows="4" placeholder="…or paste unsubscribed addresses / the whole Mailchimp export here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:10px;display:block"></textarea>
       <div class="row-actions" style="margin-top:8px">
         <button class="btn" id="mc-preview">Preview</button>
@@ -2678,6 +2683,7 @@ async function showEmail() {
       if (r.audiences) lines.push('Checked Mailchimp audience' + (r.audiences.length > 1 ? 's' : '') + ': ' + r.audiences.map((a) => `${a.name} (${num(a.fetched)} opted out/bounced)`).join(', '));
       if (r.push) {
         lines.push(`Pushed to Mailchimp (${r.push.audience}): ${num(r.push.added)} missing signups added, ${num(r.push.optedOut)} of our unsubscribes opted out there.`);
+        if (r.push.smsAdded) lines.push(`📱 ${num(r.push.smsAdded)} SMS opt-in${r.push.smsAdded === 1 ? '' : 's'} synced to Mailchimp.`);
         if (r.push.errorCount) lines.push(`⚠ ${num(r.push.errorCount)} address${r.push.errorCount === 1 ? '' : 'es'} Mailchimp wouldn't accept (invalid or fake — they stay on your Wilhelm list, they just can't sync to Mailchimp): ${mcList(r.push.errors)}`);
       }
       return lines.join('\n');
@@ -2712,6 +2718,29 @@ async function showEmail() {
         }
         await mcFinish(mcSummary(r));
       } catch (e) { mcMsg.textContent = 'Sync failed: ' + e.message; }
+    });
+    // Dedicated SMS push — surfaces Mailchimp's exact rejection so a silent
+    // "0 SMS contacts" problem becomes a readable reason.
+    const smsBtn = document.getElementById('mc-sms');
+    const smsMsg = document.getElementById('mc-sms-msg');
+    if (smsBtn) smsBtn.addEventListener('click', async () => {
+      smsBtn.disabled = true; smsMsg.textContent = 'Pushing SMS contacts to Mailchimp…';
+      try {
+        const r = await mcPost('/api/admin/mailchimp/sms-sync');
+        const out = [];
+        out.push(`Audience: ${r.audience}`);
+        out.push(`Pushed ${num(r.pushed)} of ${num(r.attempted)} pending · ${num(r.synced)} SMS contacts now synced${r.stillPending ? ` · ${num(r.stillPending)} still pending` : ''}.`);
+        if (r.failed) {
+          out.push(`⚠ ${num(r.failed)} rejected by Mailchimp — exact reason${r.failed === 1 ? '' : 's'}:`);
+          out.push(...r.errors.map((e) => `  • ${e.email} (${e.phone || 'no #'}): ${e.detail}`));
+        } else if (!r.attempted) {
+          out.push('Nothing pending — every SMS opt-in is already synced (or none have a stored number).');
+        } else {
+          out.push('All good — no rejections. Give Mailchimp a minute to show them under SMS subscribers.');
+        }
+        smsMsg.textContent = out.join('\n');
+      } catch (e) { smsMsg.textContent = 'SMS sync failed: ' + e.message; }
+      finally { smsBtn.disabled = false; }
     });
 
     document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });

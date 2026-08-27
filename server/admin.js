@@ -7,7 +7,7 @@ import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
-import { mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
+import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import { xadsEnabled, xadsSummary } from './xads.js';
 import {
@@ -1228,6 +1228,54 @@ export function mountAdmin(app) {
       const fmt = (r) => (r ? { at: r.updated_at, ...(r.value || {}) } : null);
       res.json({ manual: fmt(byKey.mc_sync_manual), auto: fmt(byKey.mc_sync_auto), holdActive: isDropDayHold() });
     } catch (e) { console.error('[mailchimp-status]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Push every not-yet-synced SMS opt-in to Mailchimp on demand, and — unlike the
+  // full sync — return the RAW Mailchimp rejection per failure (not a collapsed
+  // reason), plus the audience it targeted. This is the diagnostic when the SMS
+  // contacts aren't showing up in Mailchimp: the detail string says exactly why
+  // (audience not SMS-enabled, bad number format, etc.). GET reports the backlog
+  // without pushing; POST does the push.
+  const smsSyncState = async () => {
+    const pend = (await q(`SELECT LOWER(email) email, phone FROM subscribers
+       WHERE sms_consent = TRUE AND phone IS NOT NULL AND sms_synced_at IS NULL
+         AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}
+       ORDER BY sms_consent_at ASC NULLS LAST`)).rows;
+    const counts = (await q(`SELECT
+        COUNT(*) FILTER (WHERE sms_consent = TRUE AND unsubscribed_at IS NULL AND archived_at IS NULL)::int consented,
+        COUNT(*) FILTER (WHERE sms_consent = TRUE AND phone IS NULL)::int missing_phone,
+        COUNT(*) FILTER (WHERE sms_consent = TRUE AND sms_synced_at IS NOT NULL)::int synced
+      FROM subscribers WHERE TRUE ${EXCL_EM}`)).rows[0];
+    return { pend, counts };
+  };
+  app.get('/api/admin/mailchimp/sms-sync', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const { pend, counts } = await smsSyncState();
+      res.json({ configured: mcConfigured(), keyProblem: mcKeyProblem(), pending: pend.length, ...counts });
+    } catch (e) { console.error('[sms-sync-status]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/mailchimp/sms-sync', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const problem = mcKeyProblem();
+      if (problem) return res.status(400).json({ error: problem });
+      let audience = '';
+      try { const id = await mcListId(); audience = ((await mcLists()).find((l) => l.id === id) || {}).name || id; }
+      catch (e) { return res.status(400).json({ error: e.message }); }
+      const { pend } = await smsSyncState();
+      let pushed = 0; const errors = [];
+      for (const s of pend) {
+        try {
+          await mcSubscribeSms(s.email, s.phone);
+          await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [s.email]);
+          pushed++;
+        } catch (err) { errors.push({ email: s.email, phone: s.phone, detail: err?.message || String(err) }); }
+      }
+      const after = await smsSyncState();
+      res.json({ ok: true, audience, attempted: pend.length, pushed, failed: errors.length,
+                 synced: after.counts.synced, stillPending: after.pend.length, errors: errors.slice(0, 50) });
+    } catch (e) { console.error('[sms-sync]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test arm config (which versions are live) ─────────

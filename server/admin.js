@@ -366,34 +366,33 @@ export function mountAdmin(app) {
       // just re-renders from the same payload (no per-metric round-trip). Unique
       // signups today = one row per subscriber; SMS opt-in is a checkbox on that same
       // row (sms_consent), so signups is already the email+SMS union counted once.
-      const dayC   = `(created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
-      const sentC  = `(sent_at    AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
-      const [su, sms, dsess, rep, b] = await Promise.all([
-        q(`SELECT COUNT(*)::int n FROM subscribers WHERE ${dayC} ${EXCL_PV}`),
-        q(`SELECT COUNT(*)::int n FROM subscribers WHERE ${dayC} AND sms_consent = TRUE ${EXCL_PV}`),
-        q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events
-             WHERE page = ANY($1) AND ${dayC} ${EXCL_JE}`, [DRINK_PAGES]),
-        // Welcome-email replies ("one last step") that ARRIVED today, keyed off the
-        // reply's own timestamp — matches the Overview "Replied to welcome" card.
-        q(`SELECT COUNT(*)::int n FROM subscribers
+      // One SQL round-trip (scalar subqueries) — this polls every 60s on every open
+      // admin, so keep it to a single pooled connection rather than fanning out.
+      const dayC  = `(created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
+      const sentC = `(sent_at    AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
+      const row = (await q(`SELECT
+          (SELECT COUNT(*)::int FROM subscribers WHERE ${dayC} ${EXCL_PV}) AS signups,
+          (SELECT COUNT(*)::int FROM subscribers WHERE ${dayC} AND sms_consent = TRUE ${EXCL_PV}) AS sms,
+          (SELECT COUNT(DISTINCT session_id)::int FROM journey_events WHERE page = ANY($1) AND ${dayC} ${EXCL_JE}) AS drink_sessions,
+          -- Welcome-email replies ("one last step") that ARRIVED today, keyed off the
+          -- reply's own timestamp — matches the Overview "Replied to welcome" card.
+          (SELECT COUNT(*)::int FROM subscribers
              WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
                AND norm_email(email) IN (
                  SELECT norm_email(customer_email) FROM email_messages
-                  WHERE direction = 'in' AND subject ILIKE '%one last step%' AND ${sentC})`),
-        // Piggyback the Bot Catcher unseen count on this minute-poll so the red
-        // tab badge stays live without a second timer. Includes hard-rejected bots
-        // (bot_rejects) so the badge notifies us about those too.
-        q(`SELECT
-            (SELECT COUNT(*) FROM subscribers WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL)
-          + (SELECT COUNT(*) FROM bot_rejects WHERE seen_at IS NULL) AS n`),
-      ]);
-      const signups = su.rows[0].n, ds = dsess.rows[0].n;
+                  WHERE direction = 'in' AND subject ILIKE '%one last step%' AND ${sentC})) AS replies,
+          -- Bot Catcher unseen count, piggybacked on this minute-poll so the red tab
+          -- badge stays live without a second timer. Includes hard-rejected bots.
+          ((SELECT COUNT(*) FROM subscribers WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL)
+           + (SELECT COUNT(*) FROM bot_rejects WHERE seen_at IS NULL)) AS bot_unseen`,
+        [DRINK_PAGES])).rows[0];
+      const ds = row.drink_sessions;
       res.json({
-        signups,
-        sms: sms.rows[0].n,
-        conversionPct: ds ? +((signups / ds) * 100).toFixed(1) : 0,
-        replies: rep.rows[0].n,
-        botUnseen: Number(b.rows[0].n),
+        signups: row.signups,
+        sms: row.sms,
+        conversionPct: ds ? +((row.signups / ds) * 100).toFixed(1) : 0,
+        replies: row.replies,
+        botUnseen: Number(row.bot_unseen),
       });
     } catch (e) { console.error('[signups-today]', e); res.status(500).json({ error: e.message }); }
   });
@@ -576,15 +575,14 @@ export function mountAdmin(app) {
       const winList = requested ? allWins.filter((w) => w.key === requested) : allWins;
       const winJobs = (winList.length ? winList : allWins).map(async (w) => {
         const p = [w.from, w.to];
-        const [sessions, drinkSessions, signups, smsSignups, welcomeReplies, joinPaths, pageTiming] = await Promise.all([
+        const [sessions, drinkSessions, signups, welcomeReplies, joinPaths, pageTiming] = await Promise.all([
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
             [w.from, w.to, DRINK_PAGES]),
-          q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
-          // SMS opt-ins among signups in this window — people who ticked SMS
-          // consent (a phone number they agreed we can text). Same window/hour
-          // slice as email signups so the two numbers sit side by side.
-          q(`SELECT COUNT(*)::int n FROM subscribers WHERE created_at >= $1 AND created_at < $2 AND sms_consent = TRUE ${EXCL_PV}${hourFrag}`, p),
+          // Email signups in-window, plus the SMS opt-ins among them (a phone number
+          // they agreed we can text) as a FILTER on the same scan — one query, two
+          // numbers, so the SMS card costs no extra pooled connection.
+          q(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE sms_consent = TRUE)::int sms FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
           // Subscribers whose welcome-email reply ("one last step") ARRIVED in this
           // window — counted by the reply's timestamp, so "today" means replies
           // received today (not people who signed up today). Follows the
@@ -645,7 +643,7 @@ export function mountAdmin(app) {
           sessions: sessions.rows[0].n,
           drinkSessions: ds,
           signups: su,
-          smsSignups: smsSignups.rows[0].n,
+          smsSignups: signups.rows[0].sms,
           welcomeReplies: welcomeReplies.rows[0].n,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
           joinPaths: joinPaths.rows[0],
@@ -718,10 +716,9 @@ export function mountAdmin(app) {
           .sort((a, b) => (a.day < b.day ? 1 : -1));   // newest first
       })();
 
-      const [totalSubs, smsSubs, welcomeRepliesTotal, daily] = await Promise.all([
-        q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
-        // All-time SMS-consented subscribers (window-independent), for the card's subline.
-        q(`SELECT COUNT(*)::int n FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL AND sms_consent = TRUE ${EXCL_PV}`),
+      const [totalSubs, welcomeRepliesTotal, daily] = await Promise.all([
+        // Total list size + all-time SMS-consented count (card subline) as one scan.
+        q(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE sms_consent = TRUE)::int sms FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
         // All-time welcome-reply total (window-independent), for the card's subline.
         q(`SELECT COUNT(*)::int n FROM subscribers
              WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
@@ -731,7 +728,7 @@ export function mountAdmin(app) {
         dailyJob,
         ...winJobs,
       ]);
-      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, smsSubscribers: smsSubs.rows[0].n, welcomeRepliesTotal: welcomeRepliesTotal.rows[0].n, daily });
+      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, smsSubscribers: totalSubs.rows[0].sms, welcomeRepliesTotal: welcomeRepliesTotal.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 

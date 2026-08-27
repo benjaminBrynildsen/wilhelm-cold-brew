@@ -2414,7 +2414,7 @@ async function showBotCatcher() {
         <td class="num" style="white-space:nowrap">${r.elapsed_ms == null ? '<span class="note">—</span>'
           : `<span style="${r.elapsed_ms < 7000 ? 'color:var(--bad,#c0574f);font-weight:700' : 'color:var(--dim)'}" title="page-open → submit">${secs(r.elapsed_ms)}${r.elapsed_ms < 7000 ? ' ⚡' : ''}</span>`}</td>
         <td>${r.kind === 'bailed' ? '<span class="note">—</span>' : (r.utm_source ? esc(srcName(r.utm_source)) + (r.utm_content ? ' / ' + esc(r.utm_content) : '') : '<span class="note">direct</span>')}</td>
-        <td class="num" style="white-space:nowrap">${r.kind === 'flagged'
+        <td class="num" style="white-space:nowrap">${r.session_id ? `<button class="btn ghost bc-journey" data-sid="${esc(r.session_id)}" style="padding:2px 10px" title="Open this visitor's Journey replay">Journey →</button> ` : ''}${r.kind === 'flagged'
           ? `<button class="btn ghost bc-keep" data-id="${r.id}" style="padding:2px 10px">Looks real</button>
              <button class="btn ghost bc-remove" data-id="${r.id}" data-email="${esc(r.email)}" style="padding:2px 10px;color:var(--bad,#c0574f)">Remove</button>`
           : r.kind === 'reject'
@@ -2425,6 +2425,9 @@ async function showBotCatcher() {
       <table><thead><tr><th>When</th><th>Email</th><th>Why flagged</th><th class="num">Speed</th><th>Source</th><th></th></tr></thead>
         <tbody>${rows || '<tr><td class="note" colspan="6">Nothing caught in this window.</td></tr>'}</tbody></table>`;
     wireWinbar(showBotCatcher, 'botWin');
+    document.querySelectorAll('.bc-journey').forEach((b) => b.addEventListener('click', () => {
+      state.journeySid = b.dataset.sid; switchTab('journey');
+    }));
     document.querySelectorAll('.bc-restore').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm(`Restore ${b.dataset.email} to the list?\n\nThis adds them as a real subscriber and sends the welcome email.`)) return;
       try { await api(`/api/admin/botcatcher/reject/${b.dataset.id}/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showBotCatcher(); }

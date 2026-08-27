@@ -111,6 +111,9 @@ export async function subscribe(req, res) {
   const smsConsent = req.body?.smsConsent === true;
   const phone = smsConsent ? normalizePhone(req.body?.phone) : null;
   const smsOptIn = smsConsent && !!phone;
+  // Journey session id (null for API-direct posts that never loaded the page) —
+  // stored so the Bot Catcher can deep-link a caught signup to its Journey replay.
+  const sessionId = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
 
   // Hard bot: the invisible honeypot was filled AND either the submit came in
   // under 7s OR it went through the sub-2s "one more tap" challenge (the retry
@@ -124,9 +127,9 @@ export async function subscribe(req, res) {
   const challenged = req.body?.challenged === true;
   const hardBot = !!hp && (challenged || (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 7000));
   if (hardBot) {
-    q(`INSERT INTO bot_rejects (email, bot_flag, elapsed_ms, ip_hash, country, variant, utm_source, utm_campaign, utm_content)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [email, botFlag, elapsedVal, hashIp(getClientIp(req)), countryFrom(req), variant, utm_source, utm_campaign, utm_content])
+    q(`INSERT INTO bot_rejects (email, bot_flag, elapsed_ms, ip_hash, country, variant, utm_source, utm_campaign, utm_content, session_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [email, botFlag, elapsedVal, hashIp(getClientIp(req)), countryFrom(req), variant, utm_source, utm_campaign, utm_content, sessionId])
       .catch((e) => console.warn('[subscribe] bot reject insert failed:', e?.message || e));
     return res.json({ ok: true });
   }
@@ -134,14 +137,14 @@ export async function subscribe(req, res) {
     const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country,
                                 twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag, elapsed_ms,
-                                phone, sms_consent, sms_consent_at)
+                                phone, sms_consent, sms_consent_at, session_id)
        VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-               $13,$14,CASE WHEN $14 THEN now() ELSE NULL END)
+               $13,$14,CASE WHEN $14 THEN now() ELSE NULL END,$15)
        ON CONFLICT (email) DO NOTHING
        RETURNING id`,
       [email, variant, hashIp(getClientIp(req)), countryFrom(req),
        twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag, elapsedVal,
-       smsOptIn ? phone : null, smsOptIn]
+       smsOptIn ? phone : null, smsOptIn, sessionId]
     );
     // They passed the "try again" challenge — close out the matching attempt so
     // it counts as confirmed (not abandoned) in the Bot Catcher. Match on session
@@ -163,7 +166,6 @@ export async function subscribe(req, res) {
     // shows these distinctly so "joined" sessions reconcile with new signups.
     // (The HTTP response stays identical either way, so the endpoint can't be
     // used to probe which emails are subscribed.)
-    const sessionId = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
     if (sessionId) {
       q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)
          VALUES ($1,'subscribed',$2,$3,$4,$5,$6)`,

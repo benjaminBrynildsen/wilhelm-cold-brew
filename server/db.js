@@ -147,6 +147,9 @@ export async function ensureSchema() {
     -- flagged fast ones — so the Bot Catcher can show the real human distribution
     -- and prove the sub-2s challenge sits well below how long real people take.
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS elapsed_ms   INTEGER;
+    -- The journey session this signup came from, so the Bot Catcher can deep-link
+    -- a flagged signup straight to its Journey replay. Null for API-direct posts.
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS session_id   TEXT;
     -- SMS opt-in (optional, collected on the signup form). phone is stored E.164.
     -- sms_consent is the explicit "text me drop alerts" checkbox (TCPA requires
     -- affirmative consent — never opt someone in from a phone number alone), and
@@ -196,8 +199,10 @@ export async function ensureSchema() {
       utm_campaign TEXT,
       utm_content  TEXT,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-      seen_at      TIMESTAMPTZ
+      seen_at      TIMESTAMPTZ,
+      session_id   TEXT
     );
+    ALTER TABLE bot_rejects ADD COLUMN IF NOT EXISTS session_id TEXT;
     CREATE INDEX IF NOT EXISTS bot_rejects_created_idx ON bot_rejects (created_at);
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (

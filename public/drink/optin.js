@@ -377,7 +377,11 @@ function funnel(event, props) {
         if (email) {
           const res = await fetch(CONFIG.endpoint.url, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, phone: raw, smsConsent: true, variant: VARIANT, sessionId: (window.wilhelmSessionId || null) }),
+            // smsOnly flags this as the after-signup SMS add-on (not a fresh email
+            // subscribe), so the server records it as 'sms_subscribed' rather than a
+            // duplicate 'subscribed' — otherwise a brand-new joiner who also opts
+            // into texts flips their Journey session to "on list already".
+            body: JSON.stringify({ email, phone: raw, smsConsent: true, smsOnly: true, variant: VARIANT, sessionId: (window.wilhelmSessionId || null) }),
           });
           if (!res.ok) throw new Error('sms ' + res.status);
         }

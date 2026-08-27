@@ -1635,7 +1635,17 @@ export function mountAdmin(app) {
                   MAX(city) city, MAX(region) region, MAX(country) country,
                   MAX(variant) variant,
                   BOOL_OR(event = 'subscribed') subscribed,
-                  BOOL_OR(event = 'subscribed' AND data->>'dup' = 'true') already_sub,
+                  -- "On list already" = a repeat visit where the ONLY authoritative
+                  -- (server-logged) subscribe was a duplicate, and no genuine fresh
+                  -- join happened this session. Historically, opting into SMS after a
+                  -- fresh join logged a second 'subscribed' dup:true, which wrongly
+                  -- flipped real joiners to "on list already" — the AND NOT clause
+                  -- undoes that by keeping anyone with a real dup:false server join as
+                  -- Joined. (Client beacons carry no dup flag, so we judge on server
+                  -- events only.)
+                  (BOOL_OR(event = 'subscribed' AND data->>'server' = 'true' AND data->>'dup' = 'true')
+                   AND NOT BOOL_OR(event = 'subscribed' AND data->>'server' = 'true' AND data->>'dup' = 'false')
+                  ) already_sub,
                   MAX(CASE WHEN event = 'page_load' THEN page END) page,
                   MAX(CASE WHEN event = 'page_load' THEN (data->'perf'->>'ttfb')::int END) ttfb_ms,
                   MAX((data->>'depth_pct')::int) max_scroll,

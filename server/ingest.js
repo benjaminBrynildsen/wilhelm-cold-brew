@@ -166,10 +166,17 @@ export async function subscribe(req, res) {
     // shows these distinctly so "joined" sessions reconcile with new signups.
     // (The HTTP response stays identical either way, so the endpoint can't be
     // used to probe which emails are subscribed.)
+    // smsOnly = the after-signup "text me too" add-on, posted with an email that's
+    // already on the list. That's NOT a re-subscribe, so log it as its own
+    // 'sms_subscribed' event — mirroring the client beacon for reliability —
+    // instead of a duplicate 'subscribed' dup:true, which would otherwise flip the
+    // session's journey status from "Joined" to "on list already".
+    const smsOnly = req.body?.smsOnly === true;
     if (sessionId) {
+      const ev = smsOnly ? 'sms_subscribed' : 'subscribed';
       q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)
-         VALUES ($1,'subscribed',$2,$3,$4,$5,$6)`,
-        [sessionId, JSON.stringify({ server: true, dup: r.rows.length === 0 }), hashIp(getClientIp(req)), countryFrom(req), '/drink/', variant])
+         VALUES ($1,$7,$2,$3,$4,$5,$6)`,
+        [sessionId, JSON.stringify({ server: true, dup: r.rows.length === 0 }), hashIp(getClientIp(req)), countryFrom(req), '/drink/', variant, ev])
         .catch((e) => console.warn('[subscribe] journey mark failed:', e?.message || e));
     }
     // New subscriber only (RETURNING is empty on duplicate). Fire-and-forget

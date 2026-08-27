@@ -149,7 +149,7 @@ function paintSignupsBadge() {
 function renderApp() {
   app.innerHTML = `
     <div class="pagebar"><span id="pagetitle"></span></div>
-    <div class="signups-badge" id="signups-badge" style="cursor:pointer;position:relative" title="Today (Central) — tap to cycle: signups · SMS · drink conversion · replies">
+    <div class="signups-badge" id="signups-badge" style="cursor:pointer" title="Today (Central) — tap to cycle: signups · SMS · drink conversion · replies">
       <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k sb-lab">signups</span>
       <div id="sb-tour" hidden style="position:absolute;top:calc(100% + 8px);right:0;z-index:70;width:200px;background:#f4c542;color:#241a05;padding:10px 12px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:12.5px;line-height:1.4;text-align:left;font-weight:500;cursor:default">
         <div style="position:absolute;top:-6px;right:22px;width:12px;height:12px;background:#f4c542;transform:rotate(45deg)"></div>

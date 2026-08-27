@@ -361,6 +361,10 @@ export function mountAdmin(app) {
   app.get('/api/admin/signups-today', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
+      // Unique signups today = one row per subscriber. SMS opt-in is a checkbox on
+      // the email signup (sms_consent lives on this same row), never a separate
+      // signup, so this COUNT is already the email+SMS union with each person
+      // counted once — no double-counting to subtract.
       const r = await q(`SELECT COUNT(*)::int n FROM subscribers
         WHERE (created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date ${EXCL_PV}`);
       // Piggyback the Bot Catcher unseen count on this minute-poll so the red

@@ -130,7 +130,7 @@ async function faceIdLogin() {
 function renderApp() {
   app.innerHTML = `
     <div class="pagebar"><span id="pagetitle"></span></div>
-    <div class="signups-badge" id="signups-badge" title="Signups today (Central)">
+    <div class="signups-badge" id="signups-badge" title="Unique signups today — email + SMS combined, counted once each (Central)">
       <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k">signups</span>
     </div>
     <div class="masthead">

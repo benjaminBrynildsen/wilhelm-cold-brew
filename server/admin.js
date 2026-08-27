@@ -361,19 +361,40 @@ export function mountAdmin(app) {
   app.get('/api/admin/signups-today', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      // Unique signups today = one row per subscriber. SMS opt-in is a checkbox on
-      // the email signup (sms_consent lives on this same row), never a separate
-      // signup, so this COUNT is already the email+SMS union with each person
-      // counted once — no double-counting to subtract.
-      const r = await q(`SELECT COUNT(*)::int n FROM subscribers
-        WHERE (created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date ${EXCL_PV}`);
-      // Piggyback the Bot Catcher unseen count on this minute-poll so the red
-      // tab badge stays live without a second timer. Includes hard-rejected bots
-      // (bot_rejects) so the badge notifies us about those too.
-      const b = await q(`SELECT
-          (SELECT COUNT(*) FROM subscribers WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL)
-        + (SELECT COUNT(*) FROM bot_rejects WHERE seen_at IS NULL) AS n`);
-      res.json({ signups: r.rows[0].n, botUnseen: Number(b.rows[0].n) });
+      // The corner badge is clickable: it cycles signups → SMS → drink conversion →
+      // replies, all scoped to today (Central). Compute every metric here so a click
+      // just re-renders from the same payload (no per-metric round-trip). Unique
+      // signups today = one row per subscriber; SMS opt-in is a checkbox on that same
+      // row (sms_consent), so signups is already the email+SMS union counted once.
+      const dayC   = `(created_at AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
+      const sentC  = `(sent_at    AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
+      const [su, sms, dsess, rep, b] = await Promise.all([
+        q(`SELECT COUNT(*)::int n FROM subscribers WHERE ${dayC} ${EXCL_PV}`),
+        q(`SELECT COUNT(*)::int n FROM subscribers WHERE ${dayC} AND sms_consent = TRUE ${EXCL_PV}`),
+        q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events
+             WHERE page = ANY($1) AND ${dayC} ${EXCL_JE}`, [DRINK_PAGES]),
+        // Welcome-email replies ("one last step") that ARRIVED today, keyed off the
+        // reply's own timestamp — matches the Overview "Replied to welcome" card.
+        q(`SELECT COUNT(*)::int n FROM subscribers
+             WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
+               AND norm_email(email) IN (
+                 SELECT norm_email(customer_email) FROM email_messages
+                  WHERE direction = 'in' AND subject ILIKE '%one last step%' AND ${sentC})`),
+        // Piggyback the Bot Catcher unseen count on this minute-poll so the red
+        // tab badge stays live without a second timer. Includes hard-rejected bots
+        // (bot_rejects) so the badge notifies us about those too.
+        q(`SELECT
+            (SELECT COUNT(*) FROM subscribers WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared' AND bot_seen_at IS NULL)
+          + (SELECT COUNT(*) FROM bot_rejects WHERE seen_at IS NULL) AS n`),
+      ]);
+      const signups = su.rows[0].n, ds = dsess.rows[0].n;
+      res.json({
+        signups,
+        sms: sms.rows[0].n,
+        conversionPct: ds ? +((signups / ds) * 100).toFixed(1) : 0,
+        replies: rep.rows[0].n,
+        botUnseen: Number(b.rows[0].n),
+      });
     } catch (e) { console.error('[signups-today]', e); res.status(500).json({ error: e.message }); }
   });
 

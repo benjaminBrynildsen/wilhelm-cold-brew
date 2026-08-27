@@ -1,7 +1,7 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone, correctEmailDomain } from './util.js';
-import { sendWelcome, sendSignupAlert } from './mailer.js';
+import { sendWelcome, sendSignupAlert, sendSmsFollowup } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
 import { redditTrackAsync } from './reddit.js';
 
@@ -183,8 +183,11 @@ export async function subscribe(req, res) {
     // welcome to the subscriber + internal alert to Ben.
     if (r.rows.length) {
       sendWelcome(email).catch((e) => console.warn('[subscribe] welcome email failed:', e?.message || e));
-      sendSignupAlert(email, { variant, country: countryFrom(req) })
-        .catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
+      sendSignupAlert(email, {
+        variant, country: countryFrom(req),
+        sms: smsOptIn, phone,
+        utmSource: utm_source, utmCampaign: utm_campaign, utmContent: utm_content,
+      }).catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
       mcPushSignup(email);   // keep the Mailchimp audience current with new signups
       // Reddit Conversions API — server-side SignUp mirroring the browser pixel,
       // deduped by the shared rdtEventId. click_id (rdt_cid) + hashed email + the
@@ -215,6 +218,13 @@ export async function subscribe(req, res) {
         const ok = await mcPushSms(email, phone);   // resolves true only on a confirmed push
         if (ok) {
           await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [email]);
+        }
+        // Notify us that this signup added SMS — only for the after-signup add-on
+        // (smsOnly). If SMS was ticked on the initial form the main signup alert
+        // already reported it, so we don't double up.
+        if (smsOnly) {
+          sendSmsFollowup(email, phone, { variant })
+            .catch((e) => console.warn('[subscribe] sms follow-up failed:', e?.message || e));
         }
       })().catch((e) => console.warn('[subscribe] SMS opt-in persist failed:', e?.message || e));
     }

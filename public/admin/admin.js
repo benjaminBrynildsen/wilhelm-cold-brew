@@ -609,6 +609,8 @@ function eventLabel(e) {
     case 'submit_attempt': return 'Clicked “Join the List”';
     case 'submit_invalid': return `Entered an invalid email${d.reason ? ` (${d.reason === 'empty' ? 'field was empty' : d.reason}${d.reason !== 'empty' && d.len ? ', ' + d.len + ' chars' : ''})` : ''}`;
     case 'subscribed': return d.dup ? 'Re-entered their email — already on the list' : 'Joined the list ✓';
+    case 'sms_card_shown': return 'Saw the SMS opt-in card';
+    case 'sms_subscribed': return 'Added SMS alerts 📱';
     case 'sticky_click': return 'Tapped the sticky “Join” button';
     case 'nudge_shown': return 'Saw the timed nudge';
     case 'nudge_join': return 'Tapped “Join” on the nudge';

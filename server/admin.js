@@ -469,7 +469,24 @@ export function mountAdmin(app) {
           ORDER BY created_at DESC LIMIT 200`, p)).rows;
       const rejectsTotal = (await q(`SELECT COUNT(*)::int n FROM bot_rejects`)).rows[0].n;
       await q(`UPDATE bot_rejects SET seen_at = now() WHERE seen_at IS NULL`);
-      res.json({ window, rows, cleared, timing, challenge, rejects, rejectsTotal });
+      // The certainty check: did ANY caught bot in this window place a paid order?
+      // Cross-checks every caught-bot email — flagged subscribers, auto-rejected,
+      // and bailed-the-challenge — against paid orders (matched via norm_email). If
+      // this is 0, no bot bought; if not, `emails` names them so a false positive
+      // can be spotted (a real buyer wrongly flagged).
+      const botsPurchased = (await q(
+        `WITH caught AS (
+             SELECT norm_email(email) e FROM subscribers
+              WHERE bot_flag IS NOT NULL AND bot_flag <> 'cleared'
+                AND created_at >= $1 AND created_at < $2 ${EXCL_PV}
+             UNION SELECT norm_email(email) FROM bot_rejects
+              WHERE created_at >= $1 AND created_at < $2
+             UNION SELECT norm_email(email) FROM challenge_attempts
+              WHERE confirmed = FALSE AND created_at >= $1 AND created_at < $2)
+         SELECT COUNT(DISTINCT o.email)::int n,
+                COALESCE(json_agg(DISTINCT o.email) FILTER (WHERE o.email IS NOT NULL), '[]') emails
+           FROM caught c JOIN orders o ON o.status = 'paid' AND norm_email(o.email) = c.e`, p)).rows[0];
+      res.json({ window, rows, cleared, timing, challenge, rejects, rejectsTotal, botsPurchased });
     } catch (e) { console.error('[botcatcher]', e); res.status(500).json({ error: e.message }); }
   });
 

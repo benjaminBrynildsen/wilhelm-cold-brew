@@ -213,33 +213,6 @@ export async function sendSignupAlert(email, meta = {}) {
   }
 }
 
-// Short follow-up when a signup adds SMS on the confirmation screen (a separate
-// step after the main signup alert already went out). Keeps Ben & Matt in the
-// loop on who's reachable by text without holding up the signup alert itself.
-export async function sendSmsFollowup(email, phone, meta = {}) {
-  if (!transporter || !SIGNUP_NOTIFY) return;
-  const lines = [
-    `Signup added SMS alerts:`,
-    ``,
-    `  Email:   ${email}`,
-    `  Phone:   ${phone || 'on file'}`,
-    meta.variant ? `  Variant: ${meta.variant}` : null,
-    ``,
-    `See the dashboard: ${SITE}/admin`,
-  ].filter((l) => l !== null);
-  try {
-    await transporter.sendMail({
-      from: FROM,
-      to: SIGNUP_NOTIFY,
-      subject: `SMS added: ${email}`,
-      text: lines.join('\n'),
-    });
-    console.log('[mail] sms follow-up sent for', email);
-  } catch (e) {
-    console.warn('[mail] sms follow-up failed:', e?.message || e);
-  }
-}
-
 // ───────── Order confirmation (to the buyer) + order alert (to Ben) ─────────
 const ORDER_SUBJECT = 'Your Wilhelm order is confirmed';
 const money = (c) => (c == null ? null : '$' + (c / 100).toFixed(2));

@@ -439,12 +439,12 @@ export function mountAdmin(app) {
         `SELECT COUNT(*)::int n FROM challenge_attempts
           WHERE confirmed = TRUE AND created_at >= $1 AND created_at < $2`, p)).rows[0].n;
       const abandoned = (await q(
-        `SELECT id, email, elapsed_ms, country, variant, created_at
+        `SELECT id, email, elapsed_ms, country, variant, created_at, session_id
            FROM challenge_attempts
           WHERE confirmed = FALSE AND created_at >= $1 AND created_at < $2
           ORDER BY created_at DESC LIMIT 200`, p)).rows;
       const rows = (await q(
-        `SELECT s.id, s.email, s.created_at, s.bot_flag, s.variant, s.utm_source, s.utm_campaign, s.utm_content, s.country, s.elapsed_ms,
+        `SELECT s.id, s.email, s.created_at, s.bot_flag, s.variant, s.utm_source, s.utm_campaign, s.utm_content, s.country, s.elapsed_ms, s.session_id,
                 (s.bot_seen_at IS NULL) AS was_new,
                 ${repliedExpr} AS replied
            FROM subscribers s
@@ -462,7 +462,7 @@ export function mountAdmin(app) {
       // list, shown here only. was_new marks the just-arrived ones like the flagged
       // table; opening the tab clears their unseen state (all windows) too.
       const rejects = (await q(
-        `SELECT id, email, bot_flag, elapsed_ms, country, variant, utm_source, utm_content, created_at,
+        `SELECT id, email, bot_flag, elapsed_ms, country, variant, utm_source, utm_content, created_at, session_id,
                 (seen_at IS NULL) AS was_new
            FROM bot_rejects
           WHERE created_at >= $1 AND created_at < $2

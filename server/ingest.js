@@ -1,9 +1,15 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone, correctEmailDomain } from './util.js';
-import { sendWelcome, sendSignupAlert, sendSmsFollowup } from './mailer.js';
+import { sendWelcome, sendSignupAlert } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
 import { redditTrackAsync } from './reddit.js';
+
+// SMS opt-in happens on the confirmation screen a few seconds after signup, as a
+// separate request. To keep it to ONE notification, we hold the signup alert this
+// long and then read the final SMS state — so a signup + SMS opt-in becomes a
+// single email, not two. Tunable via env; defaults to 90s.
+const SIGNUP_ALERT_DELAY_MS = Number(process.env.SIGNUP_ALERT_DELAY_MS) || 90000;
 
 // POST /api/journey  body: { events: [{ sessionId, event, data?, page?, variant? }] }
 export async function receiveJourney(req, res) {
@@ -183,11 +189,18 @@ export async function subscribe(req, res) {
     // welcome to the subscriber + internal alert to Ben.
     if (r.rows.length) {
       sendWelcome(email).catch((e) => console.warn('[subscribe] welcome email failed:', e?.message || e));
-      sendSignupAlert(email, {
-        variant, country: countryFrom(req),
-        sms: smsOptIn, phone,
-        utmSource: utm_source, utmCampaign: utm_campaign, utmContent: utm_content,
-      }).catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
+      // Hold the signup alert briefly, then re-read the subscriber's final SMS
+      // state and send ONE email covering both the signup and any SMS opt-in that
+      // arrived on the confirmation screen in the meantime. UTM/variant are fixed
+      // at signup, so capture them now; only sms_consent/phone can change.
+      const alertMeta = { variant, country: countryFrom(req), utmSource: utm_source, utmCampaign: utm_campaign, utmContent: utm_content };
+      const alertTimer = setTimeout(() => {
+        (async () => {
+          const s = (await q(`SELECT sms_consent, phone FROM subscribers WHERE norm_email(email) = norm_email($1)`, [email])).rows[0] || {};
+          await sendSignupAlert(email, { ...alertMeta, sms: !!s.sms_consent, phone: s.phone });
+        })().catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
+      }, SIGNUP_ALERT_DELAY_MS);
+      if (alertTimer.unref) alertTimer.unref();   // don't keep the process alive for it
       mcPushSignup(email);   // keep the Mailchimp audience current with new signups
       // Reddit Conversions API — server-side SignUp mirroring the browser pixel,
       // deduped by the shared rdtEventId. click_id (rdt_cid) + hashed email + the
@@ -219,13 +232,8 @@ export async function subscribe(req, res) {
         if (ok) {
           await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [email]);
         }
-        // Notify us that this signup added SMS — only for the after-signup add-on
-        // (smsOnly). If SMS was ticked on the initial form the main signup alert
-        // already reported it, so we don't double up.
-        if (smsOnly) {
-          sendSmsFollowup(email, phone, { variant })
-            .catch((e) => console.warn('[subscribe] sms follow-up failed:', e?.message || e));
-        }
+        // No separate SMS notification: the held signup alert (above) re-reads the
+        // SMS state before it sends, so this opt-in folds into that one email.
       })().catch((e) => console.warn('[subscribe] SMS opt-in persist failed:', e?.message || e));
     }
   } catch (err) {

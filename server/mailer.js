@@ -183,12 +183,20 @@ export async function sendWelcome(to, { record = true } = {}) {
 export async function sendSignupAlert(email, meta = {}) {
   if (!transporter || !SIGNUP_NOTIFY) return;
   const where = [meta.city, meta.region, meta.country].filter(Boolean).join(', ');
+  // The ad that brought them: the raw UTM captured at signup, source / campaign /
+  // content. No UTM = they arrived without a tagged link (organic/direct).
+  const utm = [meta.utmSource, meta.utmCampaign, meta.utmContent].filter(Boolean).join(' / ');
   const lines = [
     `New Friday Drop signup:`,
     ``,
     `  Email:   ${email}`,
     meta.variant ? `  Variant: ${meta.variant}` : null,
     where ? `  From:    ${where}` : null,
+    `  Ad:      ${utm || 'direct / no UTM tag'}`,
+    // SMS is usually opted into on the confirmation screen, a moment after this
+    // alert fires — so it shows here only if they ticked it right on the form; a
+    // separate "added SMS" note follows when they opt in afterward.
+    meta.sms ? `  SMS:     yes${meta.phone ? ' — ' + meta.phone : ''}` : null,
     ``,
     `See the dashboard: ${SITE}/admin`,
   ].filter((l) => l !== null);
@@ -202,6 +210,33 @@ export async function sendSignupAlert(email, meta = {}) {
     console.log('[mail] signup alert sent for', email);
   } catch (e) {
     console.warn('[mail] signup alert failed:', e?.message || e);
+  }
+}
+
+// Short follow-up when a signup adds SMS on the confirmation screen (a separate
+// step after the main signup alert already went out). Keeps Ben & Matt in the
+// loop on who's reachable by text without holding up the signup alert itself.
+export async function sendSmsFollowup(email, phone, meta = {}) {
+  if (!transporter || !SIGNUP_NOTIFY) return;
+  const lines = [
+    `Signup added SMS alerts:`,
+    ``,
+    `  Email:   ${email}`,
+    `  Phone:   ${phone || 'on file'}`,
+    meta.variant ? `  Variant: ${meta.variant}` : null,
+    ``,
+    `See the dashboard: ${SITE}/admin`,
+  ].filter((l) => l !== null);
+  try {
+    await transporter.sendMail({
+      from: FROM,
+      to: SIGNUP_NOTIFY,
+      subject: `SMS added: ${email}`,
+      text: lines.join('\n'),
+    });
+    console.log('[mail] sms follow-up sent for', email);
+  } catch (e) {
+    console.warn('[mail] sms follow-up failed:', e?.message || e);
   }
 }
 

@@ -127,11 +127,35 @@ async function faceIdLogin() {
   }
 }
 
+// The corner "Today" badge cycles through these on tap. Each renders from the
+// single /signups-today payload (all metrics today/Central). sbIndex is module
+// state so it survives tab switches but resets to 0 (signups) on a page reload.
+const SB_METRICS = [
+  { key: 'signups',    lab: 'signups',     val: (d) => num(d.signups || 0) },
+  { key: 'sms',        lab: 'SMS',         val: (d) => num(d.sms || 0) },
+  { key: 'conversion', lab: 'drink conv.', val: (d) => (d.conversionPct != null ? d.conversionPct + '%' : '–') },
+  { key: 'replies',    lab: 'replies',     val: (d) => num(d.replies || 0) },
+];
+let sbIndex = 0;      // which metric is showing; 0 = signups (default on reload)
+let sbData = null;    // latest /signups-today payload
+function paintSignupsBadge() {
+  const m = SB_METRICS[sbIndex];
+  const v = document.querySelector('#signups-badge .sb-v');
+  const l = document.querySelector('#signups-badge .sb-lab');
+  if (v) v.textContent = sbData ? m.val(sbData) : '–';
+  if (l) l.textContent = m.lab;
+}
+
 function renderApp() {
   app.innerHTML = `
     <div class="pagebar"><span id="pagetitle"></span></div>
-    <div class="signups-badge" id="signups-badge" title="Unique signups today — email + SMS combined, counted once each (Central)">
-      <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k">signups</span>
+    <div class="signups-badge" id="signups-badge" style="cursor:pointer;position:relative" title="Today (Central) — tap to cycle: signups · SMS · drink conversion · replies">
+      <span class="sb-k">Today</span><b class="sb-v">–</b><span class="sb-k sb-lab">signups</span>
+      <div id="sb-tour" hidden style="position:absolute;top:calc(100% + 8px);right:0;z-index:70;width:200px;background:#f4c542;color:#241a05;padding:10px 12px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.45);font-size:12.5px;line-height:1.4;text-align:left;font-weight:500;cursor:default">
+        <div style="position:absolute;top:-6px;right:22px;width:12px;height:12px;background:#f4c542;transform:rotate(45deg)"></div>
+        Tap this box to cycle through <b>SMS sign-ups</b>, <b>drink conversion</b> &amp; <b>replies</b>.
+        <button id="sb-tour-x" style="margin-top:8px;display:block;margin-left:auto;background:#241a05;color:#f4c542;border:0;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer">Got it</button>
+      </div>
     </div>
     <div class="masthead">
       <img class="mark" src="/drink/assets/wilhelm-circle.png" alt="Wilhelm Cold Brew" width="96" height="96"/>
@@ -143,17 +167,41 @@ function renderApp() {
     <div class="more-sheet" id="more-sheet" hidden><div class="ms-panel"></div></div>`;
   const moreSheet = document.getElementById('more-sheet');
   moreSheet.addEventListener('click', (e) => { if (e.target === moreSheet) moreSheet.hidden = true; });
-  // Live signups-today badge: refresh on load and every minute (cheap COUNT).
+  // Live "Today" badge (Central): refresh on load and every minute (cheap COUNTs).
+  // It's clickable — each tap advances through signups → SMS → drink conversion →
+  // replies. The choice lives in memory only, so a page refresh resets to signups.
   const refreshSignups = async () => {
     try {
-      const d = await api('/api/admin/signups-today');
-      const el = document.querySelector('#signups-badge .sb-v');
-      if (el) el.textContent = num(d.signups);
+      sbData = await api('/api/admin/signups-today');
+      paintSignupsBadge();
       // While the Bot Catcher tab is open everything is seen by definition —
       // don't let a poll computed just before the mark-seen repaint stale.
-      if (state.tab !== 'botcatcher') { state.botUnseen = d.botUnseen || 0; paintBotBadges(); }
+      if (state.tab !== 'botcatcher') { state.botUnseen = sbData.botUnseen || 0; paintBotBadges(); }
     } catch {}
   };
+  const badgeEl = document.getElementById('signups-badge');
+  // One-time tour: point out that the badge is clickable. Shown once per device
+  // (remembered in localStorage), then never again. Dismissed by "Got it", by the
+  // first tap on the badge, or automatically after a few seconds.
+  const tourEl = document.getElementById('sb-tour');
+  let sbTourSeen = true;
+  try { sbTourSeen = localStorage.getItem('sbTourSeen') === '1'; } catch {}
+  const dismissTour = () => {
+    if (!tourEl || tourEl.hidden) return;
+    tourEl.hidden = true;
+    try { localStorage.setItem('sbTourSeen', '1'); } catch {}
+  };
+  if (tourEl && !sbTourSeen) {
+    tourEl.hidden = false;
+    setTimeout(dismissTour, 9000);
+    const x = document.getElementById('sb-tour-x');
+    if (x) x.addEventListener('click', (e) => { e.stopPropagation(); dismissTour(); });
+  }
+  if (badgeEl) badgeEl.addEventListener('click', () => {
+    dismissTour();
+    sbIndex = (sbIndex + 1) % SB_METRICS.length;
+    paintSignupsBadge();
+  });
   refreshSignups();
   if (window.__sbTimer) clearInterval(window.__sbTimer);
   window.__sbTimer = setInterval(refreshSignups, 60000);

@@ -879,6 +879,9 @@ async function showOverview() {
         <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
         <div class="card"><div class="k">Drink-page sessions</div><div class="v">${num(w.drinkSessions)}</div></div>
         <div class="card"><div class="k">Signups</div><div class="v">${num(w.signups)}</div></div>
+        <div class="card"><div class="k">SMS sign-ups</div>
+          <div class="v">${num(w.smsSignups || 0)}</div>
+          <div class="k2">opted in to texts this window${d.smsSubscribers ? ' · ' + num(d.smsSubscribers) + ' all-time' : ''}</div></div>
         <div class="card"><div class="k">Drink conversion</div><div class="v">${w.conversionPct}<small>%</small></div></div>
         <div class="card"><div class="k">Total list size</div><div class="v">${num(d.totalSubscribers)}</div></div>
         <div class="card"><div class="k">Replied to welcome</div>

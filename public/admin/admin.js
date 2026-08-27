@@ -878,8 +878,6 @@ async function showOverview() {
 
     content().innerHTML = winbar('win', { extra: hoursBar, extraActive: !!state.ovHours }) + `
       <div class="cards">
-        <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
-        <div class="card"><div class="k">Drink-page sessions</div><div class="v">${num(w.drinkSessions)}</div></div>
         <div class="card"><div class="k">Signups</div><div class="v">${num(w.signups)}</div></div>
         <div class="card"><div class="k">SMS sign-ups</div>
           <div class="v">${num(w.smsSignups || 0)}</div>
@@ -891,6 +889,8 @@ async function showOverview() {
           <div class="k2">replies received this window${d.welcomeRepliesTotal ? ' · ' + num(d.welcomeRepliesTotal) + ' all-time' : ''}</div></div>
         ${organicCard}
         ${timingCard}
+        <div class="card"><div class="k">Sessions (all pages)</div><div class="v">${num(w.sessions)}</div></div>
+        <div class="card"><div class="k">Drink-page sessions</div><div class="v">${num(w.drinkSessions)}</div></div>
       </div>
       <div class="note">Conversion = signups ÷ drink-page sessions for the selected window.
         Organic = direct + X profile link + search signups; the rest came from tagged ad links (untagged X clicks count as direct).${hoursNote}</div>

@@ -136,6 +136,54 @@
     }
     tick();
     cdTimer = setInterval(tick, 1000);
+    wireCountdownJoin();
+  }
+
+  // Early-access signup on the countdown card. The email joins the list; ticking
+  // the checkbox reveals a phone field and opts into a text with the drop link 10
+  // minutes before the email goes out. Posts to the same /api/subscribe endpoint
+  // the /drink optin uses (email + smsConsent + phone), so it flows through the
+  // identical pipeline (welcome email, Mailchimp, SMS sync). Wired once.
+  var cdJoinWired = false;
+  function wireCountdownJoin() {
+    if (cdJoinWired) return;
+    var form = $('cd-join'); if (!form) return;
+    cdJoinWired = true;
+    var emailEl = $('cd-email'), consent = $('cd-sms-consent'), phoneWrap = $('cd-join-phonewrap'),
+        phoneEl = $('cd-phone'), go = $('cd-join-go'), errEl = $('cd-join-error'), doneEl = $('cd-join-done'), hp = $('cd-hp');
+    var openedAt = Date.now();
+    function digits(s) { return String(s || '').replace(/\D/g, ''); }
+    function showErr(m) { if (errEl) { errEl.textContent = m; errEl.hidden = false; } }
+    consent.addEventListener('change', function () {
+      phoneWrap.hidden = !consent.checked;
+      if (consent.checked) { try { phoneEl.focus({ preventScroll: true }); } catch (e) { phoneEl.focus(); } }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (errEl) errEl.hidden = true;
+      var email = (emailEl.value || '').trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showErr('Enter a valid email.'); emailEl.focus(); return; }
+      var wantSms = !!consent.checked;
+      var raw = (phoneEl.value || '').trim(), d = digits(raw);
+      var phoneOk = raw.charAt(0) === '+' ? (d.length >= 8 && d.length <= 15) : (d.length === 10 || (d.length === 11 && d.charAt(0) === '1'));
+      if (wantSms && !phoneOk) { showErr('Enter a valid mobile number for early access.'); phoneEl.focus(); return; }
+      go.disabled = true;
+      var body = { email: email, variant: variant(), sessionId: (window.wilhelmSessionId || null),
+                   hp: hp ? hp.value : '', elapsed_ms: Date.now() - openedAt, twclid: twclid() };
+      if (wantSms && phoneOk) { body.smsConsent = true; body.phone = raw; }
+      fund('countdown_join', { variant: variant(), sms: !!(wantSms && phoneOk) });
+      fetch('/api/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) {
+          if (!r.ok) throw new Error('subscribe ' + r.status);
+          var row = form.querySelector('.cd-join-row'); if (row) row.hidden = true;
+          var chk = form.querySelector('.cd-join-check'); if (chk) chk.hidden = true;
+          phoneWrap.hidden = true;
+          var fine = form.querySelector('.cd-join-fine'); if (fine) fine.hidden = true;
+          if (doneEl) { doneEl.textContent = (wantSms && phoneOk) ? "You're in ✓ — we'll text the link 10 min early." : "You're on the list ✓ — watch your inbox Friday."; doneEl.hidden = false; }
+          fund('countdown_join_ok', { variant: variant(), sms: !!(wantSms && phoneOk) });
+        })
+        .catch(function () { go.disabled = false; showErr('Something went wrong — try again.'); });
+    });
   }
 
   // Force the countdown view for a look, regardless of the live drop state:

@@ -98,22 +98,18 @@
       <div class="cd-soon" id="cd-soon" hidden>Watch your inbox.</div>
       <div class="meta" id="cd-when-wrap" hidden>Opens <span id="cd-when" style="color:rgba(232,217,181,0.85)"></span></div>
 
-      <!-- Early-access signup: email joins the list; ticking the box reveals a
-           phone field and opts into a text with the drop link 10 min early. -->
+      <!-- Phone-only SMS early-access signup: drop a number, tick consent, get the
+           drop link by text 10 minutes before the email. Posts to /api/sms-subscribe. -->
       <form class="cd-join" id="cd-join" novalidate>
         <div class="cd-join-row">
-          <input type="email" id="cd-email" class="cd-join-input" placeholder="you@email.com"
-                 autocomplete="email" inputmode="email" enterkeyhint="go" required aria-label="Email address"/>
-          <button type="submit" class="cd-join-go" id="cd-join-go" aria-label="Join the list">→</button>
+          <input type="tel" id="cd-phone" class="cd-join-input" placeholder="(314) 555-0123"
+                 autocomplete="tel" inputmode="tel" enterkeyhint="go" required aria-label="Mobile number"/>
+          <button type="submit" class="cd-join-go" id="cd-join-go" aria-label="Sign up for texts">→</button>
         </div>
         <label class="cd-join-check">
           <input type="checkbox" id="cd-sms-consent"/>
           <span>Text me the drop link <b>10 minutes early</b></span>
         </label>
-        <div class="cd-join-phonewrap" id="cd-join-phonewrap" hidden>
-          <input type="tel" id="cd-phone" class="cd-join-input" placeholder="(314) 555-0123"
-                 autocomplete="tel" inputmode="tel" enterkeyhint="go" aria-label="Mobile number"/>
-        </div>
         <input type="text" id="cd-hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true"
                style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"/>
         <div class="cd-join-fine">Drop-day alerts only. Reply STOP anytime. Msg &amp; data rates may apply.</div>

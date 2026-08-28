@@ -1349,9 +1349,13 @@ export function mountAdmin(app) {
         `SELECT phone, consent_at FROM sms_leads WHERE unsubscribed_at IS NULL ORDER BY consent_at ASC`)).rows;
       const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
       const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
-      const rows = [['Email', 'Phone', 'SMS consent date', 'Source']];
-      for (const r of subs) rows.push([r.email, r.phone, iso(r.sms_consent_at), 'email+sms']);
-      for (const r of leads) rows.push(['', r.phone, iso(r.consent_at), 'phone-only']);
+      // Mailchimp SMS import format: an explicit "SMS Marketing Status" column set to
+      // subscribed (plus the opt-in date) is what tells Mailchimp these are consented
+      // SMS contacts — without it, an import of already-existing emails is skipped
+      // "to protect deliverability". Phone maps to SMS Phone Number on import.
+      const rows = [['Email Address', 'Phone Number', 'SMS Marketing Status', 'SMS Opt-in Date', 'Source']];
+      for (const r of subs) rows.push([r.email, r.phone, 'subscribed', iso(r.sms_consent_at), 'email+sms']);
+      for (const r of leads) rows.push(['', r.phone, 'subscribed', iso(r.consent_at), 'phone-only']);
       const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
       res.set('Content-Type', 'text/csv; charset=utf-8');
       res.set('Content-Disposition', 'attachment; filename="wilhelm-sms-contacts.csv"');

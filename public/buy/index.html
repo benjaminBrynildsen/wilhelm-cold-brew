@@ -42,6 +42,24 @@
       50%{box-shadow:0 10px 34px rgba(232,194,74,.2);border-color:rgba(232,194,74,.55)}}
     @keyframes cdBump{0%{transform:scale(1)}28%{transform:scale(1.2);color:#fff}100%{transform:scale(1)}}
     @media (prefers-reduced-motion:reduce){#buy-countdown .cd-cell{animation:none}#buy-countdown .cd-cell b.bump{animation:none}}
+    /* Early-access signup on the countdown card */
+    #buy-countdown .cd-join{max-width:360px;margin:20px auto 4px;text-align:left}
+    #buy-countdown .cd-join-row{display:flex;gap:8px;align-items:stretch}
+    #buy-countdown .cd-join-input{flex:1;min-width:0;background:rgba(0,0,0,.35);border:1px solid rgba(232,217,181,.28);
+      border-radius:10px;padding:13px 14px;color:rgba(232,217,181,.95);font-size:16px;font-family:inherit;outline:none;-webkit-appearance:none}
+    #buy-countdown .cd-join-input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(232,194,74,.18)}
+    #buy-countdown .cd-join-input::placeholder{color:rgba(232,217,181,.4)}
+    #buy-countdown .cd-join-go{flex:0 0 auto;width:50px;border:0;border-radius:10px;background:var(--gold);
+      color:#241a05;font-size:20px;font-weight:700;cursor:pointer;line-height:1}
+    #buy-countdown .cd-join-go:disabled{opacity:.5;cursor:default}
+    #buy-countdown .cd-join-check{display:flex;gap:9px;align-items:flex-start;margin:12px 2px 0;cursor:pointer;
+      font-family:var(--mono);font-size:12px;letter-spacing:.3px;color:rgba(232,217,181,.82);line-height:1.45}
+    #buy-countdown .cd-join-check input{margin-top:1px;width:16px;height:16px;accent-color:var(--gold);flex:0 0 auto}
+    #buy-countdown .cd-join-check b{color:var(--gold);font-weight:700}
+    #buy-countdown .cd-join-phonewrap{margin-top:9px}
+    #buy-countdown .cd-join-fine{font-family:var(--mono);font-size:10px;letter-spacing:.4px;color:rgba(232,217,181,.4);margin:11px 2px 0}
+    #buy-countdown .cd-join-error{color:#e08a7d;font-family:var(--mono);font-size:12px;margin:9px 2px 0}
+    #buy-countdown .cd-join-done{color:var(--gold);font-family:'Bodoni Moda',Georgia,serif;font-size:18px;line-height:1.4;margin:14px 2px 0}
   </style>
   <script src="https://js.stripe.com/v3/"></script>
 
@@ -79,6 +97,29 @@
       </div>
       <div class="cd-soon" id="cd-soon" hidden>Watch your inbox.</div>
       <div class="meta" id="cd-when-wrap" hidden>Opens <span id="cd-when" style="color:rgba(232,217,181,0.85)"></span></div>
+
+      <!-- Early-access signup: email joins the list; ticking the box reveals a
+           phone field and opts into a text with the drop link 10 min early. -->
+      <form class="cd-join" id="cd-join" novalidate>
+        <div class="cd-join-row">
+          <input type="email" id="cd-email" class="cd-join-input" placeholder="you@email.com"
+                 autocomplete="email" inputmode="email" enterkeyhint="go" required aria-label="Email address"/>
+          <button type="submit" class="cd-join-go" id="cd-join-go" aria-label="Join the list">→</button>
+        </div>
+        <label class="cd-join-check">
+          <input type="checkbox" id="cd-sms-consent"/>
+          <span>Text me the drop link <b>10 minutes early</b></span>
+        </label>
+        <div class="cd-join-phonewrap" id="cd-join-phonewrap" hidden>
+          <input type="tel" id="cd-phone" class="cd-join-input" placeholder="(314) 555-0123"
+                 autocomplete="tel" inputmode="tel" enterkeyhint="go" aria-label="Mobile number"/>
+        </div>
+        <input type="text" id="cd-hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true"
+               style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"/>
+        <div class="cd-join-fine">Drop-day alerts only. Reply STOP anytime. Msg &amp; data rates may apply.</div>
+        <div class="cd-join-error" id="cd-join-error" hidden></div>
+        <div class="cd-join-done" id="cd-join-done" hidden></div>
+      </form>
     </div>
 
     <div class="card" id="card" hidden>

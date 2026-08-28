@@ -139,48 +139,39 @@
     wireCountdownJoin();
   }
 
-  // Early-access signup on the countdown card. The email joins the list; ticking
-  // the checkbox reveals a phone field and opts into a text with the drop link 10
-  // minutes before the email goes out. Posts to the same /api/subscribe endpoint
-  // the /drink optin uses (email + smsConsent + phone), so it flows through the
-  // identical pipeline (welcome email, Mailchimp, SMS sync). Wired once.
+  // Phone-only SMS early-access signup on the countdown card. Drop a number, tick
+  // consent, get the drop link by text 10 minutes before the email. Posts to
+  // /api/sms-subscribe, which stores the number in sms_leads (no email). Wired once.
   var cdJoinWired = false;
   function wireCountdownJoin() {
     if (cdJoinWired) return;
     var form = $('cd-join'); if (!form) return;
     cdJoinWired = true;
-    var emailEl = $('cd-email'), consent = $('cd-sms-consent'), phoneWrap = $('cd-join-phonewrap'),
-        phoneEl = $('cd-phone'), go = $('cd-join-go'), errEl = $('cd-join-error'), doneEl = $('cd-join-done'), hp = $('cd-hp');
+    var phoneEl = $('cd-phone'), consent = $('cd-sms-consent'),
+        go = $('cd-join-go'), errEl = $('cd-join-error'), doneEl = $('cd-join-done'), hp = $('cd-hp');
     var openedAt = Date.now();
     function digits(s) { return String(s || '').replace(/\D/g, ''); }
     function showErr(m) { if (errEl) { errEl.textContent = m; errEl.hidden = false; } }
-    consent.addEventListener('change', function () {
-      phoneWrap.hidden = !consent.checked;
-      if (consent.checked) { try { phoneEl.focus({ preventScroll: true }); } catch (e) { phoneEl.focus(); } }
-    });
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       if (errEl) errEl.hidden = true;
-      var email = (emailEl.value || '').trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showErr('Enter a valid email.'); emailEl.focus(); return; }
-      var wantSms = !!consent.checked;
       var raw = (phoneEl.value || '').trim(), d = digits(raw);
       var phoneOk = raw.charAt(0) === '+' ? (d.length >= 8 && d.length <= 15) : (d.length === 10 || (d.length === 11 && d.charAt(0) === '1'));
-      if (wantSms && !phoneOk) { showErr('Enter a valid mobile number for early access.'); phoneEl.focus(); return; }
+      if (!phoneOk) { showErr('Enter a valid mobile number.'); phoneEl.focus(); return; }
+      if (!consent.checked) { showErr('Check the box to get drop-alert texts.'); return; }
       go.disabled = true;
-      var body = { email: email, variant: variant(), sessionId: (window.wilhelmSessionId || null),
-                   hp: hp ? hp.value : '', elapsed_ms: Date.now() - openedAt, twclid: twclid() };
-      if (wantSms && phoneOk) { body.smsConsent = true; body.phone = raw; }
-      fund('countdown_join', { variant: variant(), sms: !!(wantSms && phoneOk) });
-      fetch('/api/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      var body = { phone: raw, smsConsent: true, variant: variant(), source: 'countdown',
+                   sessionId: (window.wilhelmSessionId || null), hp: hp ? hp.value : '',
+                   elapsed_ms: Date.now() - openedAt, twclid: twclid() };
+      fund('countdown_sms', { variant: variant() });
+      fetch('/api/sms-subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) {
-          if (!r.ok) throw new Error('subscribe ' + r.status);
+          if (!r.ok) throw new Error('sms-subscribe ' + r.status);
           var row = form.querySelector('.cd-join-row'); if (row) row.hidden = true;
           var chk = form.querySelector('.cd-join-check'); if (chk) chk.hidden = true;
-          phoneWrap.hidden = true;
           var fine = form.querySelector('.cd-join-fine'); if (fine) fine.hidden = true;
-          if (doneEl) { doneEl.textContent = (wantSms && phoneOk) ? "You're in ✓ — we'll text the link 10 min early." : "You're on the list ✓ — watch your inbox Friday."; doneEl.hidden = false; }
-          fund('countdown_join_ok', { variant: variant(), sms: !!(wantSms && phoneOk) });
+          if (doneEl) { doneEl.textContent = "You're in ✓ — we'll text the link 10 min early."; doneEl.hidden = false; }
+          fund('countdown_sms_ok', { variant: variant() });
         })
         .catch(function () { go.disabled = false; showErr('Something went wrong — try again.'); });
     });

@@ -213,6 +213,36 @@ export async function sendSignupAlert(email, meta = {}) {
   }
 }
 
+// Phone-only SMS sign-up alert (the countdown "text me the drop link" form). No
+// email exists for these, so it's its own note keyed on the number.
+export async function sendSmsSignupAlert(phone, meta = {}) {
+  if (!transporter || !SIGNUP_NOTIFY) return;
+  const where = [meta.city, meta.region, meta.country].filter(Boolean).join(', ');
+  const utm = [meta.utmSource, meta.utmCampaign, meta.utmContent].filter(Boolean).join(' / ');
+  const lines = [
+    `New SMS sign-up (phone only):`,
+    ``,
+    `  Phone:   ${phone}`,
+    meta.source ? `  Where:   ${meta.source}` : null,
+    meta.variant ? `  Variant: ${meta.variant}` : null,
+    where ? `  From:    ${where}` : null,
+    `  Ad:      ${utm || 'direct / no UTM tag'}`,
+    ``,
+    `See the dashboard: ${SITE}/admin`,
+  ].filter((l) => l !== null);
+  try {
+    await transporter.sendMail({
+      from: FROM,
+      to: SIGNUP_NOTIFY,
+      subject: `New SMS sign-up: ${phone}`,
+      text: lines.join('\n'),
+    });
+    console.log('[mail] sms signup alert sent for', phone);
+  } catch (e) {
+    console.warn('[mail] sms signup alert failed:', e?.message || e);
+  }
+}
+
 // ───────── Order confirmation (to the buyer) + order alert (to Ben) ─────────
 const ORDER_SUBJECT = 'Your Wilhelm order is confirmed';
 const money = (c) => (c == null ? null : '$' + (c / 100).toFixed(2));

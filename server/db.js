@@ -204,6 +204,29 @@ export async function ensureSchema() {
     );
     ALTER TABLE bot_rejects ADD COLUMN IF NOT EXISTS session_id TEXT;
     CREATE INDEX IF NOT EXISTS bot_rejects_created_idx ON bot_rejects (created_at);
+    -- Phone-only SMS sign-ups (the between-batches countdown "text me the drop link"
+    -- form takes a number, no email). Kept OUT of subscribers on purpose so the email
+    -- pipeline — welcome, blasts, email metrics — is never handed a row with no
+    -- address. One row per number (dedup on phone); consent_at stamps the opt-in.
+    -- synced_at mirrors the subscriber sms_synced_at once phone-only push to Mailchimp
+    -- is wired. unsubscribed_at holds a STOP reply.
+    CREATE TABLE IF NOT EXISTS sms_leads (
+      id              BIGSERIAL PRIMARY KEY,
+      phone           TEXT NOT NULL UNIQUE,
+      variant         TEXT,
+      source          TEXT,
+      ip_hash         TEXT,
+      country         TEXT,
+      utm_source      TEXT,
+      utm_campaign    TEXT,
+      utm_content     TEXT,
+      session_id      TEXT,
+      consent_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      synced_at       TIMESTAMPTZ,
+      unsubscribed_at TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS sms_leads_created_idx ON sms_leads (created_at);
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,

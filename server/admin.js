@@ -372,7 +372,8 @@ export function mountAdmin(app) {
       const sentC = `(sent_at    AT TIME ZONE '${REPORT_TZ}')::date = (now() AT TIME ZONE '${REPORT_TZ}')::date`;
       const row = (await q(`SELECT
           (SELECT COUNT(*)::int FROM subscribers WHERE ${dayC} ${EXCL_PV}) AS signups,
-          (SELECT COUNT(*)::int FROM subscribers WHERE ${dayC} AND sms_consent = TRUE ${EXCL_PV}) AS sms,
+          ((SELECT COUNT(*)::int FROM subscribers WHERE ${dayC} AND sms_consent = TRUE ${EXCL_PV})
+           + (SELECT COUNT(*)::int FROM sms_leads WHERE ${dayC} AND unsubscribed_at IS NULL)) AS sms,
           (SELECT COUNT(DISTINCT session_id)::int FROM journey_events WHERE page = ANY($1) AND ${dayC} ${EXCL_JE}) AS drink_sessions,
           -- Welcome-email replies ("one last step") that ARRIVED today, keyed off the
           -- reply's own timestamp — matches the Overview "Replied to welcome" card.
@@ -579,10 +580,12 @@ export function mountAdmin(app) {
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`, p),
           q(`SELECT COUNT(DISTINCT session_id)::int n FROM journey_events WHERE page = ANY($3) AND created_at >= $1 AND created_at < $2 ${EXCL_JE}${hourFrag}`,
             [w.from, w.to, DRINK_PAGES]),
-          // Email signups in-window, plus the SMS opt-ins among them (a phone number
-          // they agreed we can text) as a FILTER on the same scan — one query, two
-          // numbers, so the SMS card costs no extra pooled connection.
-          q(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE sms_consent = TRUE)::int sms FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
+          // Email signups in-window, the SMS opt-ins among them (FILTER on the same
+          // scan), and phone-only SMS leads in-window (scalar subquery) — one query,
+          // no extra pooled connection. smsSignups = both kinds of SMS opt-in.
+          q(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE sms_consent = TRUE)::int sms,
+                    (SELECT COUNT(*)::int FROM sms_leads WHERE created_at >= $1 AND created_at < $2 AND unsubscribed_at IS NULL) AS sms_leads
+               FROM subscribers WHERE created_at >= $1 AND created_at < $2 ${EXCL_PV}${hourFrag}`, p),
           // Subscribers whose welcome-email reply ("one last step") ARRIVED in this
           // window — counted by the reply's timestamp, so "today" means replies
           // received today (not people who signed up today). Follows the
@@ -643,7 +646,7 @@ export function mountAdmin(app) {
           sessions: sessions.rows[0].n,
           drinkSessions: ds,
           signups: su,
-          smsSignups: signups.rows[0].sms,
+          smsSignups: signups.rows[0].sms + signups.rows[0].sms_leads,
           welcomeReplies: welcomeReplies.rows[0].n,
           conversionPct: ds ? +((su / ds) * 100).toFixed(1) : 0,
           joinPaths: joinPaths.rows[0],
@@ -717,8 +720,11 @@ export function mountAdmin(app) {
       })();
 
       const [totalSubs, welcomeRepliesTotal, daily] = await Promise.all([
-        // Total list size + all-time SMS-consented count (card subline) as one scan.
-        q(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE sms_consent = TRUE)::int sms FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
+        // Total list size + all-time SMS reachable (email subscribers who consented
+        // PLUS phone-only leads) as one scan with a scalar subquery.
+        q(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE sms_consent = TRUE)::int sms,
+                  (SELECT COUNT(*)::int FROM sms_leads WHERE unsubscribed_at IS NULL) AS sms_leads
+             FROM subscribers WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}`),
         // All-time welcome-reply total (window-independent), for the card's subline.
         q(`SELECT COUNT(*)::int n FROM subscribers
              WHERE unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_PV}
@@ -728,7 +734,7 @@ export function mountAdmin(app) {
         dailyJob,
         ...winJobs,
       ]);
-      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, smsSubscribers: totalSubs.rows[0].sms, welcomeRepliesTotal: welcomeRepliesTotal.rows[0].n, daily });
+      res.json({ windows: out, totalSubscribers: totalSubs.rows[0].n, smsSubscribers: totalSubs.rows[0].sms + totalSubs.rows[0].sms_leads, welcomeRepliesTotal: welcomeRepliesTotal.rows[0].n, daily });
     } catch (e) { console.error('[overview]', e); res.status(500).json({ error: e.message }); }
   });
 

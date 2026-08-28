@@ -1,7 +1,7 @@
 // Event ingest + email capture. Ported/slimmed from theodore-web server/journey.ts.
 import { q } from './db.js';
 import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, normalizePhone, correctEmailDomain } from './util.js';
-import { sendWelcome, sendSignupAlert } from './mailer.js';
+import { sendWelcome, sendSignupAlert, sendSmsSignupAlert } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
 import { redditTrackAsync } from './reddit.js';
 
@@ -239,6 +239,60 @@ export async function subscribe(req, res) {
   } catch (err) {
     console.warn('[subscribe] insert failed:', err?.message || err);
     res.status(500).json({ error: 'subscribe failed' });
+  }
+}
+
+// POST /api/sms-subscribe  body: { phone, smsConsent, variant?, sessionId?, hp?,
+//                                  elapsed_ms?, source?, utm_*? }
+// Phone-ONLY SMS opt-in — the between-batches countdown "text me the drop link"
+// form. No email: the number lands in sms_leads (see db.js), deliberately kept out
+// of the email subscribers table so nothing in the email pipeline is ever handed a
+// row without an address. Honeypot + timing guard mirror /api/subscribe. TCPA:
+// only stored with explicit consent (the number alone is never enough). Dedup by
+// number — a repeat opt-in refreshes consent, never duplicates.
+export async function smsSubscribe(req, res) {
+  const phone = normalizePhone(req.body?.phone);
+  const consent = req.body?.smsConsent === true;
+  if (!consent || !phone) return res.status(400).json({ error: 'a valid mobile number and SMS consent are required' });
+  const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
+  const sessionId = req.body?.sessionId ? String(req.body.sessionId).slice(0, 80) : null;
+  const source = req.body?.source ? String(req.body.source).slice(0, 40) : 'countdown';
+  const attr = (k) => (req.body?.[k] ? String(req.body[k]).slice(0, 200) : null);
+  const utm_source = attr('utm_source'), utm_campaign = attr('utm_campaign'), utm_content = attr('utm_content');
+  // Silent bot drop: honeypot filled AND (challenged OR submitted under 7s) — the
+  // same conclusive combo as /api/subscribe. Answer ok so the bot learns nothing.
+  const hp = req.body?.hp ? String(req.body.hp).slice(0, 100) : '';
+  const elapsed = parseInt(req.body?.elapsed_ms, 10);
+  const hardBot = !!hp && (req.body?.challenged === true || (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 7000));
+  if (hardBot) {
+    q(`INSERT INTO bot_rejects (email, bot_flag, elapsed_ms, ip_hash, country, variant, utm_source, utm_campaign, utm_content, session_id)
+       VALUES (NULL,'honeypot',$1,$2,$3,$4,$5,$6,$7,$8)`,
+      [Number.isFinite(elapsed) ? elapsed : null, hashIp(getClientIp(req)), countryFrom(req), variant, utm_source, utm_campaign, utm_content, sessionId])
+      .catch((e) => console.warn('[sms-subscribe] bot reject insert failed:', e?.message || e));
+    return res.json({ ok: true });
+  }
+  try {
+    const r = await q(
+      `INSERT INTO sms_leads (phone, variant, source, ip_hash, country, utm_source, utm_campaign, utm_content, session_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (phone) DO UPDATE SET consent_at = COALESCE(sms_leads.consent_at, now()), unsubscribed_at = NULL
+       RETURNING (xmax = 0) AS inserted`,
+      [phone, variant, source, hashIp(getClientIp(req)), countryFrom(req), utm_source, utm_campaign, utm_content, sessionId]);
+    res.json({ ok: true });
+    // Only alert on a genuinely new number, not a repeat opt-in.
+    if (r.rows[0] && r.rows[0].inserted) {
+      sendSmsSignupAlert(phone, { variant, country: countryFrom(req), source, utmSource: utm_source, utmCampaign: utm_campaign, utmContent: utm_content })
+        .catch((e) => console.warn('[sms-subscribe] alert failed:', e?.message || e));
+    }
+    if (sessionId) {
+      q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)
+         VALUES ($1,'sms_subscribed',$2,$3,$4,'/buy/',$5)`,
+        [sessionId, JSON.stringify({ server: true, phoneOnly: true }), hashIp(getClientIp(req)), countryFrom(req), variant])
+        .catch((e) => console.warn('[sms-subscribe] journey mark failed:', e?.message || e));
+    }
+  } catch (err) {
+    console.warn('[sms-subscribe] insert failed:', err?.message || err);
+    res.json({ ok: true });
   }
 }
 

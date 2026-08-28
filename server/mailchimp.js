@@ -101,6 +101,20 @@ export async function mcEnsureMember(email) {
   });
 }
 
+// Read back a member's SMS-relevant fields, to VERIFY what Mailchimp actually
+// stored after an SMS push (a 200 on the member PUT doesn't prove the SMS channel
+// took — Mailchimp can silently ignore sms_* fields on an audience/plan that
+// doesn't accept SMS opt-in via the API). Returns null if the member doesn't exist.
+export async function mcGetMemberSms(email) {
+  try {
+    return await mcFetch(`/lists/${await mcListId()}/members/${emailHash(email)}`
+      + `?fields=email_address,status,sms_phone_number,sms_subscription_status`);
+  } catch (e) {
+    if (e.status === 404) return null;
+    throw e;
+  }
+}
+
 export async function mcMarkUnsubscribed(email) {
   return mcFetch(`/lists/${await mcListId()}/members/${emailHash(email)}`, {
     method: 'PUT',

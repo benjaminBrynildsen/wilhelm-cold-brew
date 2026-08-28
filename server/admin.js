@@ -7,7 +7,7 @@ import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
-import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
+import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcGetMemberSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import { xadsEnabled, xadsSummary } from './xads.js';
 import {
@@ -1274,14 +1274,89 @@ export function mountAdmin(app) {
       for (const s of pend) {
         try {
           await mcSubscribeSms(s.email, s.phone);
-          await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [s.email]);
-          pushed++;
+          // A 200 on the member PUT does NOT prove the SMS channel took — Mailchimp
+          // silently ignores sms_* fields on an audience/plan that won't accept SMS
+          // opt-in via the API. Read the member back and only stamp synced if the
+          // SMS status actually flipped to subscribed; otherwise report the truth.
+          const m = await mcGetMemberSms(s.email);
+          if (m && m.sms_subscription_status === 'subscribed') {
+            await q(`UPDATE subscribers SET sms_synced_at = now() WHERE norm_email(email) = norm_email($1)`, [s.email]);
+            pushed++;
+          } else {
+            const st = m ? (m.sms_subscription_status || 'not set') : 'member missing';
+            errors.push({ email: s.email, phone: s.phone, detail: `Mailchimp accepted the update (200) but SMS status is "${st}" — this audience isn't accepting SMS opt-ins via the API. Use the CSV import instead.` });
+          }
         } catch (err) { errors.push({ email: s.email, phone: s.phone, detail: err?.message || String(err) }); }
       }
       const after = await smsSyncState();
       res.json({ ok: true, audience, attempted: pend.length, pushed, failed: errors.length,
                  synced: after.counts.synced, stillPending: after.pend.length, errors: errors.slice(0, 50) });
     } catch (e) { console.error('[sms-sync]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Read back what Mailchimp ACTUALLY stored for a sample of our SMS contacts —
+  // the definitive check when "N synced" here disagrees with "0 subscribers" in
+  // Mailchimp. If sms_subscription_status comes back absent/not-subscribed, the
+  // member PUT silently ignored our SMS fields (audience/plan doesn't take SMS
+  // opt-in via the API) and the CSV import is the way in.
+  app.get('/api/admin/mailchimp/sms-check', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const problem = mcKeyProblem();
+      if (problem) return res.status(400).json({ error: problem });
+      let audience = '';
+      try { const id = await mcListId(); audience = ((await mcLists()).find((l) => l.id === id) || {}).name || id; }
+      catch (e) { return res.status(400).json({ error: e.message }); }
+      const sample = (await q(
+        `SELECT LOWER(email) email, phone FROM subscribers
+          WHERE sms_consent = TRUE AND phone IS NOT NULL AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}
+          ORDER BY sms_consent_at DESC NULLS LAST LIMIT 12`)).rows;
+      const results = [];
+      for (const s of sample) {
+        try {
+          const m = await mcGetMemberSms(s.email);
+          results.push(m
+            ? { email: s.email, ourPhone: s.phone, memberStatus: m.status, smsStatus: m.sms_subscription_status || '(field absent)', mcSmsPhone: m.sms_phone_number || null }
+            : { email: s.email, ourPhone: s.phone, memberStatus: '(not in Mailchimp)' });
+        } catch (err) { results.push({ email: s.email, ourPhone: s.phone, error: err?.message || String(err) }); }
+      }
+      const anySmsSubscribed = results.some((r) => r.smsStatus === 'subscribed');
+      res.json({ audience, checked: results.length, anySmsSubscribed, results });
+    } catch (e) { console.error('[sms-check]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Clear the sms_synced_at stamps so a (now verified) re-sync re-attempts them —
+  // used after discovering the old sync marked contacts "synced" on a bare 200.
+  app.post('/api/admin/mailchimp/sms-reset', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(`UPDATE subscribers SET sms_synced_at = NULL WHERE sms_consent = TRUE AND sms_synced_at IS NOT NULL RETURNING id`);
+      res.json({ ok: true, cleared: r.rows.length });
+    } catch (e) { console.error('[sms-reset]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // CSV of every SMS contact (email subscribers who consented + phone-only leads),
+  // for a direct import into Mailchimp's SMS audience — the documented path that
+  // works even while the API won't take SMS opt-ins.
+  app.get('/api/admin/sms-export', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const subs = (await q(
+        `SELECT LOWER(email) email, phone, sms_consent_at FROM subscribers
+          WHERE sms_consent = TRUE AND phone IS NOT NULL AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}
+          ORDER BY sms_consent_at ASC NULLS LAST`)).rows;
+      const leads = (await q(
+        `SELECT phone, consent_at FROM sms_leads WHERE unsubscribed_at IS NULL ORDER BY consent_at ASC`)).rows;
+      const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+      const rows = [['Email', 'Phone', 'SMS consent date', 'Source']];
+      for (const r of subs) rows.push([r.email, r.phone, iso(r.sms_consent_at), 'email+sms']);
+      for (const r of leads) rows.push(['', r.phone, iso(r.consent_at), 'phone-only']);
+      const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', 'attachment; filename="wilhelm-sms-contacts.csv"');
+      res.send(csv);
+    } catch (e) { console.error('[sms-export]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test arm config (which versions are live) ─────────

@@ -2631,6 +2631,11 @@ async function showEmail() {
         <button class="btn" id="mc-sms">Sync SMS contacts to Mailchimp</button>
         <span class="note">pushes everyone who opted into texts; shows Mailchimp's exact reason if any are rejected</span>
       </div>
+      <div class="row-actions" style="margin-top:8px">
+        <button class="btn ghost" id="mc-sms-check">Check Mailchimp SMS status</button>
+        <button class="btn ghost" id="mc-sms-csv">Download SMS contacts (CSV)</button>
+        <span class="note">Check = read back what Mailchimp really stored · CSV = import into Mailchimp's SMS audience directly</span>
+      </div>
       <div class="note" id="mc-sms-msg" style="white-space:pre-wrap;margin-top:6px"></div>
       <textarea id="mc-paste" rows="4" placeholder="…or paste unsubscribed addresses / the whole Mailchimp export here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:10px;display:block"></textarea>
       <div class="row-actions" style="margin-top:8px">
@@ -2741,6 +2746,40 @@ async function showEmail() {
         smsMsg.textContent = out.join('\n');
       } catch (e) { smsMsg.textContent = 'SMS sync failed: ' + e.message; }
       finally { smsBtn.disabled = false; }
+    });
+    // Read back what Mailchimp actually stored — the truth when "N synced" here
+    // disagrees with "0 subscribers" in Mailchimp.
+    const smsCheck = document.getElementById('mc-sms-check');
+    if (smsCheck) smsCheck.addEventListener('click', async () => {
+      smsCheck.disabled = true; smsMsg.textContent = 'Reading back what Mailchimp actually stored…';
+      try {
+        const r = await api('/api/admin/mailchimp/sms-check');
+        const out = [`Audience: ${r.audience}`, `Checked ${num(r.checked)} of your SMS contacts in Mailchimp:`];
+        out.push(...r.results.map((x) => x.error
+          ? `  • ${x.email}: ERROR ${x.error}`
+          : `  • ${x.email} → SMS status: ${x.smsStatus}${x.mcSmsPhone ? ' (' + x.mcSmsPhone + ')' : ''} · member: ${x.memberStatus}`));
+        out.push('', r.anySmsSubscribed
+          ? '✓ At least one is actually SMS-subscribed — the API path works; give Mailchimp a moment to reflect the rest.'
+          : '✗ None are actually SMS-subscribed in Mailchimp — the member update is silently ignoring the SMS opt-in for this audience. Use "Download SMS contacts (CSV)" and import them into your SMS audience instead.');
+        smsMsg.textContent = out.join('\n');
+      } catch (e) { smsMsg.textContent = 'Check failed: ' + e.message; }
+      finally { smsCheck.disabled = false; }
+    });
+    // Download the SMS contacts as a CSV for a direct Mailchimp SMS import.
+    const smsCsv = document.getElementById('mc-sms-csv');
+    if (smsCsv) smsCsv.addEventListener('click', async () => {
+      smsCsv.disabled = true;
+      try {
+        const res = await fetch('/api/admin/sms-export', { credentials: 'include' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'wilhelm-sms-contacts.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) { smsMsg.textContent = 'CSV download failed: ' + e.message; }
+      finally { smsCsv.disabled = false; }
     });
 
     document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });

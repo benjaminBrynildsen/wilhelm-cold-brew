@@ -259,6 +259,11 @@ export async function smsSubscribe(req, res) {
   const source = req.body?.source ? String(req.body.source).slice(0, 40) : 'countdown';
   const attr = (k) => (req.body?.[k] ? String(req.body[k]).slice(0, 200) : null);
   const utm_source = attr('utm_source'), utm_campaign = attr('utm_campaign'), utm_content = attr('utm_content');
+  // Optional identity token from an email link (same per-send token the pixel +
+  // unsubscribe use). When present it names the recipient, so we attach the number
+  // to their existing subscriber record instead of storing a phone-only lead —
+  // no email retyping. Resolved via email_sends, exactly like unsubscribe.
+  const token = /^[a-f0-9]{8,64}$/.test(String(req.body?.token || '')) ? String(req.body.token) : null;
   // Silent bot drop: honeypot filled AND (challenged OR submitted under 7s) — the
   // same conclusive combo as /api/subscribe. Answer ok so the bot learns nothing.
   const hp = req.body?.hp ? String(req.body.hp).slice(0, 100) : '';
@@ -272,6 +277,35 @@ export async function smsSubscribe(req, res) {
     return res.json({ ok: true });
   }
   try {
+    // Known recipient (came from an email link): attach the number to their email
+    // subscriber, so it flows through the normal SMS pipeline (Mailchimp, metrics)
+    // instead of becoming a phone-only lead. Falls through to the lead path if the
+    // token doesn't resolve to an active subscriber.
+    if (token) {
+      const em = (await q(`SELECT email FROM email_sends WHERE token = $1 LIMIT 1`, [token])).rows[0]?.email;
+      if (em) {
+        const u = await q(
+          `UPDATE subscribers SET phone = $2, sms_consent = TRUE,
+                  sms_consent_at = COALESCE(sms_consent_at, now()), sms_synced_at = NULL
+             WHERE email = $1 AND unsubscribed_at IS NULL AND archived_at IS NULL
+           RETURNING email`, [em, phone]);
+        if (u.rows.length) {
+          res.json({ ok: true });
+          mcPushSms(em, phone)
+            .then((ok) => ok && q(`UPDATE subscribers SET sms_synced_at = now() WHERE email = $1`, [em]))
+            .catch((e) => console.warn('[sms-subscribe] mc push failed:', e?.message || e));
+          if (sessionId) {
+            q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)
+               VALUES ($1,'sms_subscribed',$2,$3,$4,'/buy/',$5)`,
+              [sessionId, JSON.stringify({ server: true, attached: true }), hashIp(getClientIp(req)), countryFrom(req), variant])
+              .catch((e) => console.warn('[sms-subscribe] journey mark failed:', e?.message || e));
+          }
+          return;
+        }
+      }
+      // Token didn't resolve (expired/deleted subscriber) — don't lose the number;
+      // fall through and capture it as a phone-only lead.
+    }
     const r = await q(
       `INSERT INTO sms_leads (phone, variant, source, ip_hash, country, utm_source, utm_campaign, utm_content, session_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)

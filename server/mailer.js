@@ -19,6 +19,10 @@ async function recordSend(token, email, kind, blastId) {
   } catch (e) { console.warn('[mail] recordSend failed:', e?.message || e); }
 }
 const unsubUrl = (token) => `${SITE}/api/unsubscribe?t=${token}`;
+// Early-access link: carries the recipient's per-send token so the countdown page
+// recognizes them and attaches their SMS number to their existing record — no
+// email retyping. Same token the pixel + unsubscribe use (resolves via email_sends).
+const earlyUrl = (token) => `${SITE}/buy?t=${token}`;
 const unsubHeaders = (token) => ({
   'List-Unsubscribe': `<${unsubUrl(token)}>`,
   'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -27,7 +31,8 @@ const unsubHeaders = (token) => ({
 // Inject tracking pixel + replace the {{UNSUB_URL}} placeholder.
 function finalize(html, token) {
   const px = `<img src="${SITE}/api/e/${token}" width="1" height="1" alt="" style="display:none;border:0"/>`;
-  let out = html.replace(/\{\{UNSUB_URL\}\}/g, unsubUrl(token));
+  let out = html.replace(/\{\{UNSUB_URL\}\}/g, unsubUrl(token))
+                .replace(/\{\{EARLY_URL\}\}/g, earlyUrl(token));
   return out.includes('</body>') ? out.replace('</body>', px + '</body>') : out + px;
 }
 
@@ -108,6 +113,10 @@ function welcomeHtml() {
             <p style="margin:0 0 18px;">P.S. Reply with anything you like, but I'm always curious: what's your earliest memory of drinking coffee?</p>
             <p style="margin:0 0 18px;">For some it's a grandparent's kitchen, for others a late study session with friends at a local spot.</p>
             <p style="margin:0;">I'd love to hear yours.</p>
+          </div>
+          <div style="text-align:center;margin-top:28px;">
+            <a href="{{EARLY_URL}}" style="display:inline-block;padding:13px 26px;background:#8a6914;color:#f7f0dd;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;text-decoration:none;border-radius:6px;">Text me the drop link 10 min early &rarr;</a>
+            <div style="font-family:Arial,sans-serif;font-size:11px;color:#9a8d6e;margin-top:9px;">Get the buy link by text before the email goes out. Reply STOP anytime.</div>
           </div>
           <div style="margin-top:30px;padding-top:18px;border-top:1px solid #e2d4ad;font-family:Arial,sans-serif;font-size:11px;color:#9a8d6e;line-height:1.6;">
             You're receiving this because you joined the Wilhelm Cold Brew Friday Drop list.<br/>

@@ -44,6 +44,8 @@
     @media (prefers-reduced-motion:reduce){#buy-countdown .cd-cell{animation:none}#buy-countdown .cd-cell b.bump{animation:none}}
     /* Early-access signup on the countdown card */
     #buy-countdown .cd-join{max-width:360px;margin:20px auto 4px;text-align:left}
+    #buy-countdown .cd-join-email{display:block;width:100%;margin-bottom:8px}
+    #buy-countdown .cd-known{font-family:var(--mono);font-size:12px;letter-spacing:.3px;color:var(--gold);margin:0 2px 10px;line-height:1.45}
     #buy-countdown .cd-join-row{display:flex;gap:8px;align-items:stretch}
     #buy-countdown .cd-join-input{flex:1;min-width:0;background:rgba(0,0,0,.35);border:1px solid rgba(232,217,181,.28);
       border-radius:10px;padding:13px 14px;color:rgba(232,217,181,.95);font-size:16px;font-family:inherit;outline:none;-webkit-appearance:none}
@@ -98,9 +100,14 @@
       <div class="cd-soon" id="cd-soon" hidden>Watch your inbox.</div>
       <div class="meta" id="cd-when-wrap" hidden>Opens <span id="cd-when" style="color:rgba(232,217,181,0.85)"></span></div>
 
-      <!-- Phone-only SMS early-access signup: drop a number, tick consent, get the
-           drop link by text 10 minutes before the email. Posts to /api/sms-subscribe. -->
+      <!-- SMS early-access signup. Arriving from an email link (?t=token) we know
+           who they are: the email field hides and the number attaches to their
+           record (/api/sms-subscribe). Otherwise they add email + phone and it
+           flows through the normal signup (/api/subscribe). -->
       <form class="cd-join" id="cd-join" novalidate>
+        <div class="cd-known" id="cd-known" hidden>We’ve got your email ✓ — just add your number below.</div>
+        <input type="email" id="cd-email" class="cd-join-input cd-join-email" placeholder="you@email.com"
+               autocomplete="email" inputmode="email" enterkeyhint="next" aria-label="Email address"/>
         <div class="cd-join-row">
           <input type="tel" id="cd-phone" class="cd-join-input" placeholder="(314) 555-0123"
                  autocomplete="tel" inputmode="tel" enterkeyhint="go" required aria-label="Mobile number"/>

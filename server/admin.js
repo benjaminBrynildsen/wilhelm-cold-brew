@@ -1335,28 +1335,41 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[sms-reset]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // CSV of every SMS contact (email subscribers who consented + phone-only leads),
-  // for a direct import into Mailchimp's SMS audience — the documented path that
-  // works even while the API won't take SMS opt-ins.
+  // CSV of every SMS contact for Mailchimp's SMS import — the format Ben confirmed
+  // works. Four columns in order: SMS Phone Number, Email Address, SMS Opt-in Date,
+  // Tags. Every field quoted (so Excel/Mailchimp keep the leading +); trailing
+  // newline. US only — +1 then 10 digits, valid NANP area code, Canadian codes
+  // dropped. One row per unique phone (earliest opt-in wins when a number repeats).
   app.get('/api/admin/sms-export', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
       const subs = (await q(
-        `SELECT LOWER(email) email, phone, sms_consent_at FROM subscribers
-          WHERE sms_consent = TRUE AND phone IS NOT NULL AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}
-          ORDER BY sms_consent_at ASC NULLS LAST`)).rows;
+        `SELECT LOWER(email) email, phone, sms_consent_at ts FROM subscribers
+          WHERE sms_consent = TRUE AND phone IS NOT NULL AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}`)).rows;
       const leads = (await q(
-        `SELECT phone, consent_at FROM sms_leads WHERE unsubscribed_at IS NULL ORDER BY consent_at ASC`)).rows;
-      const cell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+        `SELECT NULL email, phone, consent_at ts FROM sms_leads WHERE unsubscribed_at IS NULL`)).rows;
+      // Canadian NANP area codes — shares the +1 country code but isn't US, so drop.
+      const CA_AREA = new Set(['204','226','236','249','250','263','289','306','343','354','365','367','368','382','387','403','416','418','428','431','437','438','450','468','474','506','514','519','548','579','581','584','587','604','613','639','647','672','683','705','709','742','753','778','780','782','807','819','825','867','873','879','902','905']);
+      const usPhone = (p) => {
+        const c = String(p || '').replace(/[\s-]/g, '');           // strip spaces/dashes
+        const m = /^\+1([2-9]\d\d)\d{7}$/.exec(c);                  // +1 + valid area code + 7 digits
+        return (m && !CA_AREA.has(m[1])) ? c : null;
+      };
       const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
-      // Mailchimp SMS import format: an explicit "SMS Marketing Status" column set to
-      // subscribed (plus the opt-in date) is what tells Mailchimp these are consented
-      // SMS contacts — without it, an import of already-existing emails is skipped
-      // "to protect deliverability". Phone maps to SMS Phone Number on import.
-      const rows = [['Email Address', 'Phone Number', 'SMS Marketing Status', 'SMS Opt-in Date', 'Source']];
-      for (const r of subs) rows.push([r.email, r.phone, 'subscribed', iso(r.sms_consent_at), 'email+sms']);
-      for (const r of leads) rows.push(['', r.phone, 'subscribed', iso(r.consent_at), 'phone-only']);
-      const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
+      const all = subs.map((r) => ({ phone: r.phone, email: r.email || '', ts: r.ts, source: 'email+sms' }))
+        .concat(leads.map((r) => ({ phone: r.phone, email: '', ts: r.ts, source: 'phone-only' })));
+      // Earliest opt-in first, so "keep the first" for a shared number is the oldest.
+      all.sort((a, b) => (a.ts ? +new Date(a.ts) : Infinity) - (b.ts ? +new Date(b.ts) : Infinity));
+      const seen = new Set();
+      const rows = [['SMS Phone Number', 'Email Address', 'SMS Opt-in Date', 'Tags']];
+      for (const r of all) {
+        const p = usPhone(r.phone);
+        if (!p || seen.has(p)) continue;                           // US only; one row per number
+        seen.add(p);
+        rows.push([p, r.email, iso(r.ts), 'sms-opt-in, ' + r.source]);
+      }
+      const qt = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';   // every field quoted
+      const csv = rows.map((r) => r.map(qt).join(',')).join('\r\n') + '\r\n';         // trailing newline
       res.set('Content-Type', 'text/csv; charset=utf-8');
       res.set('Content-Disposition', 'attachment; filename="wilhelm-sms-contacts.csv"');
       res.send(csv);

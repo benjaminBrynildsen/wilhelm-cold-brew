@@ -1526,6 +1526,30 @@ async function showTraffic() {
 // ───────── Orders ─────────
 const FLD_DARK = 'background:rgba(232,217,181,.06);border:1px solid var(--line);color:var(--parch);font-family:inherit;padding:7px 9px;color-scheme:dark';
 
+// Twilio SMS panel on the Email tab: setup note until connected, then a test-send
+// + a broadcast/schedule box + the recent-send log.
+function smsPanel(s) {
+  if (!s || !s.configured) {
+    return `<div class="note">Not connected yet. In Render → Environment set <b>TWILIO_ACCOUNT_SID</b>, <b>TWILIO_AUTH_TOKEN</b>, and <b>TWILIO_MESSAGING_SERVICE_SID</b> (the Messaging Service handles STOP opt-outs + scheduling). In Twilio, point the Messaging Service's inbound webhook at <b>/api/sms/inbound</b>. Reload this page once the keys are set.</div>`;
+  }
+  const logRows = (s.recent || []).length
+    ? s.recent.map((r) => `<tr><td>${esc(ago(r.created_at))}</td><td>${esc(r.phone || '')}</td><td>${esc(r.kind || '')}</td><td>${r.status === 'failed' ? '<span style="color:var(--bad)">failed</span>' + (r.error ? ' — ' + esc(r.error) : '') : esc(r.status || '')}${r.scheduled_at ? ' · for ' + esc(String(r.scheduled_at).slice(0, 16).replace('T', ' ')) : ''}</td></tr>`).join('')
+    : '<tr><td class="note" colspan="4">No texts sent yet.</td></tr>';
+  return `
+    <div class="note">Connected ✓ · <b>${num(s.reachable)}</b> reachable SMS ${s.reachable === 1 ? 'number' : 'numbers'}${s.canSchedule ? ' · scheduling on' : ' · scheduling off (add a Messaging Service SID)'}.</div>
+    <div class="row-actions" style="margin-top:10px;align-items:center;flex-wrap:wrap;gap:8px">
+      <input id="sms-test-to" placeholder="+1 your mobile" style="${FLD_DARK};max-width:180px"/>
+      <input id="sms-test-body" placeholder="Test message (optional)" style="${FLD_DARK};max-width:280px"/>
+      <button class="btn ghost" id="sms-test-btn">Send test</button>
+    </div>
+    <textarea id="sms-body" rows="3" placeholder="Drop-alert text — include the buy link, e.g. Batch 68 is live: https://wilhelmcoldbrew.com/buy" style="${FLD_DARK};width:100%;max-width:680px;margin-top:12px;display:block"></textarea>
+    <div class="row-actions" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:10px">
+      <label class="note">Schedule (optional, your local time) <input type="datetime-local" id="sms-when" style="${FLD_DARK}" ${s.canSchedule ? '' : 'disabled'}/></label>
+      <button class="btn" id="sms-send-btn">Send to all ${num(s.reachable)} →</button>
+    </div>
+    <table style="margin-top:12px"><thead><tr><th>When</th><th>To</th><th>Kind</th><th>Status</th></tr></thead><tbody>${logRows}</tbody></table>`;
+}
+
 // US tile-grid layout [row, col] — an abstract map (each state a square in a
 // roughly geographic grid) so the shipping map needs no geodata or projection.
 const STATE_GRID = {
@@ -2501,11 +2525,12 @@ async function showBotCatcher() {
 async function showEmail() {
   loading();
   try {
-    const [subs, blasts, history, mcStatus] = await Promise.all([
+    const [subs, blasts, history, mcStatus, smsStatus] = await Promise.all([
       api('/api/admin/subscribers'),
       api('/api/admin/email/blasts'),
       api('/api/admin/email/history' + historyQuery()),
       api('/api/admin/mailchimp/status').catch(() => null),
+      api('/api/admin/sms/status').catch(() => null),
     ]);
     // Mailchimp freshness — when the automatic push and the manual catch-up last ran.
     const mcS = mcStatus || {};
@@ -2644,6 +2669,10 @@ async function showEmail() {
       </div>
       <div class="note" id="mc-msg" style="white-space:pre-wrap"></div>
 
+      <h3>Text alerts <span class="note">(Twilio SMS — send the drop link, or schedule it 10 min early)</span></h3>
+      ${smsPanel(smsStatus)}
+      <div class="note" id="sms-msg" style="white-space:pre-wrap;margin-top:8px"></div>
+
       <h3>Compose email</h3>
       <div id="composer"></div>
 
@@ -2780,6 +2809,36 @@ async function showEmail() {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } catch (e) { smsMsg.textContent = 'CSV download failed: ' + e.message; }
       finally { smsCsv.disabled = false; }
+    });
+    // Twilio SMS — test send + broadcast/schedule to the whole SMS audience.
+    const smsMsgEl = document.getElementById('sms-msg');
+    const smsTestBtn = document.getElementById('sms-test-btn');
+    if (smsTestBtn) smsTestBtn.addEventListener('click', async () => {
+      const to = (document.getElementById('sms-test-to').value || '').trim();
+      const body = (document.getElementById('sms-test-body').value || '').trim();
+      if (!to) { smsMsgEl.textContent = 'Enter your mobile number for the test.'; return; }
+      smsTestBtn.disabled = true; smsMsgEl.textContent = 'Sending test…';
+      try { const r = await mcPost('/api/admin/sms/test', { to, body }); smsMsgEl.textContent = `Test sent ✓ (${r.status || 'queued'}) — check your phone.`; }
+      catch (e) { smsMsgEl.textContent = 'Test failed: ' + e.message; }
+      finally { smsTestBtn.disabled = false; }
+    });
+    const smsSendBtn = document.getElementById('sms-send-btn');
+    if (smsSendBtn) smsSendBtn.addEventListener('click', async () => {
+      const body = (document.getElementById('sms-body').value || '').trim();
+      const whenEl = document.getElementById('sms-when');
+      const when = whenEl && whenEl.value ? whenEl.value : '';
+      if (!body) { smsMsgEl.textContent = 'Write the message first.'; return; }
+      const count = (smsStatus && smsStatus.reachable) || 0;
+      if (!confirm(`Text all ${count} SMS subscriber${count === 1 ? '' : 's'}?` + (when ? `\nScheduled for ${when.replace('T', ' ')} (your local time).` : '\nSends immediately.'))) return;
+      smsSendBtn.disabled = true; smsMsgEl.textContent = when ? 'Scheduling…' : 'Sending…';
+      try {
+        const sendAt = when ? new Date(when).toISOString() : null;
+        const r = await mcPost('/api/admin/sms/broadcast', { body, sendAt });
+        smsMsgEl.textContent = `${r.scheduledFor ? 'Scheduled' : 'Sent'} ${num(r.sent)} of ${num(r.attempted)}`
+          + (r.failed ? ` · ${num(r.failed)} failed${r.errors && r.errors.length ? ':\n' + r.errors.join('\n') : ''}` : '')
+          + (r.scheduledFor ? `\nfor ${r.scheduledFor}` : '');
+      } catch (e) { smsMsgEl.textContent = 'Send failed: ' + e.message; }
+      finally { smsSendBtn.disabled = false; }
     });
 
     document.getElementById('hkind').addEventListener('change', (e) => { state.emailKind = e.target.value; showEmail(); });

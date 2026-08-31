@@ -8,6 +8,8 @@ import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
 import { getShippingFromStripe } from './checkout.js';
 import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcGetMemberSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
+import { smsConfigured, smsCanSchedule, reachableNumbers, sendOne, broadcast, isUsMobile } from './sms.js';
+import { normalizePhone } from './util.js';
 import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import { xadsEnabled, xadsSummary } from './xads.js';
 import {
@@ -1374,6 +1376,55 @@ export function mountAdmin(app) {
       res.set('Content-Disposition', 'attachment; filename="wilhelm-sms-contacts.csv"');
       res.send(csv);
     } catch (e) { console.error('[sms-export]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── Twilio SMS: send drop alerts + the "10 min early" link ─────────
+  app.get('/api/admin/sms/status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const configured = smsConfigured();
+      const reachable = configured ? (await reachableNumbers()).length : 0;
+      const recent = (await q(
+        `SELECT phone, kind, status, scheduled_at, error, created_at
+           FROM sms_sends ORDER BY created_at DESC LIMIT 20`)).rows;
+      res.json({ configured, canSchedule: smsCanSchedule(), reachable, recent });
+    } catch (e) { console.error('[sms-status]', e); res.status(500).json({ error: e.message }); }
+  });
+  // Send a single test text (to yourself) to confirm the Twilio setup end to end.
+  app.post('/api/admin/sms/test', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!smsConfigured()) return res.status(400).json({ error: 'Twilio isn’t configured yet — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_MESSAGING_SERVICE_SID in Render → Environment.' });
+      const to = normalizePhone(req.body?.to);
+      const body = String(req.body?.body || '').trim() || 'Wilhelm Cold Brew test ✓';
+      if (!to || !isUsMobile(to)) return res.status(400).json({ error: 'Enter a valid US mobile number (E.164, e.g. +13145550123).' });
+      const r = await sendOne(to, body, { kind: 'test' });
+      if (!r.ok) return res.status(400).json({ error: r.error });
+      res.json({ ok: true, sid: r.sid, status: r.status });
+    } catch (e) { console.error('[sms-test]', e); res.status(500).json({ error: e.message }); }
+  });
+  // Broadcast a drop alert to the whole SMS audience. Optional sendAt (ISO) to
+  // SCHEDULE it — that's the "10 minutes early" automation (set it to drop time
+  // minus 10 minutes). Requires an explicit confirm from the client.
+  app.post('/api/admin/sms/broadcast', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!smsConfigured()) return res.status(400).json({ error: 'Twilio isn’t configured yet.' });
+      const body = String(req.body?.body || '').trim();
+      if (!body) return res.status(400).json({ error: 'Message body is required.' });
+      let sendAt = null;
+      if (req.body?.sendAt) {
+        const t = new Date(req.body.sendAt);
+        if (isNaN(t.getTime())) return res.status(400).json({ error: 'Invalid schedule time.' });
+        const mins = (t.getTime() - Date.now()) / 60000;
+        if (mins < 15) return res.status(400).json({ error: 'Twilio needs a scheduled time at least 15 minutes out.' });
+        if (mins > 7 * 24 * 60) return res.status(400).json({ error: 'Scheduled time can be at most 7 days out.' });
+        sendAt = t.toISOString();
+      }
+      const r = await broadcast(body, { sendAt, kind: 'drop_alert' });
+      if (!r.ok) return res.status(400).json({ error: r.error });
+      res.json(r);
+    } catch (e) { console.error('[sms-broadcast]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── split-test arm config (which versions are live) ─────────

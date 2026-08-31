@@ -227,6 +227,23 @@ export async function ensureSchema() {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS sms_leads_created_idx ON sms_leads (created_at);
+    -- SMS opt-out (a STOP reply, synced from the Twilio inbound webhook). Distinct
+    -- from the email unsubscribe: someone can drop texts but keep the emails. The
+    -- drop-alert audience and SMS metrics both require sms_unsubscribed_at IS NULL.
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sms_unsubscribed_at TIMESTAMPTZ;
+    -- Outbound SMS log (Twilio) — one row per message, for audit + the admin log.
+    CREATE TABLE IF NOT EXISTS sms_sends (
+      id           BIGSERIAL PRIMARY KEY,
+      phone        TEXT,
+      body         TEXT,
+      kind         TEXT,           -- drop_alert | test | …
+      twilio_sid   TEXT,
+      status       TEXT,           -- queued | scheduled | sent | failed
+      scheduled_at TIMESTAMPTZ,
+      error        TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS sms_sends_created_idx ON sms_sends (created_at);
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,

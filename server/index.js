@@ -18,6 +18,7 @@ import { backfillPurchasePoints } from './points.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
 import { deliveryEnabled, refreshDeliveryStatuses } from './delivery.js';
+import { verifyWebhook, handleInbound } from './sms.js';
 import { resolveSecret, rateLimit } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -113,6 +114,17 @@ app.post('/api/beacon', journeyLimit, receiveJourney); // sendBeacon target (sam
 app.post('/api/subscribe', subscribeLimit, subscribe);
 app.post('/api/sms-subscribe', subscribeLimit, smsSubscribe); // phone-only SMS opt-in (countdown card)
 app.post('/api/challenge', journeyLimit, recordChallenge); // soft-challenge shown (bailed-vs-confirmed tracking)
+// Twilio inbound SMS webhook (STOP/opt-out sync + replies). Twilio POSTs
+// form-encoded, so parse that here (express.json above leaves it untouched).
+// Signature-verified; fail-closed. Always answers empty TwiML so Twilio is happy.
+app.post('/api/sms/inbound', express.urlencoded({ extended: false }), async (req, res) => {
+  try {
+    if (!verifyWebhook(req)) return res.status(403).type('text/xml').send('<Response/>');
+    const r = await handleInbound(req);
+    if (r.optOut) console.log('[sms] opt-out synced for', r.from);
+  } catch (e) { console.warn('[sms] inbound failed:', e?.message || e); }
+  res.type('text/xml').send('<Response></Response>');
+});
 mountAdmin(app);
 mountPortal(app);
 mountCheckout(app, payLimit);

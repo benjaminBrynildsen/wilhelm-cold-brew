@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /api/
+Disallow: /thank-you
+
+Sitemap: https://wilhelmcoldbrew.com/sitemap.xml

@@ -108,6 +108,24 @@ app.use((req, _res, next) => {
   next();
 });
 
+// XML sitemap of the indexable public pages (admin/account/api/thank-you are
+// left out — they're disallowed in robots.txt). Served dynamically so the host
+// tracks SITE_URL and lastmod stays current.
+app.get('/sitemap.xml', (req, res) => {
+  const site = (process.env.SITE_URL || 'https://wilhelmcoldbrew.com').replace(/\/$/, '');
+  const today = new Date().toISOString().slice(0, 10);
+  const pages = [
+    { loc: '/drink/', pri: '1.0' },   // the landing page (site's front door)
+    { loc: '/buy/', pri: '0.9' },
+    { loc: '/batches/', pri: '0.6' },
+    { loc: '/recipe/', pri: '0.6' },
+  ];
+  const urls = pages.map((p) =>
+    `  <url><loc>${site}${p.loc}</loc><lastmod>${today}</lastmod><priority>${p.pri}</priority></url>`).join('\n');
+  res.type('application/xml').send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+});
+
 // ───────── API ─────────
 app.post('/api/journey', journeyLimit, receiveJourney);
 app.post('/api/beacon', journeyLimit, receiveJourney); // sendBeacon target (same handler)

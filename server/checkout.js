@@ -122,7 +122,7 @@ async function attachProducts(d) {
   } else {
     d.multi = false;
     d.products = [{
-      id: null, name: d.name, price_cents: d.price_cents, bottle_cap: d.bottle_cap, image: null,
+      id: null, name: d.name, price_cents: d.price_cents, bottle_cap: d.bottle_cap, image: d.image || null,
       tasting_notes: d.tasting_notes, origin: d.origin, varietal: d.varietal, elevation: d.elevation,
       roast: d.roast, sold: d.sold, remaining: d.remaining,
     }];
@@ -235,6 +235,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
           tastingNotes: d.tasting_notes || null,
           origin: d.origin || null, varietal: d.varietal || null,
           elevation: d.elevation || null, roast: d.roast || null,
+          image: d.image || null,
           shipCents: SHIP_CENTS, nextDropAt, nextBatch,
           // Two-bottle prototype: the buy page renders one card per product. For a
           // legacy drop this is a single synthesized product, so the UI is identical.

@@ -1,5 +1,6 @@
 // Admin API: auth + funnel + traffic + subscribers + email.
 // Ported/slimmed from theodore-web server/admin.ts + server/pageviews.ts.
+import express from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { resolveSecret, safeEqual, rateLimit } from './security.js';
 import { q, pool } from './db.js';
@@ -2988,7 +2989,7 @@ export function mountAdmin(app) {
     try {
       const rows = (await q(
         `SELECT d.id, d.name, d.price_cents, d.bottle_cap, d.opens_at, d.status, d.created_at,
-                d.tasting_notes, d.origin, d.varietal, d.elevation, d.roast,
+                d.tasting_notes, d.origin, d.varietal, d.elevation, d.roast, d.image,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
            FROM drops d ORDER BY d.created_at DESC LIMIT 50`)).rows;
       // Attach each drop's bottles (two-bottle prototype). Empty = single-product.
@@ -3105,6 +3106,52 @@ export function mountAdmin(app) {
       }
       res.json({ ok: true, count: clean.length });
     } catch (e) { console.error('[drops/products]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Set (or clear) a drop's batch-level photo. Accepts an /i/<id> upload URL, a
+  // /path asset, or '' to clear.
+  app.post('/api/admin/drops/:id/image', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      let image = req.body?.image != null ? String(req.body.image).slice(0, 400) : '';
+      if (image && !/^\/(i\/\d+|[\w./-]+\.(jpg|jpeg|png|webp|gif))$/i.test(image)) {
+        return res.status(400).json({ error: 'image must be an uploaded /i/… URL or an asset path' });
+      }
+      await q(`UPDATE drops SET image = $1 WHERE id = $2`, [image || null, id]);
+      res.json({ ok: true, image: image || null });
+    } catch (e) { console.error('[drops/image]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Photo upload → Postgres (see images table). Raw image bytes in the body
+  // (client downscales first); returns a short /i/<id> URL to store on the bottle
+  // or batch. Admin-only.
+  app.post('/api/admin/upload',
+    express.raw({ type: (req) => String(req.headers['content-type'] || '').startsWith('image/'), limit: '8mb' }),
+    async (req, res) => {
+      if (!requireAdmin(req, res)) return;
+      try {
+        const ct = String(req.headers['content-type'] || '').split(';')[0].trim();
+        if (!/^image\/(jpeg|png|webp|gif)$/.test(ct)) return res.status(400).json({ error: 'upload a JPEG, PNG, WebP or GIF image' });
+        const buf = req.body;
+        if (!buf || !buf.length) return res.status(400).json({ error: 'empty upload' });
+        const row = (await q(`INSERT INTO images (content_type, bytes) VALUES ($1,$2) RETURNING id`, [ct, buf])).rows[0];
+        res.json({ ok: true, url: '/i/' + row.id });
+      } catch (e) { console.error('[upload]', e); res.status(500).json({ error: e.message }); }
+    });
+
+  // Serve an uploaded image (public — the buy page loads it). Immutable: an image
+  // id never changes content, so cache it hard.
+  app.get('/i/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!(id > 0)) return res.status(404).end();
+      const row = (await q(`SELECT content_type, bytes FROM images WHERE id = $1`, [id])).rows[0];
+      if (!row) return res.status(404).end();
+      res.set('Content-Type', row.content_type);
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+      res.send(row.bytes);
+    } catch (e) { console.error('[img]', e); res.status(500).end(); }
   });
 
   // Delete a drop. Refuse if it has paid orders (preserve revenue/history — close

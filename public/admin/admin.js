@@ -60,6 +60,32 @@ async function api(path, opts) {
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const num = (n) => (n || 0).toLocaleString();
+
+// Downscale a chosen photo in the browser (canvas → JPEG) so uploads stay small,
+// then POST the bytes to /api/admin/upload. Returns the stored /i/<id> URL.
+function downscaleImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error('could not encode image'))), 'image/jpeg', quality || 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('that file is not a readable image')); };
+    img.src = url;
+  });
+}
+async function uploadImage(file) {
+  const blob = await downscaleImage(file, 1200, 0.85);
+  const r = await fetch('/api/admin/upload', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+  if (r.status === 401) { state.authed = false; renderLogin(); throw new Error('unauthorized'); }
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('upload failed (' + r.status + ')')); }
+  return (await r.json()).url;
+}
 const pct = (a, b) => (b ? ((a / b) * 100).toFixed(1) : '0.0') + '%';
 
 // ───────── boot ─────────
@@ -1879,7 +1905,13 @@ async function showOrders() {
         <label class="note">Roast <input id="droast" value="${esc(nd.roast || '')}" placeholder="Medium" style="width:120px;${FLD_DARK}"/></label>
       </div>
       <textarea id="dnotes" rows="5" placeholder="Tasting notes — one per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:8px">${esc(nd.tasting_notes || '')}</textarea>
-      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save drop</button><span class="note" id="dnotes-msg"></span></div>
+      <div class="row-actions" style="margin-top:8px;align-items:center;gap:8px">
+        <button class="btn" id="dnotes-save" data-id="${nd.id}">Save drop</button><span class="note" id="dnotes-msg"></span>
+        <span style="flex:1"></span>
+        <img id="dbatch-prev" src="${esc(nd.image || '')}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);${nd.image ? '' : 'display:none'}"/>
+        <label class="note">Batch photo <input type="file" id="dbatch-file" accept="image/*" data-id="${nd.id}" style="max-width:180px;${FLD_DARK};padding:5px"/></label>
+        <span class="note" id="dbatch-msg"></span>
+      </div>
       <div class="note" style="margin-top:4px">Price/bottles/tasting card for the selected drop. Name and date are edited with the Rename / Reschedule buttons in the table above. Notes: one per line; text before a "—" is emphasized; blank fields fall back to the defaults.</div>
       ${(() => {
         // Two-bottle prototype editor. Bottle A pre-fills from the drop's products
@@ -1896,7 +1928,10 @@ async function showOrders() {
             <label class="note">Name <input id="dp${k}-name" value="${esc(s.name || '')}" placeholder="${ph}" style="width:170px;${FLD_DARK}"/></label>
             <label class="note">Price $<input id="dp${k}-price" type="number" min="1" step="0.01" value="${pv(s.price_cents)}" style="width:90px;${FLD_DARK}"/></label>
             <label class="note">Bottles <input id="dp${k}-cap" type="number" min="1" step="1" value="${s.bottle_cap != null ? esc(s.bottle_cap) : ''}" style="width:80px;${FLD_DARK}"/></label>
-            <label class="note">Image <input id="dp${k}-img" value="${esc(s.image || '')}" placeholder="/drink/assets/bottle-cigars.jpg" style="width:220px;${FLD_DARK}"/></label>
+            <img id="dp${k}-prev" src="${esc(s.image || '')}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);${s.image ? '' : 'display:none'}"/>
+            <label class="note">Photo <input type="file" id="dp${k}-file" accept="image/*" style="max-width:180px;${FLD_DARK};padding:5px"/></label>
+            <span class="note" id="dp${k}-imgmsg"></span>
+            <input type="hidden" id="dp${k}-img" value="${esc(s.image || '')}"/>
           </div>
           <textarea id="dp${k}-notes" rows="2" placeholder="Tasting notes (one per line)" style="width:100%;${FLD_DARK};margin-top:6px;line-height:1.4">${esc(s.tasting_notes || '')}</textarea>
         </div>`;
@@ -2148,6 +2183,34 @@ async function showOrders() {
     });
     if (prodsClear) prodsClear.addEventListener('click', () => {
       postProducts(prodsClear.dataset.id, [], document.getElementById('dprods-msg'));
+    });
+    // Per-bottle photo upload → fills that bottle's hidden image field + preview
+    // (saved when you click "Save bottles").
+    ['A', 'B'].forEach((k) => {
+      const f = document.getElementById('dp' + k + '-file');
+      if (!f) return;
+      f.addEventListener('change', async () => {
+        const file = f.files && f.files[0]; if (!file) return;
+        const m = document.getElementById('dp' + k + '-imgmsg'); if (m) m.textContent = 'Uploading…';
+        try {
+          const url = await uploadImage(file);
+          document.getElementById('dp' + k + '-img').value = url;
+          const prev = document.getElementById('dp' + k + '-prev'); if (prev) { prev.src = url; prev.style.display = ''; }
+          if (m) m.textContent = 'Uploaded ✓ — click Save bottles';
+        } catch (e) { if (m) m.textContent = 'Upload failed: ' + e.message; }
+      });
+    });
+    // Batch photo upload → saves to the drop immediately.
+    const batchFile = document.getElementById('dbatch-file');
+    if (batchFile) batchFile.addEventListener('change', async () => {
+      const file = batchFile.files && batchFile.files[0]; if (!file) return;
+      const m = document.getElementById('dbatch-msg'); if (m) m.textContent = 'Uploading…';
+      try {
+        const url = await uploadImage(file);
+        await api(`/api/admin/drops/${batchFile.dataset.id}/image`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: url }) });
+        const prev = document.getElementById('dbatch-prev'); if (prev) { prev.src = url; prev.style.display = ''; }
+        if (m) m.textContent = 'Saved ✓';
+      } catch (e) { if (m) m.textContent = 'Upload failed: ' + e.message; }
     });
     // Inline shipping-address editor: ✎ on a paid order opens a one-row form
     // under it. Saved corrections are what the Pirate Ship export prints.

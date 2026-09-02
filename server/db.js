@@ -364,6 +364,19 @@ export async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS order_items_order_idx   ON order_items (order_id);
     CREATE INDEX IF NOT EXISTS order_items_product_idx ON order_items (product_id);
 
+    -- Uploaded photos (bottle / batch images from the admin). Stored in Postgres,
+    -- not on disk, because Render's filesystem is ephemeral (a redeploy would wipe
+    -- uploads). Referenced by a short /i/<id> URL, so the drops list + buy feed stay
+    -- lean instead of carrying inline base64.
+    CREATE TABLE IF NOT EXISTS images (
+      id           BIGSERIAL PRIMARY KEY,
+      content_type TEXT NOT NULL,
+      bytes        BYTEA NOT NULL,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    -- Batch-level photo (single-bottle drops + a fallback for the buy hero).
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS image TEXT;
+
     -- Autopilot bookkeeping on split arms: set when the bandit turns an arm off
     -- (vs a manual pause). Re-enabling an arm clears both.
     ALTER TABLE split_arms ADD COLUMN IF NOT EXISTS auto_paused_at TIMESTAMPTZ;

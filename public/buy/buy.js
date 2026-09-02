@@ -303,6 +303,7 @@
       } else {
         // ── Single-bottle drop (legacy) ──
         state.priceCents = d.priceCents; state.max = Math.max(1, d.maxPerOrder || 1);
+        if (d.image) { var simg = document.querySelector('#single-image img'); if (simg) { simg.src = d.image; simg.alt = d.name || 'Wilhelm Cold Brew'; } }
         state.notes = d.tastingNotes || DEFAULT_NOTES;
         state.origin = d.origin; state.varietal = d.varietal; state.elevation = d.elevation; state.roast = d.roast;
         updateQtyUI(); renderTotal();

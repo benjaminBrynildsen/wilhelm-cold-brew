@@ -1761,7 +1761,9 @@ async function showOrders() {
       ? o.orders.map((r) => `<tr>
           <td>${esc((r.created_at || '').slice(0, 10))}</td>
           <td>${esc(r.email || '—')}${r.buyer_drops > 1 ? ` <span title="Repeat customer — bought ${r.buyer_drops} batches" style="color:var(--gold);font-weight:700;cursor:default">↻${r.buyer_drops > 2 ? '<sup style="font-size:.7em">' + num(r.buyer_drops) + '</sup>' : ''}</span>` : ''}</td>
-          <td>${esc(r.drop_name || '—')}</td>
+          <td>${esc(r.drop_name || '—')}${(r.items && r.items.length)
+            ? `<div class="note" style="margin-top:2px">${r.items.map((it) => `${num(it.quantity)}× ${esc(it.name)}`).join(' · ')}</div>`
+            : (r.quantity > 1 ? ` <span class="note">×${num(r.quantity)}</span>` : '')}</td>
           <td>${r.addressIssue ? `<span title="${esc(r.addressIssue)} — fix before exporting" style="color:#e0902a;cursor:default">⚠</span> ` : ''}${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
           <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
@@ -1878,7 +1880,33 @@ async function showOrders() {
       </div>
       <textarea id="dnotes" rows="5" placeholder="Tasting notes — one per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:8px">${esc(nd.tasting_notes || '')}</textarea>
       <div class="row-actions" style="margin-top:8px"><button class="btn" id="dnotes-save" data-id="${nd.id}">Save drop</button><span class="note" id="dnotes-msg"></span></div>
-      <div class="note" style="margin-top:4px">Price/bottles/tasting card for the selected drop. Name and date are edited with the Rename / Reschedule buttons in the table above. Notes: one per line; text before a "—" is emphasized; blank fields fall back to the defaults.</div>`;
+      <div class="note" style="margin-top:4px">Price/bottles/tasting card for the selected drop. Name and date are edited with the Rename / Reschedule buttons in the table above. Notes: one per line; text before a "—" is emphasized; blank fields fall back to the defaults.</div>
+      ${(() => {
+        // Two-bottle prototype editor. Bottle A pre-fills from the drop's products
+        // (or, for a legacy single drop, from the drop's own fields); Bottle B is
+        // the second bottle. Fill both to make it a two-bottle mixed-cart drop.
+        const P = nd.products || [];
+        const A = P[0] || { name: nd.name || '', price_cents: nd.price_cents, bottle_cap: nd.bottle_cap, image: '', tasting_notes: nd.tasting_notes || '' };
+        const B = P[1] || { name: '', price_cents: '', bottle_cap: '', image: '', tasting_notes: '' };
+        const pv = (c) => (c === '' || c == null ? '' : (Number(c) / 100).toFixed(2));
+        const slot = (k, s, ph) => `
+        <div style="border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px">
+          <div class="note" style="margin-bottom:6px">Bottle ${k}</div>
+          <div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center">
+            <label class="note">Name <input id="dp${k}-name" value="${esc(s.name || '')}" placeholder="${ph}" style="width:170px;${FLD_DARK}"/></label>
+            <label class="note">Price $<input id="dp${k}-price" type="number" min="1" step="0.01" value="${pv(s.price_cents)}" style="width:90px;${FLD_DARK}"/></label>
+            <label class="note">Bottles <input id="dp${k}-cap" type="number" min="1" step="1" value="${s.bottle_cap != null ? esc(s.bottle_cap) : ''}" style="width:80px;${FLD_DARK}"/></label>
+            <label class="note">Image <input id="dp${k}-img" value="${esc(s.image || '')}" placeholder="/drink/assets/bottle-cigars.jpg" style="width:220px;${FLD_DARK}"/></label>
+          </div>
+          <textarea id="dp${k}-notes" rows="2" placeholder="Tasting notes (one per line)" style="width:100%;${FLD_DARK};margin-top:6px;line-height:1.4">${esc(s.tasting_notes || '')}</textarea>
+        </div>`;
+        const statusMsg = P.length > 1 ? '● Two-bottle drop is set' : (P.length === 1 ? '● One bottle set via products' : 'Currently a single-bottle drop');
+        return `
+      <h4 style="margin:20px 0 2px">Two bottles at once <span class="note">— prototype · fill Bottle B to sell two, clear it for one</span></h4>
+      ${slot('A', A, 'Barrel Batch')}
+      ${slot('B', B, 'Cigar Batch (leave blank for one bottle)')}
+      <div class="row-actions" style="margin-top:8px"><button class="btn" id="dprods-save" data-id="${nd.id}">Save bottles</button><button class="btn ghost" id="dprods-clear" data-id="${nd.id}">Revert to one bottle</button><span class="note" id="dprods-msg">${statusMsg}</span></div>`;
+      })()}`;
       })()}
 
       <h3>Schedule a drop</h3>
@@ -2092,6 +2120,34 @@ async function showOrders() {
         msg.textContent = 'Saved ✓';
         showOrders();
       } catch (e) { msg.textContent = 'Failed: ' + e.message; }
+    });
+    // Two-bottle prototype: save / clear a drop's bottles.
+    const prodsSave = document.getElementById('dprods-save');
+    const prodsClear = document.getElementById('dprods-clear');
+    const readSlot = (k) => {
+      const name = (document.getElementById('dp' + k + '-name').value || '').trim();
+      const priceCents = Math.round(parseFloat(document.getElementById('dp' + k + '-price').value) * 100);
+      const bottleCap = parseInt(document.getElementById('dp' + k + '-cap').value, 10);
+      if (!name || !(priceCents > 0) || !(bottleCap > 0)) return null;
+      return { name, priceCents, bottleCap,
+        image: (document.getElementById('dp' + k + '-img').value || '').trim() || null,
+        tastingNotes: document.getElementById('dp' + k + '-notes').value || null };
+    };
+    const postProducts = async (id, products, msgEl) => {
+      const J = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products }) };
+      try { const r = await api(`/api/admin/drops/${id}/products`, J); state.editDrop = id;
+        msgEl.textContent = r.count > 1 ? `Saved — ${r.count} bottles ✓` : (r.count === 1 ? 'Saved — one bottle ✓' : 'Reverted to a single-bottle drop ✓');
+        showOrders();
+      } catch (e) { msgEl.textContent = 'Failed: ' + e.message; }
+    };
+    if (prodsSave) prodsSave.addEventListener('click', () => {
+      const msg = document.getElementById('dprods-msg');
+      const list = [readSlot('A'), readSlot('B')].filter(Boolean);
+      if (!list.length) { msg.textContent = 'Fill Bottle A (name, price, bottles) first.'; return; }
+      postProducts(prodsSave.dataset.id, list, msg);
+    });
+    if (prodsClear) prodsClear.addEventListener('click', () => {
+      postProducts(prodsClear.dataset.id, [], document.getElementById('dprods-msg'));
     });
     // Inline shipping-address editor: ✎ on a paid order opens a one-row form
     // under it. Saved corrections are what the Pirate Ship export prints.

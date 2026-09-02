@@ -15,7 +15,18 @@ const MAX_PER_ORDER = Math.max(1, parseInt(process.env.MAX_PER_ORDER || '6', 10)
 // PaymentIntent path charges a flat price (no itemized tax) by design.
 const TAX_ENABLED = process.env.STRIPE_TAX === '1';
 
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+// TEST-ONLY seam: STRIPE_API_BASE points the SDK at a mock Stripe (local http)
+// so the checkout + webhook flow can be exercised end-to-end without real keys or
+// network. Never set in production, where this returns undefined (default Stripe).
+function stripeClientOpts() {
+  const base = process.env.STRIPE_API_BASE;
+  if (!base) return undefined;
+  try {
+    const u = new URL(base);
+    return { host: u.hostname, port: Number(u.port) || (u.protocol === 'https:' ? 443 : 80), protocol: u.protocol.replace(':', '') };
+  } catch (e) { return undefined; }
+}
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, stripeClientOpts()) : null;
 if (stripe) console.log('[checkout] Stripe configured', TAX_ENABLED ? '(tax on)' : '(tax off)');
 else console.warn('[checkout] STRIPE_SECRET_KEY missing — checkout disabled.');
 
@@ -542,18 +553,20 @@ async function markPaidBySession(s) {
 async function markPaidByIntent(pi) {
   let email = pi.receipt_email || pi.customer_details?.email || null;
   let ship = pi.shipping || null;
+  let amountCents = pi.amount_received ?? pi.amount ?? null;
   // The Express/Payment element doesn't always put email/shipping on the bare
-  // event object — backfill from the charge if needed.
-  if (!email || !ship) {
+  // event object — backfill from the charge if needed (and the amount too, so the
+  // order total is never left null even if the event was thin).
+  if (!email || !ship || amountCents == null) {
     try {
       const full = await stripe.paymentIntents.retrieve(pi.id, { expand: ['latest_charge'] });
       ship = ship || full.shipping || null;
       const charge = full.latest_charge && typeof full.latest_charge === 'object' ? full.latest_charge : null;
       email = email || charge?.billing_details?.email || full.receipt_email || null;
       if (!ship && charge?.shipping) ship = charge.shipping;
+      if (amountCents == null) amountCents = full.amount_received ?? full.amount ?? null;
     } catch (e) { console.warn('[webhook] PI retrieve failed:', e?.message || e); }
   }
-  const amountCents = pi.amount_received ?? pi.amount ?? null;
   const upd = await q(
     `UPDATE orders SET status = 'paid', email = $2, amount_total_cents = $3,
             shipping_name = $4, shipping_address = $5, paid_at = now()

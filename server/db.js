@@ -329,6 +329,41 @@ export async function ensureSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_eta        TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS orders_delivery_idx ON orders (drop_id, delivered_at);
 
+    -- PROTOTYPE: two-bottle drops. A drop can carry MULTIPLE products (one row per
+    -- bottle). When a drop has NO rows here it's a legacy single-product drop and
+    -- behaves exactly as before (price/cap/notes live on the drops row itself). The
+    -- moment a drop gets rows here, the buy page + checkout treat it as a mixed cart.
+    CREATE TABLE IF NOT EXISTS drop_products (
+      id            BIGSERIAL PRIMARY KEY,
+      drop_id       BIGINT NOT NULL REFERENCES drops(id) ON DELETE CASCADE,
+      sort          INTEGER NOT NULL DEFAULT 0,
+      name          TEXT NOT NULL,
+      price_cents   INTEGER NOT NULL,
+      bottle_cap    INTEGER NOT NULL,
+      image         TEXT,           -- /drink/assets/…  (bottle photo for this product)
+      tasting_notes TEXT,
+      origin        TEXT,
+      varietal      TEXT,
+      elevation     TEXT,
+      roast         TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS drop_products_drop_idx ON drop_products (drop_id, sort);
+    -- Line items for a mixed-cart order (which bottles, how many of each, at what
+    -- price). Legacy single-product orders don't write here — the flat orders row
+    -- (quantity = total bottles) still carries them, so nothing old breaks.
+    CREATE TABLE IF NOT EXISTS order_items (
+      id               BIGSERIAL PRIMARY KEY,
+      order_id         BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id       BIGINT REFERENCES drop_products(id) ON DELETE SET NULL,
+      name             TEXT,
+      unit_price_cents INTEGER NOT NULL,
+      quantity         INTEGER NOT NULL,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS order_items_order_idx   ON order_items (order_id);
+    CREATE INDEX IF NOT EXISTS order_items_product_idx ON order_items (product_id);
+
     -- Autopilot bookkeeping on split arms: set when the bandit turns an arm off
     -- (vs a manual pause). Re-enabling an arm clears both.
     ALTER TABLE split_arms ADD COLUMN IF NOT EXISTS auto_paused_at TIMESTAMPTZ;

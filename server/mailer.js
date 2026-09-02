@@ -256,12 +256,18 @@ export async function sendSmsSignupAlert(phone, meta = {}) {
 const ORDER_SUBJECT = 'Your Wilhelm order is confirmed';
 const money = (c) => (c == null ? null : '$' + (c / 100).toFixed(2));
 
-function orderHtml({ amountCents, shippingName, dropName }) {
+function orderHtml({ amountCents, shippingName, dropName, items }) {
   const total = money(amountCents);
   // Buyer-entered name / drop name go into HTML — escape them (consistent with
   // the shipping-notice template) so a crafted checkout name can't inject markup.
   const greet = shippingName ? `Thank you, ${escHtml(shippingName)}.` : 'Thank you.';
   const dropSafe = dropName ? escHtml(dropName) : null;
+  // Two-bottle orders: name the bottles. Single/legacy orders keep the original
+  // "Your bottle … is reserved" copy.
+  const list = Array.isArray(items) ? items : [];
+  const reserved = list.length
+    ? `Your order is reserved${dropSafe ? ` from <strong>${dropSafe}</strong>` : ''}: <strong>${list.map((i) => `${i.quantity}× ${escHtml(i.name)}`).join(', ')}</strong>.`
+    : `Your bottle of Wilhelm Cold Brew is reserved${dropSafe ? ` from <strong>${dropSafe}</strong>` : ''}.`;
   return `<!doctype html>
 <html><body style="margin:0;background:#e9dcbb;padding:0;">
   <div style="display:none;visibility:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Your Wilhelm Cold Brew order is confirmed. Here's what happens next.&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;&#8203;&zwnj;&nbsp;</div>
@@ -275,7 +281,7 @@ function orderHtml({ amountCents, shippingName, dropName }) {
           </div>
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.7;color:#241c10;">
             <p style="margin:0 0 16px;font-size:20px;color:#8a6914;">Order confirmed.</p>
-            <p style="margin:0 0 16px;">${greet} Your bottle of Wilhelm Cold Brew is reserved${dropSafe ? ` from <strong>${dropSafe}</strong>` : ''}. ${total ? `We charged <strong>${total}</strong> to your card.` : ''}</p>
+            <p style="margin:0 0 16px;">${greet} ${reserved} ${total ? `We charged <strong>${total}</strong> to your card.` : ''}</p>
             <p style="margin:0 0 16px;">It's hand-packed and ships within a few business days. You'll get a note when it's on its way.</p>
             <p style="margin:0 0 22px;">Wrong shipping address? You can fix it yourself before we print the label — <a href="${SITE}/account/" style="color:#8a6914;font-weight:bold;">sign in to your Cellar</a> and update it. Once it ships the address locks, so just reply here if you catch it late.</p>
             <p style="margin:0 0 22px;color:#6b6047;">Bourbon-barrel-aged, single origin, no alcohol. Pour it over a big cube and take your time.</p>
@@ -288,12 +294,16 @@ function orderHtml({ amountCents, shippingName, dropName }) {
 </body></html>`;
 }
 
-function orderText({ amountCents, shippingName, dropName }) {
+function orderText({ amountCents, shippingName, dropName, items }) {
   const total = money(amountCents);
+  const list = Array.isArray(items) ? items : [];
+  const reserved = list.length
+    ? `Your order is reserved${dropName ? ` from ${dropName}` : ''}: ${list.map((i) => `${i.quantity}× ${i.name}`).join(', ')}.`
+    : `Your bottle of Wilhelm Cold Brew is reserved${dropName ? ` from ${dropName}` : ''}.`;
   return [
     'Order confirmed.',
     '',
-    `${shippingName ? `Thank you, ${shippingName}.` : 'Thank you.'} Your bottle of Wilhelm Cold Brew is reserved${dropName ? ` from ${dropName}` : ''}.${total ? ` We charged ${total} to your card.` : ''}`,
+    `${shippingName ? `Thank you, ${shippingName}.` : 'Thank you.'} ${reserved}${total ? ` We charged ${total} to your card.` : ''}`,
     '',
     "It's hand-packed and ships within a few business days. You'll get a note when it's on its way.",
     '',

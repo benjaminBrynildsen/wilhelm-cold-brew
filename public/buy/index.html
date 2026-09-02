@@ -73,6 +73,16 @@
     #buy-countdown .cd-join-fine{font-family:var(--mono);font-size:10px;letter-spacing:.4px;color:rgba(232,217,181,.4);margin:11px 2px 0}
     #buy-countdown .cd-join-error{color:#e08a7d;font-family:var(--mono);font-size:12px;margin:9px 2px 0}
     #buy-countdown .cd-join-done{color:var(--gold);font-family:'Bodoni Moda',Georgia,serif;font-size:18px;line-height:1.4;margin:14px 2px 0}
+    /* Two-bottle mixed cart */
+    #cart-list{margin:4px 0 6px}
+    .cart-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid rgba(232,194,74,.18)}
+    .cart-item:first-child{border-top:1px solid rgba(232,194,74,.18)}
+    .cart-thumb{flex:0 0 auto;width:66px;height:66px;border-radius:8px;object-fit:cover;background:rgba(232,217,181,.06);border:1px solid rgba(232,194,74,.2)}
+    .cart-meta{flex:1;min-width:0}
+    .cart-name{font-family:'Bodoni Moda',Georgia,serif;font-size:18px;color:var(--parch,#f6efda);line-height:1.15}
+    .cart-sub{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:rgba(246,239,218,.6);margin-top:3px;text-transform:uppercase}
+    .cart-sub .soldout{color:#e08a7d}
+    .cart-qty{flex:0 0 auto}
   </style>
   <script src="https://js.stripe.com/v3/"></script>
 
@@ -141,12 +151,12 @@
         <div class="batch-num" id="batch-num">This week's drop</div>
         <button class="notes-btn" id="notes-btn" type="button">✦&nbsp; Tasting Notes &nbsp;✦</button>
       </div>
-      <div class="product-image">
+      <div class="product-image" id="single-image">
         <img src="/drink/assets/bottle-cigars.webp" alt="Pouring Wilhelm Cold Brew over ice beside a box of cigars" width="1000" height="667"/>
       </div>
 
-      <!-- Quantity -->
-      <div class="qty-row">
+      <!-- Quantity (single-product drops) -->
+      <div class="qty-row" id="single-qty">
         <span class="qty-label">How many?</span>
         <div class="qty-stepper" role="group" aria-label="Quantity">
           <button id="qty-minus" type="button" aria-label="Decrease quantity">−</button>
@@ -155,8 +165,12 @@
         </div>
       </div>
 
-      <!-- Itemized summary (shipping shown explicitly) -->
-      <div class="order-summary">
+      <!-- Mixed cart (two-bottle drops) — one row per bottle, filled by buy.js -->
+      <div id="cart-list" hidden></div>
+
+      <!-- Itemized summary (shipping shown explicitly). Rebuilt by buy.js for a
+           two-bottle drop; static single-line markup here for one-bottle drops. -->
+      <div class="order-summary" id="order-summary">
         <div class="os-row"><span id="os-sub-label">1 bottle</span><span id="os-sub">$49</span></div>
         <div class="os-row os-ship"><span>Shipping <em>· flat, any quantity</em></span><span id="os-ship">$7</span></div>
         <div class="os-row os-total"><span>Total</span><span id="total-amt">$56.00</span></div>

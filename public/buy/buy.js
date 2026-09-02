@@ -28,7 +28,8 @@
   function fund(ev, data) { try { if (window.wilhelmTrack) window.wilhelmTrack(ev, data || {}); } catch (e) {} }
   function money(c) { return '$' + (c / 100).toFixed(2); }
 
-  var state = { priceCents: 4900, shipCents: 800, max: 1, qty: 1, dropId: null };
+  var state = { priceCents: 4900, shipCents: 800, max: 1, qty: 1, dropId: null,
+                multi: false, products: [], cart: {} };
   var stripe = null, elements = null, addrEl = null, emailEl = null, payEl = null, busy = false;
   // Live completeness of the two gating fields, kept in sync via each element's
   // 'change' event. iOS Safari autofill can populate the address visually without
@@ -40,9 +41,24 @@
   // dead-tap cause). After ready, getValue() is sub-second.
   var addrMounted = false;
 
-  function totalCents() { return state.qty * state.priceCents + state.shipCents; }
   function dollars(c) { return '$' + Math.round(c / 100); }
+  // Cart helpers (two-bottle drops). For a single-bottle drop these are unused —
+  // the legacy state.qty path runs instead.
+  function cartQtyTotal() { var n = 0; for (var i = 0; i < state.products.length; i++) n += state.cart[state.products[i].key] || 0; return n; }
+  function cartItems() {
+    return state.products.filter(function (p) { return (state.cart[p.key] || 0) > 0; })
+      .map(function (p) { return { productId: p.id, qty: state.cart[p.key] }; });
+  }
+  function totalCents() {
+    if (state.multi) {
+      var sum = 0;
+      for (var i = 0; i < state.products.length; i++) { var p = state.products[i]; sum += (state.cart[p.key] || 0) * p.priceCents; }
+      return sum + state.shipCents;
+    }
+    return state.qty * state.priceCents + state.shipCents;
+  }
   function renderTotal() {
+    if (state.multi) return renderMultiTotal();
     if (els.subLabel) els.subLabel.textContent = state.qty + ' bottle' + (state.qty > 1 ? 's' : '') + ' · 750mL' + (state.qty > 1 ? ' (' + dollars(state.priceCents) + ' ea)' : '');
     if (els.sub) els.sub.textContent = dollars(state.qty * state.priceCents);
     if (els.ship) els.ship.textContent = dollars(state.shipCents);
@@ -51,6 +67,55 @@
     // Until the address element is mounted the button reads "Loading…" and stays
     // disabled; after that it shows the real total and is tappable.
     if (els.payBtn) els.payBtn.textContent = addrMounted ? ('Pay ' + money(totalCents())) : 'Loading…';
+  }
+  // Two-bottle drop: rebuild the itemized summary (one line per chosen bottle),
+  // and gate the Pay button on having at least one bottle in the cart.
+  function renderMultiTotal() {
+    var os = document.getElementById('order-summary');
+    if (os) {
+      var rows = '';
+      for (var i = 0; i < state.products.length; i++) {
+        var p = state.products[i], q = state.cart[p.key] || 0;
+        if (q <= 0) continue;
+        rows += '<div class="os-row"><span>' + q + ' × ' + esc(p.name) + (q > 1 ? ' (' + dollars(p.priceCents) + ' ea)' : '') + '</span><span>' + dollars(q * p.priceCents) + '</span></div>';
+      }
+      if (!rows) rows = '<div class="os-row"><span>No bottles selected</span><span>$0</span></div>';
+      os.innerHTML = rows
+        + '<div class="os-row os-ship"><span>Shipping <em>· flat, any quantity</em></span><span>' + dollars(state.shipCents) + '</span></div>'
+        + '<div class="os-row os-total"><span>Total</span><span>' + money(totalCents()) + '</span></div>';
+    }
+    if (els.sticky) els.sticky.textContent = money(totalCents());
+    var has = cartQtyTotal() > 0;
+    if (els.payBtn) {
+      els.payBtn.textContent = !addrMounted ? 'Loading…' : (has ? ('Pay ' + money(totalCents())) : 'Add a bottle');
+      els.payBtn.disabled = busy || !addrMounted || !has;
+    }
+  }
+  // Render the per-bottle cart rows (image, name, price, stepper).
+  function renderCart() {
+    var wrap = document.getElementById('cart-list'); if (!wrap) return;
+    wrap.hidden = false;
+    var html = '';
+    for (var i = 0; i < state.products.length; i++) {
+      var p = state.products[i], q = state.cart[p.key] || 0, out = p.max <= 0;
+      html += '<div class="cart-item">'
+        + (p.image ? '<img class="cart-thumb" src="' + esc(p.image) + '" alt="' + esc(p.name) + '"/>' : '<div class="cart-thumb"></div>')
+        + '<div class="cart-meta"><div class="cart-name">' + esc(p.name) + '</div>'
+        + '<div class="cart-sub">' + dollars(p.priceCents) + ' · 750mL' + (out ? ' · <span class="soldout">sold out</span>' : '') + '</div></div>'
+        + '<div class="cart-qty"><div class="qty-stepper" role="group" aria-label="Quantity for ' + esc(p.name) + '">'
+        + '<button type="button" data-cart="dec" data-key="' + esc(p.key) + '"' + (q <= 0 ? ' disabled' : '') + '>−</button>'
+        + '<span data-qty="' + esc(p.key) + '" aria-live="polite">' + q + '</span>'
+        + '<button type="button" data-cart="inc" data-key="' + esc(p.key) + '"' + (q >= p.max ? ' disabled' : '') + '>+</button>'
+        + '</div></div></div>';
+    }
+    wrap.innerHTML = html;
+  }
+  function setCartQty(key, n) {
+    var p = null; for (var i = 0; i < state.products.length; i++) if (state.products[i].key === key) p = state.products[i];
+    if (!p) return;
+    state.cart[key] = Math.max(0, Math.min(p.max, n));
+    renderCart(); renderTotal();
+    if (elements) { try { elements.update({ amount: totalCents() }); } catch (e) {} }
   }
   function setBusy(b) {
     busy = b;
@@ -206,17 +271,43 @@
         if (d.phase === 'countdown') { showCountdown(d.nextDropAt, d.nextBatch); return; }
         location.replace('/sold-out'); return;
       }
-      state.priceCents = d.priceCents; state.shipCents = d.shipCents;
-      state.dropId = d.dropId; state.max = Math.max(1, d.maxPerOrder || 1);
+      state.shipCents = d.shipCents; state.dropId = d.dropId;
       if (els.batchNum) els.batchNum.textContent = d.name || ('Batch № ' + d.dropId);
       if (els.countNum) els.countNum.textContent = d.remaining;
       if (els.countBox) els.countBox.hidden = false;
-      state.notes = d.tastingNotes || DEFAULT_NOTES;
       state.batchName = d.name || 'Wilhelm Cold Brew';
-      state.origin = d.origin; state.varietal = d.varietal; state.elevation = d.elevation; state.roast = d.roast;
       els.card.hidden = false;
-      updateQtyUI(); renderTotal();
-      fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant() });
+      if (d.multi && d.products && d.products.length) {
+        // ── Multi-bottle drop: mixed cart (one card per bottle) ──
+        state.multi = true;
+        state.products = d.products.map(function (p) {
+          return { key: String(p.id), id: p.id, name: p.name, priceCents: p.priceCents,
+                   max: Math.max(0, Math.min(p.maxPerOrder || 0, p.remaining)), image: p.image,
+                   notes: p.tastingNotes, origin: p.origin, varietal: p.varietal, elevation: p.elevation, roast: p.roast };
+        });
+        // Default: 1 of the first in-stock bottle, 0 of the rest — they add the second.
+        state.cart = {}; var firstSet = false;
+        state.products.forEach(function (p) { if (!firstSet && p.max > 0) { state.cart[p.key] = 1; firstSet = true; } else state.cart[p.key] = 0; });
+        var si = document.getElementById('single-image'); if (si) si.hidden = true;
+        var sq = document.getElementById('single-qty'); if (sq) sq.hidden = true;
+        var p0 = state.products[0] || {};
+        state.notes = p0.notes || DEFAULT_NOTES; state.origin = p0.origin; state.varietal = p0.varietal; state.elevation = p0.elevation; state.roast = p0.roast;
+        renderCart();
+        var cl = document.getElementById('cart-list');
+        if (cl) cl.addEventListener('click', function (e) {
+          var b = e.target && e.target.closest ? e.target.closest('button[data-cart]') : null; if (!b) return;
+          var key = b.getAttribute('data-key'); var cur = state.cart[key] || 0;
+          setCartQty(key, cur + (b.getAttribute('data-cart') === 'inc' ? 1 : -1));
+        });
+        renderTotal();
+      } else {
+        // ── Single-bottle drop (legacy) ──
+        state.priceCents = d.priceCents; state.max = Math.max(1, d.maxPerOrder || 1);
+        state.notes = d.tastingNotes || DEFAULT_NOTES;
+        state.origin = d.origin; state.varietal = d.varietal; state.elevation = d.elevation; state.roast = d.roast;
+        updateQtyUI(); renderTotal();
+      }
+      fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant(), multi: !!state.multi });
       initStripe();
     })
     .catch(function () { if (previewCountdown) { showCountdown(nextFriday9()); return; } els.card.hidden = false; initStripe(); });
@@ -279,10 +370,18 @@
       // leave the buyer staring at only a toggle — open the card form after 4s.
       setTimeout(function () { if (!expressReady) { if (els.express) els.express.hidden = true; expandCard(false); } }, 4000);
       ece.on('click', function (event) {
+        var lineItems;
+        if (state.multi) {
+          lineItems = state.products.filter(function (p) { return (state.cart[p.key] || 0) > 0; })
+            .map(function (p) { return { name: 'Wilhelm — ' + p.name + ' × ' + state.cart[p.key], amount: state.cart[p.key] * p.priceCents }; });
+          if (!lineItems.length) lineItems = [{ name: 'Wilhelm Cold Brew', amount: (state.products[0] || {}).priceCents || 4900 }];
+        } else {
+          lineItems = [{ name: 'Wilhelm Cold Brew × ' + state.qty, amount: state.qty * state.priceCents }];
+        }
         event.resolve({
           emailRequired: true, phoneNumberRequired: true,
           shippingAddressRequired: true, allowedShippingCountries: ['US'],
-          lineItems: [{ name: 'Wilhelm Cold Brew × ' + state.qty, amount: state.qty * state.priceCents }],
+          lineItems: lineItems,
           shippingRates: [{ id: 'std', displayName: 'Shipping', amount: state.shipCents }],
         });
       });
@@ -365,7 +464,9 @@
       }
       return fetch('/api/pay/intent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: state.qty, variant: variant(), twclid: twclid() }),
+        body: JSON.stringify(state.multi
+          ? { items: cartItems(), variant: variant(), twclid: twclid() }
+          : { quantity: state.qty, variant: variant(), twclid: twclid() }),
       });
     }).then(function (r) {
       if (!r) return null; // submit() validation already handled + surfaced above
@@ -395,7 +496,9 @@
     if (e) e.preventDefault();
     fetch('/api/checkout', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quantity: state.qty, variant: variant(), twclid: twclid() }),
+      body: JSON.stringify(state.multi
+        ? { items: cartItems(), variant: variant(), twclid: twclid() }
+        : { quantity: state.qty, variant: variant(), twclid: twclid() }),
     }).then(function (r) {
       if (r.status === 409) { location.replace('/sold-out'); return null; }
       return r.json();

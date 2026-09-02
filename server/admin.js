@@ -2137,6 +2137,16 @@ export function mountAdmin(app) {
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ($1::int IS NULL OR o.drop_id = $1)
           ORDER BY o.created_at DESC LIMIT 100`, [dropId])).rows;
+      // Line items for two-bottle orders, attached per order (empty for legacy).
+      const oids = orders.map((o) => o.id);
+      if (oids.length) {
+        const items = (await q(
+          `SELECT order_id, name, unit_price_cents, quantity FROM order_items
+            WHERE order_id = ANY($1) ORDER BY id`, [oids])).rows;
+        const byOrder = {};
+        for (const it of items) (byOrder[it.order_id] = byOrder[it.order_id] || []).push(it);
+        orders.forEach((o) => { o.items = byOrder[o.id] || []; });
+      }
       // Paid orders still awaiting a shipping label (drives the Pirate Ship export).
       // Scoped to the selected batch so you ship one drop at a time; global on "All".
       const unshipped = (await q(
@@ -2981,6 +2991,18 @@ export function mountAdmin(app) {
                 d.tasting_notes, d.origin, d.varietal, d.elevation, d.roast,
                 (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = d.id AND o.status='paid') AS sold
            FROM drops d ORDER BY d.created_at DESC LIMIT 50`)).rows;
+      // Attach each drop's bottles (two-bottle prototype). Empty = single-product.
+      const ids = rows.map((r) => r.id);
+      const byDrop = {};
+      if (ids.length) {
+        const prods = (await q(
+          `SELECT dp.id, dp.drop_id, dp.sort, dp.name, dp.price_cents, dp.bottle_cap, dp.image, dp.tasting_notes,
+                  (SELECT COALESCE(SUM(oi.quantity),0)::int FROM order_items oi JOIN orders o ON o.id=oi.order_id
+                    WHERE oi.product_id = dp.id AND o.status='paid') AS sold
+             FROM drop_products dp WHERE dp.drop_id = ANY($1) ORDER BY dp.sort, dp.id`, [ids])).rows;
+        for (const p of prods) (byDrop[p.drop_id] = byDrop[p.drop_id] || []).push(p);
+      }
+      rows.forEach((r) => { r.products = byDrop[r.id] || []; });
       res.json({ drops: rows });
     } catch (e) { console.error('[drops]', e); res.status(500).json({ error: e.message }); }
   });
@@ -3052,6 +3074,37 @@ export function mountAdmin(app) {
       await q(`UPDATE drops SET price_cents=$1 WHERE id=$2`, [priceCents, id]);
       res.json({ ok: true, priceCents });
     } catch (e) { console.error('[drops/price]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // PROTOTYPE: set a drop's bottles. Replaces the drop's products with the given
+  // array — 0 reverts it to a single-product drop (uses the drops row), 2 makes it
+  // a two-bottle mixed-cart drop. Re-saving re-issues product ids; order_items keep
+  // a name/price snapshot, so past orders stay readable even after an edit.
+  app.post('/api/admin/drops/:id/products', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const s = (v, n) => (v == null ? null : String(v).slice(0, n));
+      const clean = [];
+      for (const p of (Array.isArray(req.body?.products) ? req.body.products : [])) {
+        const name = (s(p.name, 200) || '').trim();
+        const priceCents = parseInt(p.priceCents, 10);
+        const bottleCap = parseInt(p.bottleCap, 10);
+        if (!name || !(priceCents > 0) || !(bottleCap > 0)) continue;
+        clean.push({ name, priceCents, bottleCap, image: s(p.image, 300),
+          tastingNotes: s(p.tastingNotes, 4000), origin: s(p.origin, 120),
+          varietal: s(p.varietal, 120), elevation: s(p.elevation, 120), roast: s(p.roast, 120) });
+      }
+      if (clean.length > 6) clean.length = 6;   // sanity cap
+      await q(`DELETE FROM drop_products WHERE drop_id = $1`, [id]);
+      for (let i = 0; i < clean.length; i++) {
+        const p = clean[i];
+        await q(`INSERT INTO drop_products (drop_id, sort, name, price_cents, bottle_cap, image, tasting_notes, origin, varietal, elevation, roast)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [id, i, p.name, p.priceCents, p.bottleCap, p.image, p.tastingNotes, p.origin, p.varietal, p.elevation, p.roast]);
+      }
+      res.json({ ok: true, count: clean.length });
+    } catch (e) { console.error('[drops/products]', e); res.status(500).json({ error: e.message }); }
   });
 
   // Delete a drop. Refuse if it has paid orders (preserve revenue/history — close

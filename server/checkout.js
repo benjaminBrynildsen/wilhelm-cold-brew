@@ -51,6 +51,7 @@ async function currentDrop() {
   if (!r.rows.length) return null;
   const d = r.rows[0];
   d.remaining = Math.max(0, d.bottle_cap - d.sold);
+  await attachProducts(d);   // adds d.products[] (+ d.multi); recomputes remaining for multi
   return d;
 }
 
@@ -67,6 +68,89 @@ async function reservedBottles(dropId) {
          OR (status = 'pending' AND created_at > now() - ($2 || ' minutes')::interval))`,
     [dropId, String(HOLD_MINUTES)]);
   return r.rows[0].n;
+}
+
+// ── Two-bottle drops (prototype) ──────────────────────────────────────────────
+// A drop's products (one row per bottle). Empty = legacy single-product drop.
+async function dropProducts(dropId) {
+  return (await q(
+    `SELECT id, sort, name, price_cents, bottle_cap, image, tasting_notes, origin, varietal, elevation, roast
+       FROM drop_products WHERE drop_id = $1 ORDER BY sort, id`, [dropId])).rows;
+}
+// Per-product bottle counts from order_items: PAID (for remaining) and RESERVED
+// (paid + recent-pending, for the pay-time cap check). Keyed by product_id.
+async function paidByProduct(dropId) {
+  const r = await q(
+    `SELECT oi.product_id pid, COALESCE(SUM(oi.quantity),0)::int n
+       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      WHERE o.drop_id = $1 AND o.status = 'paid' GROUP BY oi.product_id`, [dropId]);
+  return Object.fromEntries(r.rows.map((x) => [x.pid, x.n]));
+}
+async function reservedByProduct(dropId) {
+  const r = await q(
+    `SELECT oi.product_id pid, COALESCE(SUM(oi.quantity),0)::int n
+       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      WHERE o.drop_id = $1 AND (o.status = 'paid'
+         OR (o.status = 'pending' AND o.created_at > now() - ($2 || ' minutes')::interval))
+      GROUP BY oi.product_id`, [dropId, String(HOLD_MINUTES)]);
+  return Object.fromEntries(r.rows.map((x) => [x.pid, x.n]));
+}
+// Attach a normalized `products` array to a drop (always ≥1 item). For a legacy
+// drop it's a single synthesized product from the drops row, so the buy page and
+// checkout use ONE code path whether a drop has one bottle or two.
+async function attachProducts(d) {
+  const rows = await dropProducts(d.id);
+  if (rows.length) {
+    const paid = await paidByProduct(d.id);
+    d.multi = true;
+    d.products = rows.map((p) => {
+      const sold = paid[p.id] || 0;
+      return { ...p, sold, remaining: Math.max(0, p.bottle_cap - sold) };
+    });
+    d.remaining = d.products.reduce((s, p) => s + p.remaining, 0);
+  } else {
+    d.multi = false;
+    d.products = [{
+      id: null, name: d.name, price_cents: d.price_cents, bottle_cap: d.bottle_cap, image: null,
+      tasting_notes: d.tasting_notes, origin: d.origin, varietal: d.varietal, elevation: d.elevation,
+      roast: d.roast, sold: d.sold, remaining: d.remaining,
+    }];
+  }
+  return d;
+}
+
+// Reservation snapshot for cap checks: per-product for multi drops, a single
+// number for legacy drops.
+async function cartReservations(d) {
+  return d.multi ? { byProduct: await reservedByProduct(d.id) } : { legacy: await reservedBottles(d.id) };
+}
+// Turn a request body into validated [{ product, qty }] lines, each clamped to
+// what's left for that product. Pure (takes the reservation snapshot) so both the
+// on-page intent and the hosted-checkout fallback share the exact same rules.
+function buildLines(d, body, reserved) {
+  const items = Array.isArray(body?.items) ? body.items : null;
+  const lines = [];
+  if (d.multi) {
+    const byId = new Map(d.products.map((p) => [String(p.id), p]));
+    for (const it of (items || [])) {
+      const p = byId.get(String(it.productId));
+      if (!p) continue;
+      let qty = parseInt(it.qty, 10) || 0;
+      if (qty <= 0) continue;
+      const avail = Math.min(MAX_PER_ORDER, p.bottle_cap - (reserved.byProduct[p.id] || 0));
+      qty = Math.min(qty, Math.max(0, avail));
+      if (qty > 0) lines.push({ product: p, qty });
+    }
+  } else {
+    const p = d.products[0];
+    const available = Math.min(MAX_PER_ORDER, d.bottle_cap - (reserved.legacy || 0));
+    if (available > 0) {
+      let qty = parseInt((items && items[0] && items[0].qty) ?? body?.quantity, 10) || 1;
+      qty = Math.max(1, Math.min(available, qty));
+      lines.push({ product: p, qty });
+    }
+  }
+  return lines;
 }
 
 // Soonest upcoming scheduled drop (for the sold-out page "next drop" line).
@@ -141,6 +225,15 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
           origin: d.origin || null, varietal: d.varietal || null,
           elevation: d.elevation || null, roast: d.roast || null,
           shipCents: SHIP_CENTS, nextDropAt, nextBatch,
+          // Two-bottle prototype: the buy page renders one card per product. For a
+          // legacy drop this is a single synthesized product, so the UI is identical.
+          multi: d.multi,
+          products: d.products.map((p) => ({
+            id: p.id, name: p.name, priceCents: p.price_cents, remaining: p.remaining,
+            maxPerOrder: Math.min(MAX_PER_ORDER, p.remaining), image: p.image || null,
+            tastingNotes: p.tasting_notes || null, origin: p.origin || null,
+            varietal: p.varietal || null, elevation: p.elevation || null, roast: p.roast || null,
+          })),
         });
       }
       // Not buyable: the drop the visitor just missed is the most recent drop
@@ -216,40 +309,51 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       const d = await currentDrop();
       if (!d) return res.status(409).json({ error: 'no_live_drop' });
 
-      const taken = await reservedBottles(d.id);
-      const available = Math.min(MAX_PER_ORDER, d.bottle_cap - taken);
-      if (available <= 0) return res.status(409).json({ error: 'sold_out' });
-
-      let qty = parseInt(req.body?.quantity, 10) || 1;
-      qty = Math.max(1, Math.min(available, qty));
-
       const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
       const twclid = req.body?.twclid ? String(req.body.twclid).slice(0, 120) : null;
+
+      // Build the cart. Multi-bottle drops take items:[{productId, qty}]; legacy
+      // drops take a single quantity (or one item). Each line is clamped to what's
+      // actually left for THAT product (paid + held).
+      const lines = buildLines(d, req.body, await cartReservations(d));
+      if (!lines.length) return res.status(409).json({ error: 'sold_out' });
+
+      const totalQty = lines.reduce((s, l) => s + l.qty, 0);
+      const amount = lines.reduce((s, l) => s + l.qty * l.product.price_cents, 0) + SHIP_CENTS;
 
       const order = await q(
         `INSERT INTO orders (drop_id, quantity, variant, twclid, status)
          VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-        [d.id, qty, variant, twclid]);
+        [d.id, totalQty, variant, twclid]);
       const orderId = order.rows[0].id;
+      // Record line items for multi-product orders (legacy single lines have no id).
+      for (const l of lines) {
+        if (l.product.id == null) continue;
+        await q(`INSERT INTO order_items (order_id, product_id, name, unit_price_cents, quantity)
+                 VALUES ($1,$2,$3,$4,$5)`, [orderId, l.product.id, l.product.name, l.product.price_cents, l.qty]);
+      }
 
-      const amount = qty * d.price_cents + SHIP_CENTS;
+      const desc = d.multi
+        ? 'Wilhelm Cold Brew — ' + lines.map((l) => `${l.qty}× ${l.product.name}`).join(', ')
+        : `Wilhelm Cold Brew — ${totalQty} × 750ml`;
       const pi = await stripe.paymentIntents.create({
         amount,
         currency: 'usd',
         // Account already has only card/Apple/Google/Link/Amazon enabled
         // (Cash App + US bank are off), so automatic shows exactly those.
         automatic_payment_methods: { enabled: true },
-        description: `Wilhelm Cold Brew — ${qty} × 750ml`,
+        description: desc,
         metadata: {
           order_id: String(orderId), drop_id: String(d.id),
-          qty: String(qty), variant: variant || '', twclid: twclid || '',
+          qty: String(totalQty), items: lines.map((l) => `${l.qty}x${l.product.id ?? 'legacy'}`).join(',').slice(0, 480),
+          variant: variant || '', twclid: twclid || '',
         },
       }, { idempotencyKey: `pi_order_${orderId}` });
 
       await q(`UPDATE orders SET stripe_payment_intent = $1 WHERE id = $2`, [pi.id, orderId]);
       res.json({
         clientSecret: pi.client_secret, paymentIntentId: pi.id,
-        amount, qty, priceCents: d.price_cents, shipCents: SHIP_CENTS,
+        amount, qty: totalQty, shipCents: SHIP_CENTS,
       });
     } catch (e) {
       console.error('[pay/intent]', e);
@@ -264,11 +368,9 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       const d = await currentDrop();
       if (!d) return res.status(409).json({ error: 'no_live_drop' });
 
-      const taken = await reservedBottles(d.id);
-      const available = Math.min(MAX_PER_ORDER, d.bottle_cap - taken);
-      if (available <= 0) return res.status(409).json({ error: 'sold_out' });
-      let qty = parseInt(req.body?.quantity, 10) || 1;
-      qty = Math.max(1, Math.min(available, qty));
+      const lines = buildLines(d, req.body, await cartReservations(d));
+      if (!lines.length) return res.status(409).json({ error: 'sold_out' });
+      const totalQty = lines.reduce((s, l) => s + l.qty, 0);
 
       const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
       const twclid = req.body?.twclid ? String(req.body.twclid).slice(0, 120) : null;
@@ -276,23 +378,28 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       const order = await q(
         `INSERT INTO orders (drop_id, quantity, variant, twclid, status)
          VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-        [d.id, qty, variant, twclid]);
+        [d.id, totalQty, variant, twclid]);
       const orderId = order.rows[0].id;
+      for (const l of lines) {
+        if (l.product.id == null) continue;
+        await q(`INSERT INTO order_items (order_id, product_id, name, unit_price_cents, quantity)
+                 VALUES ($1,$2,$3,$4,$5)`, [orderId, l.product.id, l.product.name, l.product.price_cents, l.qty]);
+      }
 
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
-        line_items: [{
-          quantity: qty,
+        line_items: lines.map((l) => ({
+          quantity: l.qty,
           price_data: {
             currency: 'usd',
-            unit_amount: d.price_cents,
+            unit_amount: l.product.price_cents,
             tax_behavior: 'exclusive',
             product_data: {
-              name: 'Wilhelm Cold Brew — 750ml',
-              description: d.name || 'Bourbon-barrel-aged cold brew. Small batch, non-alcoholic.',
+              name: d.multi ? l.product.name : 'Wilhelm Cold Brew — 750ml',
+              description: (d.multi ? l.product.name : (d.name || 'Bourbon-barrel-aged cold brew. Small batch, non-alcoholic.')),
             },
           },
-        }],
+        })),
         shipping_address_collection: { allowed_countries: ['US'] },
         shipping_options: [{
           shipping_rate_data: {
@@ -304,7 +411,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
         }],
         automatic_tax: { enabled: TAX_ENABLED },
         phone_number_collection: { enabled: true },
-        metadata: { order_id: String(orderId), drop_id: String(d.id), qty: String(qty), variant: variant || '', twclid: twclid || '' },
+        metadata: { order_id: String(orderId), drop_id: String(d.id), qty: String(totalQty), variant: variant || '', twclid: twclid || '' },
         success_url: `${SITE}/thank-you?s={CHECKOUT_SESSION_ID}`,
         cancel_url: `${SITE}/buy`,
       });
@@ -330,8 +437,36 @@ async function orderLookup(res, column, value) {
          FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
         WHERE o.${column} = $1 LIMIT 1`, [v]);
     if (!r.rows.length) return res.status(404).json({ error: 'not_found' });
-    res.json(r.rows[0]);
+    const order = r.rows[0];
+    // Line items for a two-bottle order (empty for legacy single-product orders).
+    order.items = (await q(
+      `SELECT name, unit_price_cents, quantity FROM order_items WHERE order_id = $1 ORDER BY id`,
+      [order.id])).rows;
+    res.json(order);
   } catch (e) { console.error('[order]', e); res.status(500).json({ error: e.message }); }
+}
+
+// A drop is sold out when every one of its products is at/over its cap; a legacy
+// drop when total paid bottles reach the single cap. Returns true if it closed.
+async function closeIfSoldOut(dropId) {
+  const prods = await dropProducts(dropId);
+  if (prods.length) {
+    const paid = await paidByProduct(dropId);
+    if (prods.every((p) => (paid[p.id] || 0) >= p.bottle_cap)) {
+      await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => {});
+      return true;
+    }
+    return false;
+  }
+  const d = (await q(
+    `SELECT bottle_cap,
+       (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = $1 AND o.status = 'paid') AS sold
+       FROM drops WHERE id = $1`, [dropId])).rows[0];
+  if (d && d.sold >= d.bottle_cap) {
+    await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => {});
+    return true;
+  }
+  return false;
 }
 
 // Stripe webhook — MUST be mounted with express.raw() before express.json() so the
@@ -438,19 +573,18 @@ async function finalizePaidOrder({ orderId, dropId, email, amountCents, shipping
   if (orderId) awardPurchase(orderId).catch((e) => console.warn('[points] purchase award failed:', e?.message || e));
   let dropName = null;
   if (dropId) {
-    const d = (await q(
-      `SELECT name, bottle_cap,
-         (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status = 'paid') AS sold
-         FROM drops WHERE id = $1`, [dropId])).rows[0];
-    dropName = d?.name || null;
-    if (d && d.sold >= d.bottle_cap) {
-      await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => {});
-    }
+    dropName = (await q(`SELECT name FROM drops WHERE id = $1`, [dropId])).rows[0]?.name || null;
+    await closeIfSoldOut(dropId);   // per-product for two-bottle drops; single cap for legacy
   }
+  // Line items (empty for legacy single-bottle orders) so the emails can list the
+  // bottles when there's more than one.
+  const items = orderId
+    ? (await q(`SELECT name, quantity FROM order_items WHERE order_id = $1 ORDER BY id`, [orderId])).rows
+    : [];
   if (email) {
-    sendOrderConfirmation(email, { dropName, amountCents, shippingName })
+    sendOrderConfirmation(email, { dropName, amountCents, shippingName, items })
       .catch((e) => console.warn('[webhook] confirmation email failed:', e?.message || e));
   }
-  sendOrderAlert({ email, amountCents, dropName, shippingName })
+  sendOrderAlert({ email, amountCents, dropName, shippingName, items })
     .catch((e) => console.warn('[webhook] order alert failed:', e?.message || e));
 }

@@ -1358,18 +1358,21 @@ export function mountAdmin(app) {
         const m = /^\+1([2-9]\d\d)\d{7}$/.exec(c);                  // +1 + valid area code + 7 digits
         return (m && !CA_AREA.has(m[1])) ? c : null;
       };
-      const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
       const all = subs.map((r) => ({ phone: r.phone, email: r.email || '', ts: r.ts, source: 'email+sms' }))
         .concat(leads.map((r) => ({ phone: r.phone, email: '', ts: r.ts, source: 'phone-only' })));
       // Earliest opt-in first, so "keep the first" for a shared number is the oldest.
       all.sort((a, b) => (a.ts ? +new Date(a.ts) : Infinity) - (b.ts ? +new Date(b.ts) : Infinity));
       const seen = new Set();
-      const rows = [['SMS Phone Number', 'Email Address', 'SMS Opt-in Date', 'Tags']];
+      // No opt-in-date column: Mailchimp has no field for it, and its auto-mapper
+      // shoves the dates into the "Phone Number" field — an invalid phone that makes
+      // Mailchimp reject the row. These three columns all map cleanly. (The consent
+      // date is still kept in our DB for records.)
+      const rows = [['SMS Phone Number', 'Email Address', 'Tags']];
       for (const r of all) {
         const p = usPhone(r.phone);
         if (!p || seen.has(p)) continue;                           // US only; one row per number
         seen.add(p);
-        rows.push([p, r.email, iso(r.ts), 'sms-opt-in, ' + r.source]);
+        rows.push([p, r.email, 'sms-opt-in, ' + r.source]);
       }
       const qt = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';   // every field quoted
       const csv = rows.map((r) => r.map(qt).join(',')).join('\r\n') + '\r\n';         // trailing newline

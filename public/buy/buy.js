@@ -101,7 +101,10 @@
       html += '<div class="cart-item">'
         + (p.image ? '<img class="cart-thumb" src="' + esc(p.image) + '" alt="' + esc(p.name) + '"/>' : '<div class="cart-thumb"></div>')
         + '<div class="cart-meta"><div class="cart-name">' + esc(p.name) + '</div>'
-        + '<div class="cart-sub">' + dollars(p.priceCents) + ' · 750mL' + (out ? ' · <span class="soldout">sold out</span>' : '') + '</div></div>'
+        + '<div class="cart-sub">' + dollars(p.priceCents) + ' · 750mL'
+          + (out ? ' · <span class="soldout">sold out</span>'
+                 : (p.remaining > 0 ? ' · <span class="cart-left">' + p.remaining + ' left</span>' : ''))
+          + '</div></div>'
         + '<div class="cart-qty"><div class="qty-stepper" role="group" aria-label="Quantity for ' + esc(p.name) + '">'
         + '<button type="button" data-cart="dec" data-key="' + esc(p.key) + '"' + (q <= 0 ? ' disabled' : '') + '>−</button>'
         + '<span data-qty="' + esc(p.key) + '" aria-live="polite">' + q + '</span>'
@@ -280,15 +283,24 @@
       if (d.multi && d.products && d.products.length) {
         // ── Multi-bottle drop: mixed cart (one card per bottle) ──
         state.multi = true;
+        // Main batch photo: shown as the hero above the mixed cart, and used as
+        // the fallback thumbnail for any bottle that has no photo of its own.
+        var heroImg = document.querySelector('#single-image img');
+        var defaultHero = heroImg ? heroImg.getAttribute('src') : '/drink/assets/bottle-cigars.webp';
+        state.image = d.image || defaultHero;
         state.products = d.products.map(function (p) {
           return { key: String(p.id), id: p.id, name: p.name, priceCents: p.priceCents,
-                   max: Math.max(0, Math.min(p.maxPerOrder || 0, p.remaining)), image: p.image,
+                   max: Math.max(0, Math.min(p.maxPerOrder || 0, p.remaining)), remaining: p.remaining,
+                   image: p.image || state.image,
                    notes: p.tastingNotes, origin: p.origin, varietal: p.varietal, elevation: p.elevation, roast: p.roast };
         });
         // Default: 1 of the first in-stock bottle, 0 of the rest — they add the second.
         state.cart = {}; var firstSet = false;
         state.products.forEach(function (p) { if (!firstSet && p.max > 0) { state.cart[p.key] = 1; firstSet = true; } else state.cart[p.key] = 0; });
-        var si = document.getElementById('single-image'); if (si) si.hidden = true;
+        // Keep the batch hero visible above the mixed cart, showing the main photo.
+        var si = document.getElementById('single-image');
+        if (heroImg) { heroImg.src = state.image; heroImg.alt = d.name || 'Wilhelm Cold Brew'; }
+        if (si) si.hidden = false;
         var sq = document.getElementById('single-qty'); if (sq) sq.hidden = true;
         var p0 = state.products[0] || {};
         state.notes = p0.notes || DEFAULT_NOTES; state.origin = p0.origin; state.varietal = p0.varietal; state.elevation = p0.elevation; state.roast = p0.roast;
@@ -509,25 +521,53 @@
   if (els.classic) els.classic.addEventListener('click', startClassic);
 
   // ── Tasting notes modal ──
-  function renderSpec() {
+  // On a two-bottle drop the card shows the SELECTED bottle's notes, switched by a
+  // toggle. On a single-bottle drop it's the one batch (no toggle).
+  state.notesIndex = 0;
+  function currentNotesData() {
+    if (state.multi && state.products.length) {
+      var p = state.products[state.notesIndex] || state.products[0];
+      return { name: p.name, notes: p.notes, origin: p.origin, varietal: p.varietal, elevation: p.elevation, roast: p.roast };
+    }
+    return { name: state.batchName, notes: state.notes, origin: state.origin, varietal: state.varietal, elevation: state.elevation, roast: state.roast };
+  }
+  function renderSpec(d) {
     if (!els.notesSpec) return;
-    var items = [['Origin & Region', state.origin], ['Varietal', state.varietal], ['Elevation', state.elevation], ['Roast', state.roast]]
+    var items = [['Origin & Region', d.origin], ['Varietal', d.varietal], ['Elevation', d.elevation], ['Roast', d.roast]]
       .filter(function (x) { return x[1]; });
     els.notesSpec.innerHTML = items.map(function (x) {
       return '<div class="spec-item"><span class="spec-k">' + esc(x[0]) + '</span><span class="spec-v">' + esc(x[1]) + '</span></div>';
     }).join('');
     els.notesSpec.hidden = items.length === 0;
   }
+  function buildNotesToggle() {
+    var wrap = document.getElementById('notes-toggle'); if (!wrap) return;
+    if (!(state.multi && state.products.length > 1)) { wrap.hidden = true; wrap.innerHTML = ''; return; }
+    wrap.hidden = false;
+    wrap.innerHTML = state.products.map(function (p, i) {
+      return '<button type="button" class="notes-tab' + (i === state.notesIndex ? ' active' : '') + '" data-notes-i="' + i + '">' + esc(p.name) + '</button>';
+    }).join('');
+  }
   function renderNotes() {
-    if (els.notesTitle) els.notesTitle.textContent = state.batchName || 'Wilhelm Cold Brew';
-    renderSpec();
-    var lines = String(state.notes || DEFAULT_NOTES).split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    var d = currentNotesData();
+    if (els.notesTitle) els.notesTitle.textContent = d.name || 'Wilhelm Cold Brew';
+    buildNotesToggle();
+    renderSpec(d);
+    var lines = String(d.notes || DEFAULT_NOTES).split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     if (els.notesList) els.notesList.innerHTML = lines.map(function (l) {
       var parts = l.split(/\s*[—–-]\s+/);
       if (parts.length >= 2) return '<li><b>' + esc(parts[0].trim()) + '</b><span>' + esc(parts.slice(1).join(' — ').trim()) + '</span></li>';
       return '<li><span>' + esc(l) + '</span></li>';
     }).join('');
   }
+  // Toggle between bottles (event-delegated so it survives re-render).
+  var notesToggleEl = document.getElementById('notes-toggle');
+  if (notesToggleEl) notesToggleEl.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('button[data-notes-i]') : null;
+    if (!b) return;
+    state.notesIndex = parseInt(b.getAttribute('data-notes-i'), 10) || 0;
+    renderNotes();
+  });
   function openNotes() { renderNotes(); if (els.notesModal) els.notesModal.hidden = false; document.body.style.overflow = 'hidden'; fund('tasting_notes_open', {}); }
   function closeNotes() { if (els.notesModal) els.notesModal.hidden = true; document.body.style.overflow = ''; }
   if (els.notesBtn) els.notesBtn.addEventListener('click', openNotes);

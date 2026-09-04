@@ -2778,9 +2778,11 @@ async function showEmail() {
       <div class="row-actions" style="margin-top:8px">
         <button class="btn ghost" id="mc-sms-check">Check Mailchimp SMS status</button>
         <button class="btn ghost" id="mc-sms-csv">Download SMS contacts (CSV)</button>
-        <span class="note">Check = read back what Mailchimp really stored · CSV = import into Mailchimp's SMS audience directly</span>
+        <button class="btn" id="mc-sms-copy">Copy CSV for Mailchimp</button>
+        <span class="note">Check = read back what Mailchimp really stored · Download = save a .csv file · Copy = grab the values to paste straight into Mailchimp</span>
       </div>
       <div class="note" id="mc-sms-msg" style="white-space:pre-wrap;margin-top:6px"></div>
+      <textarea id="mc-sms-csv-out" rows="6" readonly hidden placeholder="SMS CSV will appear here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:8px;display:block;font-family:monospace;font-size:12px"></textarea>
       <textarea id="mc-paste" rows="4" placeholder="…or paste unsubscribed addresses / the whole Mailchimp export here" style="${FLD_DARK};width:100%;max-width:680px;margin-top:10px;display:block"></textarea>
       <div class="row-actions" style="margin-top:8px">
         <button class="btn" id="mc-preview">Preview</button>
@@ -2928,6 +2930,38 @@ async function showEmail() {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } catch (e) { smsMsg.textContent = 'CSV download failed: ' + e.message; }
       finally { smsCsv.disabled = false; }
+    });
+    // Copy the SMS CSV values so they can be pasted straight into Mailchimp's
+    // import box — no file download needed.
+    const smsCopy = document.getElementById('mc-sms-copy');
+    const smsCsvOut = document.getElementById('mc-sms-csv-out');
+    if (smsCopy) smsCopy.addEventListener('click', async () => {
+      smsCopy.disabled = true;
+      const orig = smsCopy.textContent;
+      smsMsg.textContent = 'Building CSV…';
+      try {
+        const res = await fetch('/api/admin/sms-export', { credentials: 'include' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        const rows = Math.max(0, text.trim().split('\n').length - 1); // minus header
+        if (smsCsvOut) { smsCsvOut.value = text; smsCsvOut.hidden = false; }
+        let copied = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text); copied = true;
+          }
+        } catch (e) { copied = false; }
+        if (!copied && smsCsvOut) { // fallback: select the text for a manual ⌘/Ctrl-C
+          smsCsvOut.focus(); smsCsvOut.select();
+          try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+        }
+        smsMsg.textContent = copied
+          ? `Copied ${rows} SMS contact${rows === 1 ? '' : 's'} to your clipboard — paste into Mailchimp's import box.`
+          : `${rows} SMS contact${rows === 1 ? '' : 's'} ready below — select all and copy, then paste into Mailchimp.`;
+        smsCopy.textContent = copied ? 'Copied ✓' : orig;
+        setTimeout(() => { smsCopy.textContent = orig; }, 2500);
+      } catch (e) { smsMsg.textContent = 'Copy failed: ' + e.message; }
+      finally { smsCopy.disabled = false; }
     });
     // Twilio SMS — test send + broadcast/schedule to the whole SMS audience.
     const smsMsgEl = document.getElementById('sms-msg');

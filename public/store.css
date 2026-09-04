@@ -231,6 +231,9 @@ footer.store-footer .fnote { font-size: 10px; letter-spacing: 2px; color: rgba(2
 .buy-page h1 { font-size: clamp(25px,4.2vh,36px); margin: 0 0 10px; }
 .buy-page .qty-row { margin-top: 2px; margin-bottom: 10px; }
 .buy-page .order-summary { margin-bottom: 12px; }
+/* Drop the batch headline below the top-corner logo + count badge so it isn't
+   crammed against them on notch phones. */
+.buy-page #card .batch-head { margin-top: clamp(22px,3.6vh,38px); }
 
 /* ── Buy page: top-right bottle count box + batch-number header ── */
 .count-box { position: absolute; z-index: 3; overflow: hidden;

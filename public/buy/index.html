@@ -82,7 +82,14 @@
     .cart-name{font-family:'Bodoni Moda',Georgia,serif;font-size:18px;color:var(--parch,#f6efda);line-height:1.15}
     .cart-sub{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:rgba(246,239,218,.6);margin-top:3px;text-transform:uppercase}
     .cart-sub .soldout{color:#e08a7d}
+    .cart-sub .cart-left{color:rgba(232,194,74,.9)}
     .cart-qty{flex:0 0 auto}
+    /* Bottle toggle inside the tasting-notes card (two-bottle drops) */
+    .notes-toggle{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:4px 0 12px}
+    .notes-toggle .notes-tab{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+      padding:7px 14px;border-radius:999px;border:1px solid rgba(232,194,74,.5);background:transparent;color:rgba(232,217,181,.85);cursor:pointer;transition:all .15s}
+    .notes-toggle .notes-tab:hover{border-color:var(--gold);color:var(--gold)}
+    .notes-toggle .notes-tab.active{background:var(--gold);border-color:var(--gold);color:#241a05;font-weight:600}
   </style>
   <script src="https://js.stripe.com/v3/"></script>
 
@@ -223,6 +230,8 @@
       <button class="notes-close" data-close aria-label="Close">×</button>
       <div class="notes-emblem">✦</div>
       <div class="notes-kicker">Tasting Notes</div>
+      <!-- Bottle toggle — shown only on a two-bottle drop, filled by buy.js -->
+      <div class="notes-toggle" id="notes-toggle" hidden></div>
       <h3 class="notes-title" id="notes-title">Wilhelm Cold Brew</h3>
       <div class="notes-rule"></div>
       <div class="notes-spec" id="notes-spec" hidden></div>

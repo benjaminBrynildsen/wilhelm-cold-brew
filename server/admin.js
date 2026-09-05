@@ -2760,6 +2760,139 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[usps-export]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ───────── Packing list (by bottle) ─────────
+  // A clear, printable "who gets which bottle" sheet for a two-bottle drop.
+  // Groups every paid order by the bottle it contains (from order_items), so a
+  // customer who bought both bottles appears once under EACH list — exactly what
+  // you need to pack and hand off the right bottles. Falls back to a single list
+  // for a legacy one-bottle drop. ?scope=unshipped (default all) limits to orders
+  // still to ship. Returned as a self-contained printable HTML page.
+  app.get('/api/admin/orders/packing.html', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const dropId = parseInt(req.query?.dropId, 10) || null;
+      const unshippedOnly = String(req.query?.scope || 'all') === 'unshipped';
+      const params = [];
+      const where = ["o.status = 'paid'"];
+      if (dropId) { params.push(dropId); where.push(`o.drop_id = $${params.length}`); }
+      if (unshippedOnly) where.push('o.shipped_at IS NULL');
+
+      const drop = dropId
+        ? (await q(`SELECT id, name FROM drops WHERE id = $1`, [dropId])).rows[0]
+        : null;
+      const dropLabel = drop ? (drop.name || ('Batch № ' + drop.id)) : 'All batches';
+
+      // Per-bottle lines from order_items, joined to the order for name/address.
+      const itemRows = (await q(
+        `SELECT oi.product_id, oi.name AS bottle, oi.quantity AS qty,
+                o.id AS order_id,
+                COALESCE(NULLIF(btrim(o.shipping_name),''), o.email) AS who,
+                o.email,
+                INITCAP(NULLIF(btrim(o.shipping_address->>'city'),'')) AS city,
+                UPPER(NULLIF(btrim(o.shipping_address->>'state'),'')) AS state,
+                (o.shipped_at IS NOT NULL) AS shipped
+           FROM order_items oi JOIN orders o ON o.id = oi.order_id
+          WHERE ${where.join(' AND ')} AND oi.quantity > 0
+          ORDER BY oi.name ASC, LOWER(COALESCE(o.shipping_name, o.email)) ASC`, params)).rows;
+
+      // Legacy one-bottle orders (no line items) — list them under the batch name.
+      const legacyRows = (await q(
+        `SELECT o.id AS order_id, o.quantity AS qty,
+                COALESCE(NULLIF(btrim(o.shipping_name),''), o.email) AS who,
+                o.email,
+                INITCAP(NULLIF(btrim(o.shipping_address->>'city'),'')) AS city,
+                UPPER(NULLIF(btrim(o.shipping_address->>'state'),'')) AS state,
+                (o.shipped_at IS NOT NULL) AS shipped,
+                d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE ${where.join(' AND ')}
+            AND NOT EXISTS (SELECT 1 FROM order_items x WHERE x.order_id = o.id)
+          ORDER BY LOWER(COALESCE(o.shipping_name, o.email)) ASC`, params)).rows;
+
+      // Group into { bottleName: [buyers] }, preserving alphabetical buyer order.
+      const groups = new Map();
+      const add = (bottle, r) => {
+        if (!groups.has(bottle)) groups.set(bottle, []);
+        groups.get(bottle).push(r);
+      };
+      for (const r of itemRows) add(r.bottle || 'Bottle', r);
+      for (const r of legacyRows) add(r.drop_name || dropLabel, r);
+
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const place = (r) => [r.city, r.state].filter(Boolean).join(', ');
+      const stamp = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short',
+      }).format(new Date());
+
+      let sections = '';
+      let grandBottles = 0;
+      for (const [bottle, buyers] of groups) {
+        const bottleCount = buyers.reduce((s, b) => s + (b.qty || 0), 0);
+        grandBottles += bottleCount;
+        const rows = buyers.map((b, i) => `
+          <tr class="${b.shipped ? 'shipped' : ''}">
+            <td class="chk">☐</td>
+            <td class="n">${i + 1}</td>
+            <td class="who">${esc(b.who)}${b.shipped ? ' <span class="tag">shipped</span>' : ''}</td>
+            <td class="qty">${b.qty}</td>
+            <td class="place">${esc(place(b))}</td>
+            <td class="ord">#${b.order_id}</td>
+          </tr>`).join('');
+        sections += `
+          <section class="bottle">
+            <h2>${esc(bottle)} <span class="sum">${buyers.length} order${buyers.length === 1 ? '' : 's'} · ${bottleCount} bottle${bottleCount === 1 ? '' : 's'}</span></h2>
+            <table>
+              <thead><tr><th class="chk"></th><th class="n">#</th><th>Name</th><th class="qty">Qty</th><th>City</th><th>Order</th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="6" class="empty">No orders.</td></tr>'}</tbody>
+            </table>
+          </section>`;
+      }
+      if (!groups.size) sections = '<p class="empty">No paid orders' + (unshippedOnly ? ' left to ship' : '') + ' for this batch yet.</p>';
+
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Packing list — ${esc(dropLabel)}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:#1c1a17;background:#f6f4ef;margin:0;padding:24px 20px 60px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:760px;margin:0 auto}
+  .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  h1{font-size:22px;margin:0}
+  .meta{color:#6b665e;font-size:12px}
+  .note{background:#fff6da;border:1px solid #e6cf7a;border-radius:8px;padding:9px 12px;font-size:13px;color:#5a4a12;margin:12px 0 18px}
+  .actions{margin:10px 0 4px}
+  button{font:inherit;font-size:13px;padding:8px 16px;border:1px solid #b9832a;background:#e8c24a;color:#231a05;border-radius:8px;cursor:pointer}
+  section.bottle{margin:0 0 26px;break-inside:avoid}
+  h2{font-size:17px;margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid #231a05;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  h2 .sum{font-size:12px;font-weight:500;color:#6b665e}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #e2ded6}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#8a847a;border-bottom:1px solid #cfc9bf}
+  td.chk{font-size:16px;color:#8a847a;width:22px}
+  td.n,th.n{width:30px;color:#8a847a}
+  td.qty,th.qty{text-align:center;width:44px;font-variant-numeric:tabular-nums}
+  td.who{font-weight:600}
+  td.ord,th.ord{color:#8a847a;font-variant-numeric:tabular-nums}
+  td.place{color:#4a453d}
+  tr.shipped td{color:#a49e93}
+  .tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;background:#e2ded6;color:#5a544a;padding:1px 6px;border-radius:999px;vertical-align:middle}
+  .grand{margin-top:8px;font-size:13px;color:#4a453d}
+  .empty{color:#8a847a;font-style:italic}
+  @media print{ body{background:#fff;padding:0} .actions{display:none} .note{background:#fff;border-color:#ccc} }
+</style></head><body><div class="wrap">
+  <div class="top"><h1>Packing list — ${esc(dropLabel)}</h1><div class="meta">${esc(stamp)} CT${unshippedOnly ? ' · still to ship' : ''}</div></div>
+  <div class="note">Each bottle has its own list. Someone who ordered <b>both</b> appears on <b>both</b> lists — pack a bottle for them from each.</div>
+  <div class="actions"><button onclick="window.print()">Print this list</button></div>
+  ${sections}
+  <div class="grand">Total bottles to pack: <b>${grandBottles}</b></div>
+</div></body></html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (e) { console.error('[packing]', e); res.status(500).send('Error building packing list.'); }
+  });
+
   // Mark orders shipped so they drop off the export queue. Body: { ids: [..] } to
   // mark specific orders, or { all: true } to clear every currently-unshipped paid order.
   app.post('/api/admin/orders/mark-shipped', async (req, res) => {

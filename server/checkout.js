@@ -208,9 +208,15 @@ async function nextBatchLabel() {
     `SELECT name FROM drops WHERE status = 'scheduled' AND (opens_at IS NULL OR opens_at > now())
       ORDER BY opens_at ASC NULLS LAST LIMIT 1`)).rows[0];
   if (sched?.name) return sched.name;
+  // Highest batch NUMBER across all names, +1. Extract each number token
+  // separately so a two-bottle name like "Batch 68 & 69" yields 68 and 69
+  // (max 69 → "Batch 70"), not the concatenation "6869" → "Batch 6870".
   const r = await q(
-    `SELECT MAX(NULLIF(regexp_replace(name, '\\D', '', 'g'), '')::int) AS n
-       FROM drops WHERE name ~ '[0-9]'`);
+    `SELECT MAX(t.num) AS n
+       FROM drops d,
+            LATERAL (SELECT (m)[1]::int AS num
+                       FROM regexp_matches(d.name, '\\d+', 'g') AS m) t
+      WHERE d.name ~ '[0-9]'`);
   const n = r.rows[0]?.n;
   return n ? ('Batch ' + (n + 1)) : 'The next batch';
 }

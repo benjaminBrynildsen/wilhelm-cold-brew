@@ -652,6 +652,59 @@ const fmtWhen = (iso) => {
     + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 };
 const tzAbbr = () => { try { return new Date().toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop(); } catch (e) { return 'local'; } };
+// ── Drop scheduling is always U.S. Central (CT), regardless of this device's
+// timezone, so "Friday 9 AM" is unambiguous. These convert between a
+// datetime-local wall-clock value (read as Central) and a real UTC instant. ──
+const CENTRAL_TZ = 'America/Chicago';
+const centralOffsetMs = (date) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: CENTRAL_TZ, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date).map((x) => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - date.getTime();
+};
+// "YYYY-MM-DD HH:MM" (or with a T) typed as Central wall time → UTC ISO string.
+const centralWallToUtcISO = (wall) => {
+  const m = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(wall || '');
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m.map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  let inst = new Date(guess - centralOffsetMs(new Date(guess)));
+  const off2 = centralOffsetMs(inst);            // re-resolve across a DST edge
+  if (off2 !== centralOffsetMs(new Date(guess))) inst = new Date(guess - off2);
+  return inst.toISOString();
+};
+// UTC ISO → "YYYY-MM-DDTHH:MM" Central wall time (prefills a datetime-local input).
+const utcToCentralWall = (iso) => {
+  if (!iso) return '';
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: CENTRAL_TZ, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
+// Display a stored UTC instant in Central with a CT label.
+const fmtWhenCT = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: CENTRAL_TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }) + ' CT';
+};
+// Next Friday 9:00 AM Central, as a datetime-local wall value — the default for a new drop.
+const nextFridayNineCentralWall = () => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: CENTRAL_TZ, hourCycle: 'h23', weekday: 'short',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit',
+  }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday);
+  let add = (5 - wd + 7) % 7;
+  if (add === 0 && +p.hour >= 9) add = 7;        // it's Friday but past 9 AM → next week
+  const base = new Date(Date.UTC(+p.year, +p.month - 1, +p.day + add));
+  const b = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(base).map((x) => [x.type, x.value]));
+  return `${b.year}-${b.month}-${b.day}T09:00`;
+};
 const ago = (iso) => {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
   if (s < 5) return 'just now';
@@ -1803,7 +1856,7 @@ async function showOrders() {
           <td class="num">${money(d.price_cents)}</td>
           <td class="num">${num(d.sold)}/${num(d.bottle_cap)}</td>
           <td>${esc(d.status)}</td>
-          <td>${esc(fmtWhen(d.opens_at))}</td>
+          <td>${esc(fmtWhenCT(d.opens_at))}</td>
           <td>${dropActions(d)}</td></tr>`).join('')
       : '<tr><td class="note" colspan="6">No drops yet — create one below.</td></tr>';
 
@@ -1950,11 +2003,11 @@ async function showOrders() {
       <div class="row-actions" style="align-items:center;flex-wrap:wrap">
         <label class="note">Price $<input id="dprice" type="number" min="1" step="0.01" value="49" style="width:90px;${FLD_DARK}"/></label>
         <label class="note">Bottles <input id="dcap" type="number" min="1" step="1" value="100" style="width:80px;${FLD_DARK}"/></label>
-        <label class="note">Opens (${tzAbbr()}) <input id="dopens" type="datetime-local" style="${FLD_DARK}"/></label>
+        <label class="note">Opens (CT) <input id="dopens" type="datetime-local" value="${nextFridayNineCentralWall()}" style="${FLD_DARK}"/></label>
         <button class="btn" id="dcreate">Create drop</button>
         <span class="note" id="dmsg"></span>
       </div>
-      <div class="note" style="margin-top:6px">Times are your local timezone (${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}). "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>`;
+      <div class="note" style="margin-top:6px">Times are U.S. Central (CT) — pick any date &amp; time; defaults to the next Friday 9:00 AM. "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>`;
 
     const odSel = document.getElementById('ordersDrop');
     if (odSel) odSel.addEventListener('change', (e) => { state.ordersDrop = e.target.value; showOrders(); });
@@ -2307,14 +2360,13 @@ async function showOrders() {
       } catch (e) { document.getElementById('dmsg').textContent = 'Duplicate failed: ' + e.message; }
     }));
     document.querySelectorAll('.dopens').forEach((b) => b.addEventListener('click', async () => {
-      const cur = b.dataset.opens ? new Date(b.dataset.opens).toLocaleString() : '';
-      const raw = window.prompt(`New "opens" date & time in your local timezone (${tzAbbr()}), e.g. "2026-06-26 9:00 AM". Leave blank to clear.`, cur);
+      const cur = b.dataset.opens ? utcToCentralWall(b.dataset.opens).replace('T', ' ') : nextFridayNineCentralWall().replace('T', ' ');
+      const raw = window.prompt('New "opens" date & time in U.S. Central (CT), format YYYY-MM-DD HH:MM (24-hour), e.g. "2026-06-26 09:00". Change the date to move the day. Leave blank to clear.', cur);
       if (raw === null) return; // cancelled
       let opensAt = null;
       if (raw.trim()) {
-        const d = new Date(raw.trim());
-        if (isNaN(d)) { document.getElementById('dmsg').textContent = 'Could not read that date — try e.g. 2026-06-26 9:00 AM'; return; }
-        opensAt = d.toISOString();
+        opensAt = centralWallToUtcISO(raw.trim());
+        if (!opensAt) { document.getElementById('dmsg').textContent = 'Could not read that — use YYYY-MM-DD HH:MM (24-hour), e.g. 2026-06-26 09:00'; return; }
       }
       try {
         await api(`/api/admin/drops/${b.dataset.id}/opens`, {
@@ -2337,7 +2389,7 @@ async function showOrders() {
       const priceCents = Math.round(parseFloat(document.getElementById('dprice').value) * 100);
       const bottleCap = parseInt(document.getElementById('dcap').value, 10);
       const opensRaw = document.getElementById('dopens').value;
-      const opensAt = opensRaw ? new Date(opensRaw).toISOString() : null;
+      const opensAt = opensRaw ? centralWallToUtcISO(opensRaw) : null;
       const msg = document.getElementById('dmsg');
       if (!(priceCents > 0) || !(bottleCap > 0)) { msg.textContent = 'Set a price and bottle count.'; return; }
       try {

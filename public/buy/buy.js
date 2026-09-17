@@ -209,8 +209,9 @@
     var when = $('cd-when');
     if (when) {
       var dt = new Date(nextAt);
-      when.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-        + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      // Show only the day, not the exact open time — the drop may open a little
+      // early for text subscribers, so we don't advertise the minute here.
+      when.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     }
     if (whenWrap) whenWrap.hidden = false;
     if (grid) grid.hidden = false;

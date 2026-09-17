@@ -57,8 +57,9 @@
     var when = document.getElementById('cd-when');
     if (when) {
       var dt = new Date(nextAt);
-      when.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-        + ' at ' + dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      // Day only — the drop may open early for text subscribers, so don't
+      // advertise the exact open time here.
+      when.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     }
     if (whenWrap) whenWrap.hidden = false;
     if (grid) grid.hidden = false;
@@ -101,9 +102,8 @@
       }
       if (d && d.nextDropAt && nextDate) {
         var dt = new Date(d.nextDropAt);
-        var s = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-        var t = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        nextDate.textContent = s + ' at ' + t;
+        // Day only — don't advertise the exact open time (early access for texts).
+        nextDate.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       }
     })
     .catch(function () {})

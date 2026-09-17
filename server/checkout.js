@@ -51,9 +51,31 @@ export async function getShippingFromStripe(paymentIntentId) {
   } catch (e) { console.warn('[pirateship] stripe shipping fetch failed:', e?.message || e); return null; }
 }
 
+// Auto-open a scheduled drop once its opens_at has passed, so scheduling alone
+// launches the drop (no manual "Go live" needed). Runs lazily on every storefront
+// read. Guards: only when NOTHING is currently live (never clobbers an open drop),
+// and only for a drop whose open time is within the last few days (a long-forgotten
+// scheduled drop won't spontaneously resurrect). Picks the most-recently-scheduled
+// due drop. No email/SMS is sent — going live just flips the storefront on.
+const ACTIVATE_GRACE_HOURS = Math.max(1, parseInt(process.env.ACTIVATE_GRACE_HOURS || '72', 10));
+export async function activateDueScheduledDrops() {
+  try {
+    await q(
+      `UPDATE drops SET status = 'live'
+        WHERE id = (
+          SELECT id FROM drops
+           WHERE status = 'scheduled' AND opens_at IS NOT NULL
+             AND opens_at <= now() AND opens_at > now() - ($1 || ' hours')::interval
+           ORDER BY opens_at DESC, id DESC LIMIT 1)
+          AND NOT EXISTS (SELECT 1 FROM drops WHERE status = 'live')`,
+      [String(ACTIVATE_GRACE_HOURS)]);
+  } catch (e) { console.error('[activateDueScheduledDrops]', e); }
+}
+
 // The currently-buyable drop (status='live') with its sold count + remaining.
 // "sold" counts BOTTLES (sum of quantity), not orders.
 async function currentDrop() {
+  await activateDueScheduledDrops();   // open any scheduled drop whose time has come
   const r = await q(
     `SELECT d.*,
        (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = d.id AND o.status = 'paid') AS sold

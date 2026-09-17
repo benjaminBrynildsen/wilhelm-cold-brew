@@ -7,7 +7,7 @@ import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
-import { getShippingFromStripe } from './checkout.js';
+import { getShippingFromStripe, activateDueScheduledDrops } from './checkout.js';
 import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcGetMemberSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { smsConfigured, smsCanSchedule, reachableNumbers, sendOne, broadcast, isUsMobile } from './sms.js';
 import { normalizePhone } from './util.js';
@@ -2123,6 +2123,7 @@ export function mountAdmin(app) {
   app.get('/api/admin/orders', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
+      await activateDueScheduledDrops();   // reflect any auto-opened scheduled drop in the admin view
       // Optional drop filter: scope the totals + order list to one drop.
       const dropId = parseInt(req.query?.dropId, 10) || null;
       const agg = (await q(

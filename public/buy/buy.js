@@ -171,6 +171,27 @@
   // Between-batches countdown, shown right on the buy page until the next drop
   // is live. No reference to the batch that just passed.
   var cdTimer = null;
+  var cdOpening = false;
+  // Countdown reached zero → the scheduled drop should be opening. Poll the API
+  // (which auto-activates a due drop) and reload the moment it's buyable, so a
+  // customer waiting on the page walks straight into the open store. Polling (vs a
+  // blind reload) means no reload loop if it's not quite live yet.
+  function onCountdownDone() {
+    if (cdOpening) return; cdOpening = true;
+    var soon = $('cd-soon'), grid = $('cd-grid'), whenWrap = $('cd-when-wrap');
+    if (grid) grid.hidden = true;
+    if (whenWrap) whenWrap.hidden = true;
+    if (soon) { soon.textContent = 'Opening now…'; soon.hidden = false; }
+    var check = function () {
+      fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d && d.available) location.reload(); })
+        .catch(function () {});
+    };
+    check();
+    var poll = setInterval(check, 5000);
+    setTimeout(function () { clearInterval(poll); }, 600000);   // give up after 10 min
+  }
   function bump(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
   function setCell(el, val) { if (!el) return; var s = String(val); if (el.textContent !== s) { el.textContent = s; bump(el); } }
   function showCountdown(nextAt, batchLabel) {
@@ -195,12 +216,14 @@
     if (grid) grid.hidden = false;
     var c = { d: $('cd-d'), h: $('cd-h'), m: $('cd-m'), s: $('cd-s') };
     function tick() {
-      var left = Math.max(0, Math.floor((target - Date.now()) / 1000));
+      var remain = target - Date.now();
+      var left = Math.max(0, Math.floor(remain / 1000));
       var d = Math.floor(left / 86400); left -= d * 86400;
       var h = Math.floor(left / 3600); left -= h * 3600;
       var m = Math.floor(left / 60), s = left - m * 60;
       if (!c.d) { clearInterval(cdTimer); return; }
       setCell(c.d, d); setCell(c.h, h); setCell(c.m, m); setCell(c.s, s);
+      if (remain <= 0) { clearInterval(cdTimer); onCountdownDone(); }
     }
     tick();
     cdTimer = setInterval(tick, 1000);

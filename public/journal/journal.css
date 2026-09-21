@@ -1,0 +1,273 @@
+/* Wilhelm — The Ledger (research journal).
+   Shares the brand tokens with /drink/optin.css but is tuned for long-form
+   reading rather than conversion: narrower measure, looser leading, and a
+   type scale that holds up through 2,000 words on a phone.
+
+   The email capture blocks reuse .optin-form / [data-capture] markup so
+   /drink/optin.js wires them with zero changes — a signup from an article
+   lands in the same funnel, with variant 'journal'. */
+
+:root {
+  --gold: #e8c24a;
+  --gold-deep: #b8922f;
+  --gold-soft: rgba(232, 194, 74, 0.16);
+  --ink: #0c0a08;
+  --ink-2: #15100b;
+  --ink-3: #1d150d;
+  --parchment: #f6efda;
+  --parchment-dim: rgba(246, 239, 218, 0.72);
+  --parchment-faint: rgba(246, 239, 218, 0.48);
+  --rule: rgba(232, 194, 74, 0.22);
+  --display: 'Bodoni Moda', serif;
+  --body: 'Lora', serif;
+  --mono: 'DM Mono', monospace;
+  --measure: 34rem; /* ~66 characters at our body size — the readable column */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  background: radial-gradient(ellipse at 50% 0%, #1a1308 0%, var(--ink) 60%), var(--ink);
+  color: var(--parchment);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+img { max-width: 100%; height: auto; }
+a { color: var(--gold); }
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+.jr-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  padding: 18px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--rule);
+}
+.jr-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.jr-brand img { width: 44px; height: 44px; border-radius: 50%; display: block; }
+.jr-brand-txt {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px;
+  text-transform: uppercase; color: var(--parchment-dim); line-height: 1.4;
+}
+.jr-brand-txt b { display: block; color: var(--parchment); font-weight: 500; letter-spacing: 2.4px; }
+.jr-join {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--ink); background: var(--gold); text-decoration: none;
+  padding: 10px 16px; border-radius: 2px; white-space: nowrap;
+  transition: background 0.18s ease;
+}
+.jr-join:hover { background: #f3d878; }
+
+/* ── Shared shell ─────────────────────────────────────────────────────── */
+.jr-wrap { max-width: var(--measure); margin: 0 auto; padding: 0 clamp(16px, 5vw, 24px); }
+.jr-wide { max-width: 58rem; margin: 0 auto; padding: 0 clamp(16px, 5vw, 24px); }
+
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--gold); margin: 0 0 18px;
+}
+
+/* ── Index hero ───────────────────────────────────────────────────────── */
+.jr-hero { padding: clamp(48px, 9vw, 88px) 0 clamp(32px, 6vw, 56px); text-align: center; }
+.jr-hero h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(38px, 8vw, 68px); line-height: 1.04; margin: 0 0 20px;
+}
+.jr-hero h1 em { font-style: italic; color: var(--gold); }
+.jr-hero-lede { color: var(--parchment-dim); font-size: clamp(16px, 2.4vw, 19px); margin: 0 auto; max-width: 30rem; }
+
+/* ── Article cards ────────────────────────────────────────────────────── */
+.jr-list { display: grid; gap: 20px; padding-bottom: 8px; }
+.jr-card {
+  display: block; text-decoration: none; color: inherit;
+  background: linear-gradient(180deg, var(--ink-2), var(--ink));
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: clamp(22px, 4vw, 32px);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.jr-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.jr-kicker {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.2px; text-transform: uppercase;
+  color: var(--gold); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;
+}
+.jr-kicker span { color: var(--parchment-faint); }
+.jr-card h2 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(22px, 4vw, 30px); line-height: 1.2; margin: 0 0 10px;
+}
+.jr-card p { margin: 0; color: var(--parchment-dim); font-size: 16px; }
+.jr-card-more {
+  display: inline-block; margin-top: 16px; color: var(--gold);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
+}
+
+/* Queued pieces — visible roadmap, deliberately not links. */
+.jr-soon { margin: 40px 0 0; border-top: 1px solid var(--rule); padding-top: 28px; }
+.jr-soon h3 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--parchment-faint); font-weight: 400; margin: 0 0 16px;
+}
+.jr-soon ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.jr-soon li {
+  display: flex; gap: 12px; align-items: baseline;
+  color: var(--parchment-dim); font-size: 15px;
+}
+.jr-soon li b { color: var(--parchment); font-weight: 400; }
+.jr-soon .mk { color: var(--gold-deep); flex: none; }
+
+/* ── Article page ─────────────────────────────────────────────────────── */
+.jr-article { padding: clamp(36px, 7vw, 72px) 0 0; }
+.jr-meta {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.2px; text-transform: uppercase;
+  color: var(--parchment-faint); display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px;
+}
+.jr-meta b { color: var(--gold); font-weight: 500; }
+.jr-article h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(32px, 6.4vw, 54px); line-height: 1.08; margin: 0 0 22px;
+}
+.jr-article h1 em { font-style: italic; color: var(--gold); }
+.jr-lede {
+  font-size: clamp(18px, 2.6vw, 21px); line-height: 1.65; color: var(--parchment);
+  border-left: 2px solid var(--gold); padding-left: 18px; margin: 0 0 40px;
+}
+.jr-body > p { margin: 0 0 22px; }
+.jr-body h2 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(24px, 4.4vw, 34px); line-height: 1.2;
+  margin: 46px 0 16px; padding-top: 10px; border-top: 1px solid var(--rule);
+}
+.jr-body h3 {
+  font-family: var(--body); font-weight: 700; font-size: 18px;
+  margin: 30px 0 10px; color: var(--parchment);
+}
+.jr-body strong { color: var(--parchment); }
+.jr-body em { font-style: italic; }
+.jr-body a { color: var(--gold); text-underline-offset: 3px; }
+.jr-body ul, .jr-body ol { margin: 0 0 22px; padding-left: 22px; color: var(--parchment-dim); }
+.jr-body li { margin-bottom: 10px; }
+.jr-body li::marker { color: var(--gold-deep); }
+
+/* Pull quote — one per article, for the line worth remembering. */
+.jr-pull {
+  font-family: var(--display); font-style: italic;
+  font-size: clamp(22px, 4vw, 30px); line-height: 1.35; color: var(--gold);
+  text-align: center; margin: 40px 0; padding: 0 clamp(4px, 3vw, 24px);
+}
+
+/* Fact strip — the short answer, surfaced early for skimmers and for search
+   engines pulling a featured snippet. */
+.jr-fact {
+  background: var(--ink-3); border: 1px solid var(--rule); border-radius: 3px;
+  padding: clamp(20px, 4vw, 28px); margin: 0 0 36px;
+}
+.jr-fact-h {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--gold); margin: 0 0 10px;
+}
+.jr-fact p { margin: 0; font-size: 17px; }
+
+/* Data table — comparisons read better than a chart at this size. */
+.jr-table-wrap { overflow-x: auto; margin: 0 0 28px; -webkit-overflow-scrolling: touch; }
+.jr-table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 30rem; }
+.jr-table caption {
+  caption-side: bottom; text-align: left; padding-top: 10px;
+  font-size: 13px; color: var(--parchment-faint); font-style: italic;
+}
+.jr-table th, .jr-table td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.jr-table th {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--gold); font-weight: 500;
+}
+.jr-table td { color: var(--parchment-dim); }
+.jr-table td b { color: var(--parchment); font-weight: 400; }
+
+/* Editorial note — DRAFT ONLY. Every claim that needs Matt's own numbers is
+   wrapped in one of these so nothing about Wilhelm's operation is invented.
+   Delete these blocks (and this rule) before anything ships. */
+.jr-todo {
+  border: 1px dashed #d08b2c; background: rgba(208, 139, 44, 0.09);
+  border-radius: 3px; padding: 16px 18px; margin: 0 0 26px;
+  font-size: 15px; color: #f0c98a;
+}
+.jr-todo b {
+  display: block; font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+  text-transform: uppercase; color: #d08b2c; margin-bottom: 6px;
+}
+
+/* References */
+.jr-refs { margin: 48px 0 0; border-top: 1px solid var(--rule); padding-top: 26px; }
+.jr-refs h2 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--parchment-faint); font-weight: 400; margin: 0 0 16px; border: 0; padding: 0;
+}
+.jr-refs ol { margin: 0; padding-left: 20px; }
+.jr-refs li { margin-bottom: 12px; font-size: 14px; line-height: 1.6; color: var(--parchment-faint); }
+.jr-refs li::marker { color: var(--gold-deep); }
+.jr-refs cite { font-style: italic; color: var(--parchment-dim); }
+
+/* ── Email capture (reuses optin.js) ──────────────────────────────────── */
+.jr-capture {
+  background: linear-gradient(180deg, var(--ink-2), var(--ink));
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: clamp(26px, 5vw, 40px); margin: 44px 0;
+  text-align: center;
+}
+.jr-capture.inline { margin: 40px 0; }
+.jr-capture h2, .jr-capture h3 {
+  font-family: var(--display); font-weight: 400; border: 0; padding: 0;
+  font-size: clamp(22px, 4vw, 30px); line-height: 1.22; margin: 0 0 10px;
+}
+.jr-capture h2 em, .jr-capture h3 em { font-style: italic; color: var(--gold); }
+.jr-capture-p { color: var(--parchment-dim); font-size: 15px; margin: 0 auto 20px; max-width: 26rem; }
+
+.countdown {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--parchment-faint); margin-bottom: 14px;
+}
+.countdown .cd-value { color: var(--gold); }
+
+.optin-form { display: grid; gap: 10px; max-width: 24rem; margin: 0 auto; }
+.optin-form input[type="email"] {
+  width: 100%; padding: 14px 16px; font-family: var(--body); font-size: 16px;
+  color: var(--parchment); background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--rule); border-radius: 2px;
+}
+.optin-form input[type="email"]::placeholder { color: var(--parchment-faint); }
+.optin-form input[type="email"]:focus { outline: none; border-color: var(--gold); }
+.optin-form button {
+  padding: 14px 18px; font-family: var(--mono); font-size: 12px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--ink); background: var(--gold);
+  border: 0; border-radius: 2px; cursor: pointer; transition: background 0.18s ease;
+}
+.optin-form button:hover { background: #f3d878; }
+.optin-error { color: #f0a0a0; font-size: 14px; }
+.jr-fine { font-size: 12px; color: var(--parchment-faint); margin: 14px 0 0; }
+
+.success .seal { margin: 0 auto 12px; width: 44px; height: 44px; }
+.success .seal svg { width: 100%; height: 100%; }
+.success h2 { font-family: var(--display); font-size: clamp(22px, 4vw, 30px); margin: 0 0 8px; border: 0; padding: 0; }
+.success p { color: var(--parchment-dim); font-size: 15px; margin: 0; }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+.jr-footer {
+  margin-top: 64px; padding: 34px clamp(16px, 4vw, 40px) 44px;
+  border-top: 1px solid var(--rule); text-align: center;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--parchment-dim);
+}
+.jr-footer .fnote { margin-top: 8px; color: var(--parchment-faint); letter-spacing: 1.8px; }
+.jr-footer nav { margin-top: 16px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.jr-footer nav a { color: var(--gold); text-decoration: none; letter-spacing: 1.8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .jr-card { transition: none; }
+  .jr-card:hover { transform: none; }
+}

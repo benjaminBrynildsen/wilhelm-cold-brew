@@ -548,6 +548,11 @@ html:not([data-drink-variant]) .optin-bullets { display: block; }
 .drink-footer { position: relative; z-index: 1; text-align: center; padding: 40px 20px 48px; border-top: 1px solid rgba(232,194,74,0.2);
   font-family: var(--display); font-weight: 700; letter-spacing: 4px; color: var(--gold); font-size: 18px; }
 .drink-footer .fnote { font-family: var(--mono); font-weight: 400; letter-spacing: 2px; font-size: 10px; color: rgba(246,239,218,0.45); margin-top: 10px; }
+/* Footer nav — the only exit from the funnel, deliberately placed below
+   everything so it can't compete with the capture forms above it. */
+.drink-footer nav { margin-top: 16px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.drink-footer nav a { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); text-decoration: none; }
+.drink-footer nav a:hover { color: #f3d878; }
 
 /* Mobile: a swipeable, full-bleed carousel instead of a tall stack. */
 @media (max-width: 700px) {

@@ -119,6 +119,10 @@ app.get('/sitemap.xml', (req, res) => {
     { loc: '/buy/', pri: '0.9' },
     { loc: '/batches/', pri: '0.6' },
     { loc: '/recipe/', pri: '0.6' },
+    // The Ledger — research pieces. These are the pages that earn organic
+    // search traffic, so they carry real priority; add each new article here.
+    { loc: '/journal/', pri: '0.8' },
+    { loc: '/journal/barrel-aged-coffee-alcohol/', pri: '0.8' },
   ];
   const urls = pages.map((p) =>
     `  <url><loc>${site}${p.loc}</loc><lastmod>${today}</lastmod><priority>${p.pri}</priority></url>`).join('\n');

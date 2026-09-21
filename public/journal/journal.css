@@ -311,7 +311,9 @@ html:not([data-reading="light"]) .jr-todo { color: #f0c98a; }
 .jr-refs ol { margin: 0; padding-left: 20px; }
 .jr-refs li { margin-bottom: 12px; font-size: 14px; line-height: 1.6; color: var(--fg-faint); }
 .jr-refs li::marker { color: var(--accent-quiet); }
-.jr-refs cite { font-style: italic; color: var(--fg-dim); }
+/* Titles in a reference are italicised. Authors write them as *title* in the
+   editor, which renders as <em> — cite is kept for the hand-authored pages. */
+.jr-refs cite, .jr-refs em { font-style: italic; color: var(--fg-dim); }
 
 /* ── Capture (reuses optin.js) ────────────────────────────────────────── */
 .jr-capture {

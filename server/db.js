@@ -514,6 +514,27 @@ export async function ensureSchema() {
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       last_used_at TIMESTAMPTZ
     );
+
+    -- The Ledger — long-form research articles, written and published from the
+    -- admin portal. Body is a small Markdown subset (see server/journal.js);
+    -- it is rendered to HTML on the server so search engines get real pages,
+    -- which is the entire point of writing them.
+    CREATE TABLE IF NOT EXISTS journal_articles (
+      id            BIGSERIAL PRIMARY KEY,
+      slug          TEXT NOT NULL UNIQUE,
+      title         TEXT NOT NULL,
+      category      TEXT,                       -- kicker, e.g. "Barrel Aging"
+      summary       TEXT,                       -- card blurb + meta description
+      dek           TEXT,                       -- the standfirst under the headline
+      body          TEXT NOT NULL DEFAULT '',   -- Markdown subset
+      refs          TEXT,                       -- one reference per line
+      read_minutes  INTEGER,                    -- blank = estimated from length
+      status        TEXT NOT NULL DEFAULT 'draft',   -- draft | published
+      published_at  TIMESTAMPTZ,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS journal_status_idx ON journal_articles (status, published_at DESC);
   `);
   // Canonical email for cross-table identity matching (order ↔ subscriber).
   // People sign up as ryan.kiley@gmail.com and check out via autofill as

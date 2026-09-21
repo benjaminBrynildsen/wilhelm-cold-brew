@@ -39,7 +39,7 @@ function isAdmin(req) {
   if (safeEqual(req.headers['x-admin-key'] || '', ADMIN_API_KEY)) return true;
   return req.signedCookies && req.signedCookies[COOKIE] === 'ok';
 }
-function requireAdmin(req, res) {
+export function requireAdmin(req, res) {
   if (isAdmin(req)) return true;
   res.status(401).json({ error: 'unauthorized' });
   return false;

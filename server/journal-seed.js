@@ -28,7 +28,7 @@ The oak therefore acts upon the green bean alone. By the time there is cold brew
 
 ## Why there is anything in the barrel to begin with
 
-American bourbon must, by federal regulation, be matured in *new* charred oak containers.[^3] A given barrel therefore serves a single bourbon fill, after which the distillery is left holding an expensive piece of cooperage it is forbidden to use again for that purpose. The secondary market this creates is the reason used bourbon barrels find their way to scotch producers, to brewers, and to operations such as ours.
+American bourbon must, by federal regulation, be stored in **charred new oak barrels**, and entered into them at no more than 125° proof.[^3] A given barrel therefore serves a single bourbon fill, after which the distillery is left holding an expensive piece of cooperage it is forbidden to use again for that purpose. The secondary market this creates is the reason used bourbon barrels find their way to scotch producers, to brewers, and to operations such as ours.
 
 A barrel that has been dumped is not, in any meaningful sense, empty. Oak is porous, and over years of maturation a substantial volume of spirit is absorbed into the staves; distillers and coopers commonly place the figure at several gallons retained in the wood of a standard 53-gallon barrel after draining. The vessel our coffee enters is, in the literal sense, still wet.
 
@@ -53,7 +53,9 @@ None of these is ethanol. Within a maturing spirit, ethanol functions principall
 
 ## Why the roast resolves the question
 
-Ethanol boils at 78.37 °C at atmospheric pressure.[^5] A coffee roast carries the bean past 200 °C and holds it there for a matter of minutes.[^6] No meaningful quantity of ethanol survives that treatment: it volatilizes early in the roast, well before first crack, and departs with the exhaust.
+Ethanol boils at 78.37 °C at atmospheric pressure.[^5] First crack — the audible moment that marks the beginning of a light roast — arrives at a bean temperature near 196 °C, and specialty roasters commonly drop the batch somewhere between 212 and 218 °C.[^6] Even the lightest roast therefore holds the bean far above ethanol's boiling point, for minutes.
+
+No meaningful quantity of ethanol survives that. It volatilizes early, long before first crack, and departs with the exhaust.
 
 What makes this useful rather than merely fortunate is that the aromatic compounds do not behave the same way. Vanillin, the oak lactones and the furanic aldehydes are substantially less volatile and considerably more thermally stable than ethanol, and they persist through the roast largely intact. The roast is, in effect, a selective process — it removes the alcohol and retains the oak — and that asymmetry is the reason barrel-aged coffee is able to exist as a non-alcoholic product at all.
 
@@ -78,19 +80,105 @@ The literature on barrel-aged *coffee* specifically is not. It is sparse, recent
 We would rather mark the boundary between established chemistry, reasonable inference, and our own observation from batch work. We intend to keep marking it, including in those cases where the honest account proves less flattering than the confident one.`;
 
 const REFS = [
-  'Mosedale, J. R. & Puech, J.-L. *Wood maturation of distilled beverages.* Trends in Food Science & Technology, 9(3), 95–101 (1998).',
-  'Conner, J. M., Paterson, A. & Piggott, J. R. Work on the extraction of oak extractives into maturing spirits, Journal of the Science of Food and Agriculture.',
-  '27 CFR § 5.22 — Standards of Identity for Distilled Spirits (bourbon must be stored in new charred oak containers).',
-  'US Alcohol and Tobacco Tax and Trade Bureau / FDA labeling practice — the 0.5% ABV threshold for non-alcoholic beverages.',
-  'Ethanol, boiling point 78.37 °C at 1 atm — standard physical constant.',
-  'Typical specialty coffee roast profiles, bean temperature ~195–230 °C.',
+  'Mosedale, J. R. & Puech, J.-L. *Wood maturation of distilled beverages.* Trends in Food Science & Technology 9(3), 95–101 (1998).',
+  'Conner, J. M., Paterson, A. & Piggott, J. R. *Changes in wood extractives from oak cask staves through maturation of Scotch malt whisky.* Journal of the Science of Food and Agriculture 62(2), 169–174 (1993).',
+  '27 CFR § 5.143(c), Table 1 — Standards of Identity for Distilled Spirits. Bourbon whisky must be distilled at 160° proof or less and stored in charred new oak barrels at 125° proof or less. (Formerly § 5.22; renumbered in the TTB labeling modernization.)',
+  'FDA Compliance Policy Guide Sec. 510.400 — beverages containing less than 0.5% alcohol by volume are considered non-alcoholic. Compare 27 CFR § 7.65, the parallel labeling rule for malt beverages, and the Alcoholic Beverage Labeling Act of 1988, which requires a health warning at 0.5% ABV and above.',
+  'Ethanol, normal boiling point 78.37 °C at 1 atm.',
+  'Coffee roasting: first crack occurs at a bean temperature near 196 °C; specialty roasters commonly drop between 212 and 218 °C.',
+].join('\n');
+
+// Second piece. Seeded as a DRAFT — Matt reviews and publishes it from the
+// admin rather than it going live the moment the table is created.
+const COFERM_BODY = `:::fact
+Two different practices share the name. **Microbial co-fermentation** — inoculating the fermenting coffee cherry with selected yeast or lactic acid bacteria — is supported by a real and growing body of peer-reviewed work. **Additive fermentation**, sometimes called infusion, puts fruit, spices or syrups into the tank, and is a question about flavoring and disclosure rather than about fermentation. Most of the public argument comes from treating them as one thing.
+:::
+
+## The word is doing too much work
+
+Ask three people in specialty coffee what co-fermentation means and you may get three answers, which is a poor foundation for an argument as heated as this one has become.
+
+In its narrow and older sense, co-fermentation describes inoculating the fermenting coffee fruit with chosen microorganisms — commonly *Saccharomyces cerevisiae*, the yeast of bread and beer, or lactic acid bacteria such as *Lactiplantibacillus plantarum* — rather than leaving the process to whatever happens to be living on the cherry and in the tank. Nothing enters that could not plausibly have arrived on its own. What changes is which organisms dominate, and how predictably.
+
+In its broader and more recent sense, the same word covers the addition of material that is not a microorganism at all: fruit pulp, cinnamon, tropical juices, occasionally proprietary flavor compounds. The industry has begun to separate this as *additive fermentation* or *infusion*, and the distinction is worth insisting upon, because the two practices differ in mechanism, in what can be claimed for them, and in what a buyer is entitled to be told.
+
+We will take them in turn, because the evidence is very different in each case.
+
+## What the research actually supports
+
+The literature on inoculated fermentation is genuine, peer-reviewed, and has grown quickly over the past five years.
+
+A 2024 study in *Food Chemistry* fermented coffee fruit with sequential inoculation — *L. plantarum* first, then *S. cerevisiae* — across 48- and 96-hour fermentations, and identified forty-seven volatile compounds in the resulting coffee, with furfuryl acetate, pyridine and 1-methylpyrrole predominating.[^1] The sensory outcome was a shift toward fruity and fermented notes, and greater aromatic complexity relative to spontaneous controls.
+
+Earlier co-inoculation work has gone further, identifying 108 volatile compounds across seventeen chemical classes in green and roasted samples, among them 2,3-butanediol, a product of lactic acid bacterial metabolism that contributes to aroma.[^2] Related studies have found that selected yeasts and lactic acid bacteria tolerate the stresses of postharvest processing, consume the sugars of the fruit pulp efficiently, and generate organic acids and volatile precursors reliably enough to be used deliberately.[^3]
+
+The conclusion those papers support is a modest and useful one: **controlled microbial fermentation measurably changes the volatile composition of the resulting coffee, and it does so more consistently than spontaneous fermentation.** That is a real finding. It is also a narrower claim than the marketing usually makes.
+
+> The organisms do not deposit flavor. They metabolize sugar, and the roast makes something of what they leave behind.
+
+## Why the mechanism limits what can be claimed
+
+It is tempting to imagine inoculation as a way of writing a flavor into the bean. The chemistry does not work like that, and understanding why is the best defense against the more extravagant claims.
+
+The microorganisms act on the mucilage — the sugary layer surrounding the seed — not on the seed itself. They consume its sugars and produce organic acids, alcohols and other small molecules. Some of those diffuse into the bean; others alter the pH and the rate at which the fermentation proceeds, which in turn affects what else can grow. The bean that emerges is chemically different, but what it carries is mostly *precursors*, not finished aromas.
+
+Roasting then takes those precursors and does its own work on them, through the Maillard reaction and the degradation of sugars and acids. The aroma in the cup is the product of that second transformation, not a survival of the first.
+
+Every step in that chain is sensitive to conditions. Which is why a result obtained with one cultivar, at one altitude, in one season, with one roast profile, is evidence that something is possible — not a recipe that transfers.
+
+## Where the claims outrun the evidence
+
+Several things are asserted confidently in the trade that the published work does not currently support.
+
+- **That a specific flavor can be selected in advance.** The studies report directions — fruitier, more complex, more acidic — not targets hit on demand.
+- **That effects are large.** Reported differences are usually real but moderate, and frequently smaller than the difference between two roast profiles of the same lot.
+- **That the microbe is responsible for the whole difference.** Inoculation nearly always accompanies changes in tank management, timing and temperature, and few published designs isolate the organism's contribution from the processing change around it.
+- **That results generalize across origins.** Most studies are single-origin, single-season, and modest in sample size.
+
+None of this makes inoculated fermentation illegitimate. It makes it a technique with a real but bounded effect, which is a less thrilling description than the one usually offered.
+
+## Infusion is a different question
+
+When fruit, spice or a flavor compound goes into the tank, fermentation is no longer doing the work that the name implies. The material is a flavoring, and the honest questions become commercial rather than chemical: was the buyer told, and does the label reflect it?
+
+The industry has not settled on one answer, and the competition rules diverge sharply.
+
+| Body | Position |
+| --- | --- |
+| Alliance for Coffee Excellence (Cup of Excellence) | Revised eligibility in 2023 to exclude non-microbial additives — fruits, spices and similar — from competition lots |
+| Best of Panama | Excluded infused coffees from the 2024 competition, citing the authenticity of the country's coffee identity |
+| Specialty Coffee Association (World Barista Championship) | Permitted infused and co-fermented coffees from late 2023, provided additions occur before the green coffee stage |
+^ Positions taken by major competition bodies as reported in the trade press, 2023–2024.[^4]
+
+Reasonable people land in different places on whether infusion is an innovation or an adulteration. Our own view is narrower and, we think, harder to argue with: whatever went into the tank should be on the bag. A drinker who knows what they are buying can decide for themselves, and a producer confident in the method should have no reason to be vague about it.
+
+## How to read a co-fermentation claim
+
+A few questions separate a substantive claim from a decorative one.
+
+- **Did anything non-microbial enter the tank?** This is the first and most important question, and it is usually answerable in one sentence.
+- **Is the organism named?** "Co-fermented with *L. plantarum*" is a claim. "Co-fermented" alone is a category.
+- **What was it compared against?** A difference is only meaningful relative to a control — the same lot, spontaneously fermented.
+- **How precise is the number?** Specific figures for compound migration, offered without a citation, are the clearest signal that the science is being borrowed rather than done.
+
+## Where the evidence runs out
+
+The honest summary is that this field is young.
+
+Sample sizes are small, sensory panels are smaller, and the literature carries the publication bias one would expect of a commercially interesting technique — negative results are not much published. Few studies follow the same lot across multiple seasons, which is where the variability that matters commercially actually lives.
+
+And one gap is conspicuous from where we stand: almost nothing published examines how co-fermented lots behave under **cold** extraction. Cold brew pulls a different compound set than hot water does, at a different rate, and there is no good reason to assume that a fermentation difference measured in an espresso or filter cup survives into a twenty-hour cold extraction at the same magnitude, or at all. We would like to know. As far as we can tell, nobody has published it.`;
+
+const COFERM_REFS = [
+  'Rabelo, M. H. S., Borém, F. M., Alves, A. P. de C., Pieroni, R. S., Santos, C. M., Nakajima, M. & Sugino, R. *Fermentation of coffee fruit with sequential inoculation of Lactiplantibacillus plantarum and Saccharomyces cerevisiae: Effects on volatile composition and sensory characteristics.* Food Chemistry 444, 138608 (2024). doi:10.1016/j.foodchem.2024.138608',
+  'Co-inoculation studies identifying 108 volatile compounds across 17 chemical classes in green and roasted coffee, including 2,3-butanediol of lactic-acid-bacterial origin — see the co-inoculation literature in International Journal of Food Microbiology and European Food Research and Technology, 2022–2024.',
+  '*Increasing the quality and complexity of pulped coffee fermentation with Lactiplantibacillus plantarum and selected yeasts.* European Food Research and Technology (2024). doi:10.1007/s00217-024-04640-7',
+  'Competition positions as reported in the specialty trade press, 2023–2024: Alliance for Coffee Excellence eligibility revisions (2023), Best of Panama (2024), and Specialty Coffee Association World Barista Championship rules (late 2023). Verify current rules directly with each body before relying on them.',
 ].join('\n');
 
 // The roadmap shown under "In the works" on the index. These are drafts with a
 // summary and no body — visible as a plan, not readable until written.
 const QUEUED = [
-  ['Co-fermentation, honestly assessed', 'Co-fermentation',
-   "What the published research supports, what it doesn't, and why most claims outrun the evidence."],
   ['The extraction temperature curve', 'Extraction',
    'What changes between 4 °C and 22 °C, and what that costs you in the cup.'],
   ['Water chemistry for cold brew', 'Water',
@@ -117,6 +205,17 @@ export async function seedJournal() {
        'An account of what a bourbon barrel actually contributes to coffee, why the roast resolves the alcohol question before the coffee is ever brewed, and where the published evidence runs out.',
        'It is the question we are asked more than any other, and it deserves a fuller answer than the reassurance usually offered in its place. For coffee aged the way ours is, the answer is no — not as a matter of assurance, but as a consequence of the temperatures involved.',
        BODY, REFS]);
+
+    // Seeded as a draft: Matt reads it and publishes it himself.
+    await q(`INSERT INTO journal_articles
+               (slug, title, category, summary, dek, body, refs, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'draft')`,
+      ['coffee-co-fermentation-what-the-research-says',
+       'Co-fermentation: what the research actually says',
+       'Co-fermentation',
+       'Two different practices share one name, which is where most of the argument comes from. What the peer-reviewed work supports, what it does not, and how to read a claim on a bag.',
+       'Co-fermentation has become the most argued-about word in specialty coffee, and a good deal of the heat comes from a simple confusion: the term now covers two practices that differ in mechanism, in evidence, and in what a buyer is owed.',
+       COFERM_BODY, COFERM_REFS]);
 
     for (const [title, category, summary] of QUEUED) {
       await q(`INSERT INTO journal_articles (slug, title, category, summary, body, status)

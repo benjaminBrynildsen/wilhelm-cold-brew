@@ -282,6 +282,9 @@ export async function ensureSchema() {
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS varietal  TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS elevation TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS roast     TEXT;
+    -- Which cask this batch was aged in, e.g. "Willett bourbon barrel". Shown
+    -- on the drop's article and on Batch Notes.
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS barrel    TEXT;
 
     -- Orders against a drop. status: pending (checkout created) | paid | failed | refunded.
     CREATE TABLE IF NOT EXISTS orders (
@@ -531,10 +534,17 @@ export async function ensureSchema() {
       read_minutes  INTEGER,                    -- blank = estimated from length
       status        TEXT NOT NULL DEFAULT 'draft',   -- draft | published
       published_at  TIMESTAMPTZ,
+      -- Set when the piece is about a specific drop. The article then pulls
+      -- origin/varietal/elevation/roast/barrel from the drop row rather than
+      -- having them retyped, and carries a live buy link while the drop is open.
+      drop_id       BIGINT REFERENCES drops(id) ON DELETE SET NULL,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS journal_status_idx ON journal_articles (status, published_at DESC);
+    CREATE INDEX IF NOT EXISTS journal_drop_idx   ON journal_articles (drop_id);
+    -- For databases where journal_articles was created before drop linking.
+    ALTER TABLE journal_articles ADD COLUMN IF NOT EXISTS drop_id BIGINT REFERENCES drops(id) ON DELETE SET NULL;
   `);
   // Canonical email for cross-table identity matching (order ↔ subscriber).
   // People sign up as ryan.kiley@gmail.com and check out via autofill as

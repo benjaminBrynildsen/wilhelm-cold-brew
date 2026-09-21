@@ -176,6 +176,74 @@ const COFERM_REFS = [
   'Competition positions as reported in the specialty trade press, 2023–2024: Alliance for Coffee Excellence eligibility revisions (2023), Best of Panama (2024), and Specialty Coffee Association World Barista Championship rules (late 2023). Verify current rules directly with each body before relying on them.',
 ].join('\n');
 
+// ── Drop article: the Willett barrel ────────────────────────────────────────
+// The piece the Wednesday email links to. Written to earn the phrase "the full
+// walkthrough" — the email makes the claims, this shows the work behind them.
+const WILLETT_BODY = `:::fact
+This batch was aged in a barrel that previously held Willett whiskey — a family distillery in Bardstown, Kentucky, distilling since 1936 on land the family has farmed since 1792. Bourbon enters the barrel at no more than 125 proof and sits in it for years. When it is emptied, the wood is still holding a great deal of what it took in. Our green coffee goes in next.
+:::
+
+## Whose barrel this is
+
+Willett is not a large operation, and that is much of the point of it.
+
+The family has been in Nelson County since 1792, when William Willett moved down from Maryland. The distillery itself was built in 1936 — three years after Prohibition ended — on the family's own hog farm at one of the highest points in the county, and the first barrel was rolled into Warehouse A on St Patrick's Day, 1937. It remains independent and family-run, on roughly 130 acres, with Willetts still working the property. They run six mash bills, four bourbon and two rye.
+
+Ours is a bourbon barrel.
+
+We are not claiming any association with the distillery, and they have no involvement in what we make. We bought a barrel that held their whiskey, which is what the secondary market for used cooperage exists to do. But whose barrel it was matters to the coffee, and it is worth being specific rather than saying "bourbon barrel" and leaving it there.
+
+## Why an emptied barrel is not empty
+
+Federal law requires bourbon to be matured in charred new oak barrels, and to enter them at no more than 125 proof.[^1] One fill, one bourbon, and then the distillery owns a barrel it can never legally use for bourbon again. That rule is the reason a barrel like this one is available to us at all.
+
+What arrives is not a dry container. Oak is porous, and across years of maturation the spirit works its way into the staves — distillers and coopers commonly put it at several gallons still held in the wood of a standard 53-gallon barrel after it has been drained. Seasonal expansion and contraction drive liquid into the wood and back out again, over and over, for the whole life of the fill. By the time the whiskey leaves, the barrel has been thoroughly worked.
+
+> The whiskey spent years teaching that wood what to taste like. We are the next thing to ask it.
+
+## What the wood actually has to give
+
+The flavors that come out of a barrel are not whiskey. They are oak, and they are the products of what heat did to the oak when it was toasted and charred before it ever held spirit.
+
+| Compound | What it contributes |
+| --- | --- |
+| **Oak lactones** | Coconut, woody sweetness |
+| **Vanillin** | Vanilla — lignin broken down by the heat of toasting |
+| **Furfural, 5-methylfurfural** | Caramel, almond, toasted grain |
+| **Eugenol, guaiacol** | Clove, spice, a trace of smoke |
+| **Ellagitannins** | Structure and grip through the middle |
+^ The compounds a used bourbon barrel carries, and what each one does in the cup.
+
+There is residual spirit character in the wood as well, and it contributes. But the list above is where most of what you will taste comes from, and none of it is alcohol. We have written the chemistry of that at length in [a separate piece](/journal/barrel-aged-coffee-alcohol/), including why the roast settles the alcohol question before the coffee is ever brewed.
+
+## Why the coffee goes in green
+
+Green coffee is dense, dry and porous. It has not yet been through the roast that will transform it, and in that state it takes up what it sits beside.
+
+That porosity is the whole reason the method works. A finished cold brew put into a barrel would pick up some character, but green coffee has weeks to take on the oak slowly, and then a roast afterwards to turn what it absorbed into something else entirely. The barrel does not deposit a finished flavor. It leaves material, and the roast makes something of it.
+
+It also means the timing is not negotiable. The barrel's work has to be finished before the roast begins, because the roast is what fixes it.
+
+## What it tastes like
+
+Dark caramel. Vanilla. Baking spice. A rounded sweetness through the middle that straight cold brew does not usually have, and a longer finish than the same coffee gives without the barrel.
+
+The thing we would most want you to know is that it still tastes like coffee. This is not a whiskey-flavored drink, and it is not sweetened. The origin character is still there underneath — the barrel sits around it rather than over it.
+
+## How we would drink it
+
+Neat, cold, in a short glass. Over one large cube if the room is warm.
+
+A small splash of cream does something worth trying: the oak and vanilla push forward and the whole thing turns dessert-adjacent without any sugar being involved. Several of the people who have written to us about previous barrel batches drink it that way.
+
+It is 750ml and it is not sweetened, so it will also do perfectly well as the base of something else. We would just suggest tasting it on its own first.`;
+
+const WILLETT_REFS = [
+  '27 CFR § 5.143(c), Table 1 — Standards of Identity for Distilled Spirits. Bourbon whisky must be distilled at 160° proof or less and stored in charred new oak barrels at 125° proof or less.',
+  'Willett Distillery, Bardstown, Kentucky — founded 1936; first barrel warehoused March 1937; family in Nelson County since 1792; six mash bills. Company and public sources.',
+  'Mosedale, J. R. & Puech, J.-L. *Wood maturation of distilled beverages.* Trends in Food Science & Technology 9(3), 95–101 (1998).',
+].join('\n');
+
 // The roadmap shown under "In the works" on the index. These are drafts with a
 // summary and no body — visible as a plan, not readable until written.
 const QUEUED = [
@@ -216,6 +284,36 @@ export async function seedJournal() {
        'Two different practices share one name, which is where most of the argument comes from. What the peer-reviewed work supports, what it does not, and how to read a claim on a bag.',
        'Co-fermentation has become the most argued-about word in specialty coffee, and a good deal of the heat comes from a simple confusion: the term now covers two practices that differ in mechanism, in evidence, and in what a buyer is owed.',
        COFERM_BODY, COFERM_REFS]);
+
+    // This week's drop article. On a fresh database with no drops yet (local
+    // dev), create a sample drop so the linking is visible; on production the
+    // drops table already has real rows, so nothing is invented and Matt links
+    // the article to the real batch from the admin.
+    let dropId = null;
+    const anyDrops = await q(`SELECT COUNT(*)::int n FROM drops`);
+    if (+anyDrops.rows[0].n === 0) {
+      const friday = new Date();
+      friday.setUTCDate(friday.getUTCDate() + ((5 - friday.getUTCDay() + 7) % 7 || 7));
+      friday.setUTCHours(14, 0, 0, 0);   // 9:00 AM Central
+      const d = await q(`INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status,
+                                            barrel, origin, varietal, elevation, roast, tasting_notes)
+                         VALUES ($1,5000,100,$2,'scheduled',$3,$4,$5,$6,$7,$8) RETURNING id`,
+        ['The Willett Barrel', friday,
+         'Willett bourbon barrel', 'Single origin', 'Not set', 'Not set', 'Light',
+         'Dark caramel, vanilla, baking spice, rounded sweetness.']);
+      dropId = d.rows[0].id;
+      console.log('[journal] created a sample drop for local dev');
+    }
+
+    await q(`INSERT INTO journal_articles
+               (slug, title, category, summary, dek, body, refs, status, drop_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8)`,
+      ['the-willett-barrel',
+       'The Willett barrel',
+       'This Week',
+       "Whose barrel this is, why an emptied whiskey barrel is nowhere near empty, what the oak actually has to give, and why the coffee goes in green.",
+       'This Friday\'s batch came out of a barrel that spent years holding Willett whiskey. Here is what that means for the coffee, and what the wood had left to give it.',
+       WILLETT_BODY, WILLETT_REFS, dropId]);
 
     for (const [title, category, summary] of QUEUED) {
       await q(`INSERT INTO journal_articles (slug, title, category, summary, body, status)

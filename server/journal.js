@@ -190,15 +190,69 @@ const SCRIPTS = `
   <script src="/drink/optin.js" defer></script>
   <script src="/journal/journal.js" defer></script>`;
 
+// ───────── Drop helpers ─────────
+// A drop article is "current" while its drop is scheduled or open. After that
+// it becomes an archive entry — still readable, still indexed, but it stops
+// claiming to be this week's.
+const isCurrentDrop = (a) => a.drop_id && ['scheduled', 'live'].includes(a.drop_status);
+const isDropArticle = (a) => !!a.drop_id;
+
+// The spec strip on a drop article: whatever the drop record actually holds,
+// pulled from the drop rather than retyped into the prose, so it can never
+// drift out of step with what is on the bottle.
+function dropSpecs(a) {
+  const rows = [
+    ['Barrel', a.drop_barrel],
+    ['Origin', a.drop_origin],
+    ['Varietal', a.drop_varietal],
+    ['Elevation', a.drop_elevation],
+    ['Roast', a.drop_roast],
+  ].filter(([, v]) => v);
+  if (!rows.length) return '';
+  return `<dl class="jr-specs">${rows.map(([k, v]) =>
+    `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
+}
+
+// No buy button. The drop opens Friday at 9 and is gone in minutes, so a live
+// link would be premature on Wednesday and stale by Friday lunchtime. The
+// article's job is to get the reader onto the list before Friday; the capture
+// blocks already do that. This line only says where the batch stands.
+function dropNote(a) {
+  if (!a.drop_id) return '';
+  if (a.drop_status === 'scheduled') {
+    return `<div class="jr-dropcta"><strong>This batch opens Friday, 9:00 AM CT.</strong> Fewer than 100 bottles — <a href="#join">the list gets the link first</a>.</div>`;
+  }
+  if (a.drop_status === 'live') {
+    return `<div class="jr-dropcta"><strong>This batch is open now.</strong> The link went to the list this morning.</div>`;
+  }
+  return `<div class="jr-dropcta past">This batch has sold out. New drops go up Friday mornings — <a href="#join">join the list</a>.</div>`;
+}
+
 // ───────── Public pages ─────────
 function renderIndex(articles, queued) {
-  const cards = articles.map((a) => `
-      <a class="jr-card" href="/journal/${esc(a.slug)}/">
-        <div class="jr-kicker">${esc(a.category || 'Notes')} <span>· ${readMinutes(a)} min read</span></div>
+  const card = (a) => `
+      <a class="jr-card${isCurrentDrop(a) ? ' current' : ''}" href="/journal/${esc(a.slug)}/">
+        <div class="jr-kicker">${esc(a.category || 'Notes')} <span>· ${readMinutes(a)} min read</span>${
+          isCurrentDrop(a) ? '<span class="jr-flag">This week</span>' : ''}</div>
         <h2>${esc(a.title)}</h2>
         <p>${esc(a.summary || '')}</p>
+        ${isDropArticle(a) ? dropSpecs(a) : ''}
         <span class="jr-card-more">Read the piece →</span>
-      </a>`).join('\n');
+      </a>`;
+
+  const current = articles.filter(isCurrentDrop);
+  const research = articles.filter((a) => !isDropArticle(a));
+  const pastDrops = articles.filter((a) => isDropArticle(a) && !isCurrentDrop(a));
+
+  const section = (title, list) => list.length ? `
+    <h2 class="jr-sec">${title}</h2>
+    <div class="jr-list">
+${list.map(card).join('\n')}
+    </div>` : '';
+
+  const cards = (current.length || research.length || pastDrops.length)
+    ? section("This week's drop", current) + section('Research', research) + section('Past drops', pastDrops)
+    : '<div class="jr-soon"><h3>Nothing published yet</h3></div>';
 
   const soon = queued.map((a) => `
         <li><span class="mk">✦</span><span><b>${esc(a.title)}</b> ${esc(a.summary || '')}</span></li>`).join('\n');
@@ -235,9 +289,7 @@ ${masthead('/drink/')}
   </section>
 
   <main class="jr-wide">
-    <div class="jr-list">
-${cards || '<div class="jr-soon"><h3>Nothing published yet</h3></div>'}
-    </div>
+${cards}
 ${soon ? `    <div class="jr-soon">
       <h3>In the works</h3>
       <ul>
@@ -332,9 +384,12 @@ ${masthead('/journal/')}
     </aside>
 
     <div class="jr-wrap">
-      <div class="jr-meta"><b>${esc(a.category || 'Notes')}</b> <span>· ${readMinutes(a)} min read</span> <span>· ${esc(nice)}</span></div>
+      <div class="jr-meta"><b>${esc(a.category || 'Notes')}</b> <span>· ${readMinutes(a)} min read</span> <span>· ${esc(nice)}</span>${
+        isCurrentDrop(a) ? '<span class="jr-flag">This week</span>' : ''}</div>
       <h1>${inline(a.title)}</h1>
       ${a.dek ? `<p class="jr-lede">${inline(a.dek)}</p>` : ''}
+      ${dropNote(a)}
+      ${dropSpecs(a)}
 
       <div class="jr-body">
 ${renderBody(a.body)}
@@ -386,9 +441,24 @@ ${SCRIPTS}
 }
 
 // ───────── Queries ─────────
+// Drop columns come along on every read so an article never has to restate
+// what the drop record already knows.
+const WITH_DROP = `
+  SELECT a.*,
+         d.status    AS drop_status,
+         d.name      AS drop_name,
+         d.barrel    AS drop_barrel,
+         d.origin    AS drop_origin,
+         d.varietal  AS drop_varietal,
+         d.elevation AS drop_elevation,
+         d.roast     AS drop_roast,
+         d.opens_at  AS drop_opens_at
+    FROM journal_articles a
+    LEFT JOIN drops d ON d.id = a.drop_id`;
+
 export async function publishedArticles() {
-  const r = await q(`SELECT * FROM journal_articles WHERE status = 'published'
-                     ORDER BY published_at DESC NULLS LAST, id DESC`);
+  const r = await q(`${WITH_DROP} WHERE a.status = 'published'
+                     ORDER BY a.published_at DESC NULLS LAST, a.id DESC`);
   return r.rows;
 }
 
@@ -411,7 +481,7 @@ export function mountJournal(app, requireAdmin) {
   app.get(/^\/journal\/([a-z0-9-]+)\/?$/, async (req, res, next) => {
     const slug = req.params[0];
     try {
-      const r = await q(`SELECT * FROM journal_articles WHERE slug = $1 AND status = 'published'`, [slug]);
+      const r = await q(`${WITH_DROP} WHERE a.slug = $1 AND a.status = 'published'`, [slug]);
       if (!r.rows.length) return next();
       res.type('html').send(renderArticle(r.rows[0]));
     } catch (e) { console.error('[journal/article]', e.message); next(); }
@@ -429,10 +499,20 @@ export function mountJournal(app, requireAdmin) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Drops available to link an article to, newest first.
+  app.get('/api/admin/journal/drops', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await q(`SELECT id, name, status, opens_at, barrel, origin
+                           FROM drops ORDER BY COALESCE(opens_at, created_at) DESC LIMIT 40`);
+      res.json({ drops: r.rows });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/admin/journal/:id', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const r = await q(`SELECT * FROM journal_articles WHERE id = $1`, [+req.params.id]);
+      const r = await q(`${WITH_DROP} WHERE a.id = $1`, [+req.params.id]);
       if (!r.rows.length) return res.status(404).json({ error: 'not found' });
       res.json({ article: r.rows[0] });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -451,17 +531,18 @@ export function mountJournal(app, requireAdmin) {
     const vals = [slug, title, String(b.category || '').trim() || null,
                   String(b.summary || '').trim() || null, String(b.dek || '').trim() || null,
                   String(b.body || ''), String(b.refs || '').trim() || null,
-                  b.read_minutes ? +b.read_minutes : null];
+                  b.read_minutes ? +b.read_minutes : null,
+                  b.drop_id ? +b.drop_id : null];
     try {
       if (b.id) {
         const r = await q(`UPDATE journal_articles SET slug=$1, title=$2, category=$3, summary=$4,
-                             dek=$5, body=$6, refs=$7, read_minutes=$8, updated_at=now()
-                           WHERE id=$9 RETURNING id, slug`, [...vals, +b.id]);
+                             dek=$5, body=$6, refs=$7, read_minutes=$8, drop_id=$9, updated_at=now()
+                           WHERE id=$10 RETURNING id, slug`, [...vals, +b.id]);
         if (!r.rows.length) return res.status(404).json({ error: 'not found' });
         return res.json({ ok: true, ...r.rows[0] });
       }
-      const r = await q(`INSERT INTO journal_articles (slug, title, category, summary, dek, body, refs, read_minutes)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, slug`, vals);
+      const r = await q(`INSERT INTO journal_articles (slug, title, category, summary, dek, body, refs, read_minutes, drop_id)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, slug`, vals);
       res.json({ ok: true, ...r.rows[0] });
     } catch (e) {
       if (/unique/i.test(e.message)) return res.status(409).json({ error: `the slug "${slug}" is already taken` });
@@ -498,7 +579,7 @@ export function mountJournal(app, requireAdmin) {
   app.get('/api/admin/journal/:id/preview', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
-      const r = await q(`SELECT * FROM journal_articles WHERE id = $1`, [+req.params.id]);
+      const r = await q(`${WITH_DROP} WHERE a.id = $1`, [+req.params.id]);
       if (!r.rows.length) return res.status(404).send('not found');
       res.type('html').send(renderArticle(r.rows[0]));
     } catch (e) { res.status(500).send(e.message); }

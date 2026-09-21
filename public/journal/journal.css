@@ -164,6 +164,45 @@ html[data-reading="light"] .jr-theme .ic-moon { display: none; }
   font-family: var(--mono); font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
 }
 
+/* Section headings on the index — "This week's drop" / "Research" / "Past drops" */
+.jr-sec {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.6px; text-transform: uppercase;
+  color: var(--fg-faint); font-weight: 400; margin: 34px 0 14px;
+}
+.jr-sec:first-child { margin-top: 0; }
+
+/* "This week" flag. Gold on the card, so the live batch reads first. */
+.jr-flag {
+  display: inline-block; font-family: var(--mono); font-size: 9px; letter-spacing: 1.6px;
+  text-transform: uppercase; color: var(--ink); background: var(--gold);
+  padding: 3px 7px; border-radius: 2px; margin-left: 2px;
+}
+.jr-card.current { border-color: var(--accent); }
+
+/* Spec strip — drawn from the drop record, never retyped into the prose. */
+.jr-specs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 14px 20px; margin: 18px 0 0; padding: 16px 0 0;
+  border-top: 1px solid var(--rule);
+}
+.jr-specs div { min-width: 0; }
+.jr-specs dt {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 1.8px; text-transform: uppercase;
+  color: var(--fg-faint); margin-bottom: 3px;
+}
+.jr-specs dd { margin: 0; font-size: 14.5px; line-height: 1.4; color: var(--fg); }
+.jr-article .jr-specs { margin: 0 0 36px; padding-bottom: 18px; border-bottom: 1px solid var(--rule); }
+
+/* Drop call-to-action — live buy link, or the date while it's still ahead. */
+.jr-dropcta {
+  display: block; margin: 0 0 24px; padding: 14px 18px; border-radius: 3px;
+  background: var(--panel-flat); border: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.6px; color: var(--fg-dim);
+}
+.jr-dropcta a { color: var(--accent); }
+.jr-dropcta strong { color: var(--fg); font-weight: 500; }
+.jr-dropcta.past { color: var(--fg-faint); }
+
 .jr-soon { margin: 40px 0 0; border-top: 1px solid var(--rule); padding-top: 28px; }
 .jr-soon h3 {
   font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;

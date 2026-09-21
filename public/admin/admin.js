@@ -659,10 +659,19 @@ async function showJournal() {
 
 async function showJournalEditor(id) {
   loading();
-  let a = { id: 0, title: '', category: '', summary: '', dek: '', body: '', refs: '', read_minutes: '' };
+  let a = { id: 0, title: '', category: '', summary: '', dek: '', body: '', refs: '', read_minutes: '', drop_id: null };
+  let drops = [];
   try {
     if (id) a = (await api(`/api/admin/journal/${id}`)).article;
+    drops = (await api('/api/admin/journal/drops')).drops || [];
   } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+
+  const dropLabel = (d) => {
+    const when = d.opens_at ? new Date(d.opens_at).toLocaleDateString() : 'no date';
+    return `${d.name || 'Untitled drop'} · ${when}${d.barrel ? ' · ' + d.barrel : ''} (${d.status})`;
+  };
+  const dropOptions = `<option value="">Not about a drop — a research piece</option>` +
+    drops.map((d) => `<option value="${d.id}"${String(a.drop_id) === String(d.id) ? ' selected' : ''}>${esc(dropLabel(d))}</option>`).join('');
 
   const field = (key, label, hint, value, tag, rows) => `
     <label class="jr-f" style="display:block;margin-bottom:14px">
@@ -682,6 +691,11 @@ async function showJournalEditor(id) {
       </div>
     </div>
     <div class="panel">
+      <label class="jr-f" style="display:block;margin-bottom:14px">
+        <div style="font-size:13px;margin-bottom:4px">Drop</div>
+        <div class="note" style="margin-bottom:6px">Link this to a drop and the article shows that batch's barrel, origin, varietal, elevation and roast automatically — no retyping, and it can't drift out of step with the bottle. It also files under “This week's drop” on the index while the batch is open.</div>
+        <select id="jr-drop_id" style="width:100%;font-size:14px;padding:10px;border-radius:6px">${dropOptions}</select>
+      </label>
       ${field('title', 'Title', 'Shown as the headline and used to build the web address.', a.title)}
       ${field('category', 'Category', 'The small kicker above the headline — e.g. Barrel Aging, Extraction.', a.category)}
       ${field('summary', 'Summary', 'One or two sentences. Used on the index card, as the search-result description, and as the roadmap line while it is a draft.', a.summary, 'textarea', 3)}
@@ -703,6 +717,7 @@ async function showJournalEditor(id) {
       id: id || undefined, title: val('title'), category: val('category'),
       summary: val('summary'), dek: val('dek'), body: val('body'),
       refs: val('refs'), read_minutes: val('read_minutes') || null,
+      drop_id: val('drop_id') || null,
     };
     // An existing article keeps its slug — changing a published address breaks
     // inbound links and discards whatever ranking the piece has earned.

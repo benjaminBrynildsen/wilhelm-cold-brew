@@ -536,7 +536,9 @@ export async function ensureSchema() {
       published_at  TIMESTAMPTZ,
       -- Set when the piece is about a specific drop. The article then pulls
       -- origin/varietal/elevation/roast/barrel from the drop row rather than
-      -- having them retyped, and carries a live buy link while the drop is open.
+      -- having them retyped, and files under "This week's drop" while the
+      -- batch is open. No buy link — the drop sells out in minutes, so the
+      -- article's job is the list, not the sale.
       drop_id       BIGINT REFERENCES drops(id) ON DELETE SET NULL,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()

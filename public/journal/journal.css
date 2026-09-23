@@ -1,0 +1,416 @@
+/* Wilhelm — The Ledger (research journal).
+
+   Two themes. The site's dark brand world is the default everywhere; article
+   pages open in LIGHT because sustained reading is easier on a light ground
+   and because a page that looks like a printed document reads as more
+   credible than one that looks like an app. The light theme is the brand
+   inverted, not a new palette — parchment and ink already are the two brand
+   colors, so nothing foreign gets introduced.
+
+   Readers can flip it; the choice sticks in localStorage.
+
+   Layout: the text column stays at a readable measure (~66 characters) at
+   every width. On wide desktops the leftover space is filled with useful
+   rails — contents on the left, a persistent join card on the right —
+   rather than by stretching the prose, which would hurt it.
+
+   The capture blocks reuse .optin-form / [data-capture] markup so
+   /drink/optin.js wires them with zero changes. */
+
+:root {
+  /* Brand constants — fixed in both themes. */
+  --gold: #e8c24a;
+  --gold-deep: #b8922f;
+  --gold-ink: #7d5f0f;   /* the gold that passes contrast on parchment (5.2:1) */
+  --ink: #0c0a08;
+  --parchment: #f6efda;
+  --display: 'Bodoni Moda', serif;
+  --body: 'Lora', serif;
+  --mono: 'DM Mono', monospace;
+  --measure: 34rem;      /* ~66 characters at our body size */
+
+  /* Semantic tokens — DARK (site default). */
+  --bg: #0c0a08;
+  --bg-grad: radial-gradient(ellipse at 50% 0%, #1a1308 0%, #0c0a08 60%);
+  --panel: linear-gradient(180deg, #15100b, #0c0a08);
+  --panel-flat: #1d150d;
+  --fg: #f6efda;
+  --fg-dim: rgba(246, 239, 218, 0.72);
+  --fg-faint: rgba(246, 239, 218, 0.48);
+  --accent: #e8c24a;
+  --accent-quiet: #b8922f;
+  --rule: rgba(232, 194, 74, 0.22);
+  --field-bg: rgba(0, 0, 0, 0.35);
+}
+
+/* Semantic tokens — LIGHT (reading mode). */
+html[data-reading="light"] {
+  --bg: #f6efda;
+  --bg-grad: radial-gradient(ellipse at 50% 0%, #fffaec 0%, #f6efda 55%);
+  --panel: linear-gradient(180deg, #f1e7cc, #ece0c0);
+  --panel-flat: #efe5c9;
+  --fg: #17120c;
+  --fg-dim: rgba(23, 18, 12, 0.74);
+  --fg-faint: rgba(23, 18, 12, 0.52);
+  --accent: #7d5f0f;
+  --accent-quiet: #8a6a15;
+  --rule: rgba(125, 95, 15, 0.26);
+  --field-bg: rgba(255, 255, 255, 0.6);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  background: var(--bg-grad), var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+img { max-width: 100%; height: auto; }
+a { color: var(--accent); }
+
+/* ── Reading progress ─────────────────────────────────────────────────── */
+.jr-progress {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0;
+  background: var(--accent); z-index: 50;
+  transition: width 0.08s linear;
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+.jr-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px;
+  padding: 18px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--rule);
+}
+.jr-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.jr-brand img { width: 44px; height: 44px; border-radius: 50%; display: block; }
+.jr-brand-txt {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px;
+  text-transform: uppercase; color: var(--fg-dim); line-height: 1.4;
+}
+.jr-brand-txt b { display: block; color: var(--fg); font-weight: 500; letter-spacing: 2.4px; }
+.jr-top-right { display: flex; align-items: center; gap: 10px; }
+.jr-join {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--ink); background: var(--gold); text-decoration: none;
+  padding: 10px 16px; border-radius: 2px; white-space: nowrap;
+  transition: background 0.18s ease;
+}
+.jr-join:hover { background: #f3d878; }
+
+/* Theme toggle — sun/moon, no label, tooltip via title. */
+.jr-theme {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; flex: none;
+  background: transparent; border: 1px solid var(--rule); border-radius: 2px;
+  color: var(--accent); cursor: pointer; padding: 0;
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+.jr-theme:hover { border-color: var(--accent); }
+.jr-theme svg { width: 17px; height: 17px; }
+.jr-theme .ic-sun { display: none; }
+html[data-reading="light"] .jr-theme .ic-sun { display: block; }
+html[data-reading="light"] .jr-theme .ic-moon { display: none; }
+
+/* ── Shell ────────────────────────────────────────────────────────────── */
+.jr-wrap { max-width: var(--measure); margin: 0 auto; padding: 0 clamp(16px, 5vw, 24px); }
+.jr-wide { max-width: 58rem; margin: 0 auto; padding: 0 clamp(16px, 5vw, 24px); }
+
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--accent); margin: 0 0 18px;
+}
+
+/* ── Index hero ───────────────────────────────────────────────────────── */
+.jr-hero { padding: clamp(48px, 9vw, 88px) 0 clamp(32px, 6vw, 56px); text-align: center; }
+.jr-hero h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(38px, 8vw, 68px); line-height: 1.04; margin: 0 0 20px;
+}
+.jr-hero h1 em { font-style: italic; color: var(--accent); }
+.jr-hero-lede { color: var(--fg-dim); font-size: clamp(16px, 2.4vw, 19px); margin: 0 auto; max-width: 30rem; }
+
+/* ── Article cards ────────────────────────────────────────────────────── */
+.jr-list { display: grid; gap: 20px; padding-bottom: 8px; }
+.jr-card {
+  display: block; text-decoration: none; color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: clamp(22px, 4vw, 32px);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.jr-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.jr-kicker {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.2px; text-transform: uppercase;
+  color: var(--accent); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;
+}
+.jr-kicker span { color: var(--fg-faint); }
+.jr-card h2 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(22px, 4vw, 30px); line-height: 1.2; margin: 0 0 10px;
+}
+.jr-card p { margin: 0; color: var(--fg-dim); font-size: 16px; }
+.jr-card-more {
+  display: inline-block; margin-top: 16px; color: var(--accent);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
+}
+
+/* Section headings on the index — "This week's drop" / "Research" / "Past drops" */
+.jr-sec {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.6px; text-transform: uppercase;
+  color: var(--fg-faint); font-weight: 400; margin: 34px 0 14px;
+}
+.jr-sec:first-child { margin-top: 0; }
+
+/* "This week" flag. Gold on the card, so the live batch reads first. */
+.jr-flag {
+  display: inline-block; font-family: var(--mono); font-size: 9px; letter-spacing: 1.6px;
+  text-transform: uppercase; color: var(--ink); background: var(--gold);
+  padding: 3px 7px; border-radius: 2px; margin-left: 2px;
+}
+.jr-card.current { border-color: var(--accent); }
+
+/* Spec strip — drawn from the drop record, never retyped into the prose. */
+.jr-specs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 14px 20px; margin: 18px 0 0; padding: 16px 0 0;
+  border-top: 1px solid var(--rule);
+}
+.jr-specs div { min-width: 0; }
+.jr-specs dt {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 1.8px; text-transform: uppercase;
+  color: var(--fg-faint); margin-bottom: 3px;
+}
+.jr-specs dd { margin: 0; font-size: 14.5px; line-height: 1.4; color: var(--fg); }
+.jr-article .jr-specs { margin: 0 0 36px; padding-bottom: 18px; border-bottom: 1px solid var(--rule); }
+
+/* Drop call-to-action — live buy link, or the date while it's still ahead. */
+.jr-dropcta {
+  display: block; margin: 0 0 24px; padding: 14px 18px; border-radius: 3px;
+  background: var(--panel-flat); border: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.6px; color: var(--fg-dim);
+}
+.jr-dropcta a { color: var(--accent); }
+.jr-dropcta strong { color: var(--fg); font-weight: 500; }
+.jr-dropcta.past { color: var(--fg-faint); }
+
+.jr-soon { margin: 40px 0 0; border-top: 1px solid var(--rule); padding-top: 28px; }
+.jr-soon h3 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--fg-faint); font-weight: 400; margin: 0 0 16px;
+}
+.jr-soon ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.jr-soon li { display: flex; gap: 12px; align-items: baseline; color: var(--fg-dim); font-size: 15px; }
+.jr-soon li b { color: var(--fg); font-weight: 400; }
+.jr-soon .mk { color: var(--accent-quiet); flex: none; }
+
+/* ── Article layout ───────────────────────────────────────────────────── */
+.jr-article { padding: clamp(36px, 7vw, 72px) 0 0; }
+
+/* One column by default. Rails appear only when there is genuinely room,
+   and the text column never widens past its measure. */
+.jr-layout { display: block; }
+.jr-rail { display: none; }
+
+@media (min-width: 1140px) {
+  .jr-layout {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, var(--measure)) 16rem;
+    gap: clamp(2rem, 4vw, 4rem);
+    justify-content: center;
+    align-items: start;
+    padding: 0 24px;
+  }
+  .jr-layout > .jr-wrap { max-width: none; margin: 0; padding: 0; }
+  .jr-rail { display: block; position: sticky; top: 28px; }
+}
+
+/* Contents rail */
+.jr-toc h4 {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.2px; text-transform: uppercase;
+  color: var(--fg-faint); font-weight: 400; margin: 0 0 14px;
+}
+.jr-toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.jr-toc a {
+  display: block; text-decoration: none; font-size: 13.5px; line-height: 1.45;
+  color: var(--fg-faint); padding: 7px 0 7px 13px;
+  border-left: 2px solid var(--rule);
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+.jr-toc a:hover { color: var(--fg-dim); }
+.jr-toc a.on { color: var(--accent); border-left-color: var(--accent); }
+
+/* Join rail */
+.jr-railcard {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 3px;
+  padding: 20px 18px; text-align: center;
+}
+.jr-railcard h4 {
+  font-family: var(--display); font-weight: 400; font-size: 20px; line-height: 1.25;
+  margin: 0 0 8px; color: var(--fg);
+}
+.jr-railcard h4 em { font-style: italic; color: var(--accent); }
+.jr-railcard p { font-size: 13px; color: var(--fg-dim); margin: 0 0 14px; line-height: 1.55; }
+.jr-railcard .optin-form { gap: 8px; }
+.jr-railcard .optin-form input[type="email"] { padding: 11px 12px; font-size: 14px; }
+.jr-railcard .optin-form button { padding: 11px 12px; font-size: 11px; }
+.jr-railcard .success h2 { font-size: 19px; }
+.jr-railcard .success p { font-size: 13px; }
+
+/* ── Article type ─────────────────────────────────────────────────────── */
+.jr-meta {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.2px; text-transform: uppercase;
+  color: var(--fg-faint); display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px;
+}
+.jr-meta b { color: var(--accent); font-weight: 500; }
+.jr-article h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(32px, 6.4vw, 54px); line-height: 1.08; margin: 0 0 22px;
+}
+.jr-article h1 em { font-style: italic; color: var(--accent); }
+.jr-lede {
+  font-size: clamp(18px, 2.6vw, 21px); line-height: 1.65; color: var(--fg);
+  border-left: 2px solid var(--accent); padding-left: 18px; margin: 0 0 40px;
+}
+.jr-body > p { margin: 0 0 22px; }
+.jr-body h2 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(24px, 4.4vw, 34px); line-height: 1.2;
+  margin: 46px 0 16px; padding-top: 10px; border-top: 1px solid var(--rule);
+  scroll-margin-top: 24px;
+}
+.jr-body h3 {
+  font-family: var(--body); font-weight: 700; font-size: 18px;
+  margin: 30px 0 10px; color: var(--fg);
+}
+.jr-body strong { color: var(--fg); }
+.jr-body em { font-style: italic; }
+.jr-body a { color: var(--accent); text-underline-offset: 3px; }
+.jr-body sup { font-size: 11px; color: var(--accent-quiet); }
+.jr-body ul, .jr-body ol { margin: 0 0 22px; padding-left: 22px; color: var(--fg-dim); }
+.jr-body li { margin-bottom: 10px; }
+.jr-body li::marker { color: var(--accent-quiet); }
+
+.jr-pull {
+  font-family: var(--display); font-style: italic;
+  font-size: clamp(22px, 4vw, 30px); line-height: 1.35; color: var(--accent);
+  text-align: center; margin: 40px 0; padding: 0 clamp(4px, 3vw, 24px);
+}
+
+.jr-fact {
+  background: var(--panel-flat); border: 1px solid var(--rule); border-radius: 3px;
+  padding: clamp(20px, 4vw, 28px); margin: 0 0 36px;
+}
+.jr-fact-h {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--accent); margin: 0 0 10px;
+}
+.jr-fact p { margin: 0; font-size: 17px; }
+
+.jr-table-wrap { overflow-x: auto; margin: 0 0 28px; -webkit-overflow-scrolling: touch; }
+.jr-table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 30rem; }
+.jr-table caption {
+  caption-side: bottom; text-align: left; padding-top: 10px;
+  font-size: 13px; color: var(--fg-faint); font-style: italic;
+}
+.jr-table th, .jr-table td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.jr-table th {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--accent); font-weight: 500;
+}
+.jr-table td { color: var(--fg-dim); }
+.jr-table td b { color: var(--fg); font-weight: 400; }
+
+/* Editorial note — DRAFT ONLY. Delete these blocks before anything ships. */
+.jr-todo {
+  border: 1px dashed #c07f1f; background: rgba(192, 127, 31, 0.1);
+  border-radius: 3px; padding: 16px 18px; margin: 0 0 26px;
+  font-size: 15px; color: #8a5c12;
+}
+html:not([data-reading="light"]) .jr-todo { color: #f0c98a; }
+.jr-todo b {
+  display: block; font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+  text-transform: uppercase; color: #c07f1f; margin-bottom: 6px;
+}
+
+.jr-refs { margin: 48px 0 0; border-top: 1px solid var(--rule); padding-top: 26px; }
+.jr-refs h2 {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--fg-faint); font-weight: 400; margin: 0 0 16px; border: 0; padding: 0;
+}
+.jr-refs ol { margin: 0; padding-left: 20px; }
+.jr-refs li { margin-bottom: 12px; font-size: 14px; line-height: 1.6; color: var(--fg-faint); }
+.jr-refs li::marker { color: var(--accent-quiet); }
+/* Titles in a reference are italicised. Authors write them as *title* in the
+   editor, which renders as <em> — cite is kept for the hand-authored pages. */
+.jr-refs cite, .jr-refs em { font-style: italic; color: var(--fg-dim); }
+
+/* ── Capture (reuses optin.js) ────────────────────────────────────────── */
+.jr-capture {
+  background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: clamp(26px, 5vw, 40px); margin: 44px 0;
+  text-align: center;
+}
+.jr-capture.inline { margin: 40px 0; }
+.jr-capture h2, .jr-capture h3 {
+  font-family: var(--display); font-weight: 400; border: 0; padding: 0;
+  font-size: clamp(22px, 4vw, 30px); line-height: 1.22; margin: 0 0 10px;
+}
+.jr-capture h2 em, .jr-capture h3 em { font-style: italic; color: var(--accent); }
+.jr-capture-p { color: var(--fg-dim); font-size: 15px; margin: 0 auto 20px; max-width: 26rem; }
+
+.countdown {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--fg-faint); margin-bottom: 14px;
+}
+.countdown .cd-value { color: var(--accent); }
+
+.optin-form { display: grid; gap: 10px; max-width: 24rem; margin: 0 auto; }
+.optin-form input[type="email"] {
+  width: 100%; padding: 14px 16px; font-family: var(--body); font-size: 16px;
+  color: var(--fg); background: var(--field-bg);
+  border: 1px solid var(--rule); border-radius: 2px;
+}
+.optin-form input[type="email"]::placeholder { color: var(--fg-faint); }
+.optin-form input[type="email"]:focus { outline: none; border-color: var(--accent); }
+.optin-form button {
+  padding: 14px 18px; font-family: var(--mono); font-size: 12px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--ink); background: var(--gold);
+  border: 0; border-radius: 2px; cursor: pointer; transition: background 0.18s ease;
+}
+.optin-form button:hover { background: #f3d878; }
+.optin-error { color: #b4342f; font-size: 14px; }
+html:not([data-reading="light"]) .optin-error { color: #f0a0a0; }
+.jr-fine { font-size: 12px; color: var(--fg-faint); margin: 14px 0 0; }
+
+.success .seal { margin: 0 auto 12px; width: 44px; height: 44px; }
+.success .seal svg { width: 100%; height: 100%; stroke: var(--accent); }
+.success h2 { font-family: var(--display); font-size: clamp(22px, 4vw, 30px); margin: 0 0 8px; border: 0; padding: 0; }
+.success p { color: var(--fg-dim); font-size: 15px; margin: 0; }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+.jr-footer {
+  margin-top: 64px; padding: 34px clamp(16px, 4vw, 40px) 44px;
+  border-top: 1px solid var(--rule); text-align: center;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.jr-footer .fnote { margin-top: 8px; color: var(--fg-faint); letter-spacing: 1.8px; }
+.jr-footer nav { margin-top: 16px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.jr-footer nav a { color: var(--accent); text-decoration: none; letter-spacing: 1.8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .jr-card, .jr-progress, body { transition: none; }
+  .jr-card:hover { transform: none; }
+}

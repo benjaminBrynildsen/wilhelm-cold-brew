@@ -12,7 +12,9 @@ import { sendWelcome } from './mailer.js';
 import { mcPushSignup } from './mailchimp.js';
 import { syncInbox, inboxConfigured } from './inbox.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
-import { mountAdmin } from './admin.js';
+import { mountAdmin, requireAdmin } from './admin.js';
+import { mountJournal, publishedArticles } from './journal.js';
+import { seedJournal } from './journal-seed.js';
 import { mountPortal } from './portal.js';
 import { backfillPurchasePoints } from './points.js';
 import { mountCheckout, stripeWebhook } from './checkout.js';
@@ -111,17 +113,29 @@ app.use((req, _res, next) => {
 // XML sitemap of the indexable public pages (admin/account/api/thank-you are
 // left out — they're disallowed in robots.txt). Served dynamically so the host
 // tracks SITE_URL and lastmod stays current.
-app.get('/sitemap.xml', (req, res) => {
+app.get('/sitemap.xml', async (req, res) => {
   const site = (process.env.SITE_URL || 'https://wilhelmcoldbrew.com').replace(/\/$/, '');
   const today = new Date().toISOString().slice(0, 10);
   const pages = [
     { loc: '/drink/', pri: '1.0' },   // the landing page (site's front door)
     { loc: '/buy/', pri: '0.9' },
+    { loc: '/journal/', pri: '0.8' },
     { loc: '/batches/', pri: '0.6' },
     { loc: '/recipe/', pri: '0.6' },
   ];
+  // Ledger articles come from the database, so publishing one from the admin
+  // puts it in the sitemap immediately — no deploy, nothing to remember.
+  try {
+    for (const a of await publishedArticles()) {
+      pages.push({
+        loc: `/journal/${a.slug}/`,
+        pri: '0.8',
+        mod: (a.published_at ? new Date(a.published_at) : new Date()).toISOString().slice(0, 10),
+      });
+    }
+  } catch (e) { console.warn('[sitemap] journal unavailable:', e.message); }
   const urls = pages.map((p) =>
-    `  <url><loc>${site}${p.loc}</loc><lastmod>${today}</lastmod><priority>${p.pri}</priority></url>`).join('\n');
+    `  <url><loc>${site}${p.loc}</loc><lastmod>${p.mod || today}</lastmod><priority>${p.pri}</priority></url>`).join('\n');
   res.type('application/xml').send(
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
 });
@@ -145,6 +159,10 @@ app.post('/api/sms/inbound', express.urlencoded({ extended: false }), async (req
 });
 mountAdmin(app);
 mountPortal(app);
+// The Ledger. Mounted before express.static so the DB-backed pages win over
+// anything left in public/journal/ — the stylesheet and script there still
+// serve, since the article route only matches dot-free paths.
+mountJournal(app, requireAdmin);
 mountCheckout(app, payLimit);
 
 // Case-insensitive redirect for the marketing routes. The static handler is
@@ -408,6 +426,9 @@ ensureSchema()
       console.log(`[wilhelm] listening on :${PORT}`);
       // Backfill loyalty points for existing paid orders (idempotent).
       backfillPurchasePoints().catch((e) => console.warn('[points] backfill failed:', e?.message || e));
+      // Put the first Ledger article in on a fresh database. No-op once the
+      // table has anything in it, so it never overwrites an edit.
+      seedJournal();
       // Repair mistyped email domains (e.g. hmail.com → gmail.com) so bounced
       // welcomes reach real signups. Idempotent; safe on every boot.
       fixTypoDomainSubscribers().catch((e) => console.warn('[typo-fix] failed:', e?.message || e));

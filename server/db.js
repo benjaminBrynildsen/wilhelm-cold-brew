@@ -282,6 +282,9 @@ export async function ensureSchema() {
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS varietal  TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS elevation TEXT;
     ALTER TABLE drops ADD COLUMN IF NOT EXISTS roast     TEXT;
+    -- Which cask this batch was aged in, e.g. "Willett bourbon barrel". Shown
+    -- on the drop's article and on Batch Notes.
+    ALTER TABLE drops ADD COLUMN IF NOT EXISTS barrel    TEXT;
 
     -- Orders against a drop. status: pending (checkout created) | paid | failed | refunded.
     CREATE TABLE IF NOT EXISTS orders (
@@ -514,6 +517,36 @@ export async function ensureSchema() {
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       last_used_at TIMESTAMPTZ
     );
+
+    -- The Ledger — long-form research articles, written and published from the
+    -- admin portal. Body is a small Markdown subset (see server/journal.js);
+    -- it is rendered to HTML on the server so search engines get real pages,
+    -- which is the entire point of writing them.
+    CREATE TABLE IF NOT EXISTS journal_articles (
+      id            BIGSERIAL PRIMARY KEY,
+      slug          TEXT NOT NULL UNIQUE,
+      title         TEXT NOT NULL,
+      category      TEXT,                       -- kicker, e.g. "Barrel Aging"
+      summary       TEXT,                       -- card blurb + meta description
+      dek           TEXT,                       -- the standfirst under the headline
+      body          TEXT NOT NULL DEFAULT '',   -- Markdown subset
+      refs          TEXT,                       -- one reference per line
+      read_minutes  INTEGER,                    -- blank = estimated from length
+      status        TEXT NOT NULL DEFAULT 'draft',   -- draft | published
+      published_at  TIMESTAMPTZ,
+      -- Set when the piece is about a specific drop. The article then pulls
+      -- origin/varietal/elevation/roast/barrel from the drop row rather than
+      -- having them retyped, and files under "This week's drop" while the
+      -- batch is open. No buy link — the drop sells out in minutes, so the
+      -- article's job is the list, not the sale.
+      drop_id       BIGINT REFERENCES drops(id) ON DELETE SET NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS journal_status_idx ON journal_articles (status, published_at DESC);
+    CREATE INDEX IF NOT EXISTS journal_drop_idx   ON journal_articles (drop_id);
+    -- For databases where journal_articles was created before drop linking.
+    ALTER TABLE journal_articles ADD COLUMN IF NOT EXISTS drop_id BIGINT REFERENCES drops(id) ON DELETE SET NULL;
   `);
   // Canonical email for cross-table identity matching (order ↔ subscriber).
   // People sign up as ryan.kiley@gmail.com and check out via autofill as

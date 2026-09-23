@@ -311,7 +311,7 @@ async function registerFaceId() {
   }
 }
 
-const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['shipping', 'Shipping'], ['email', 'Email'], ['botcatcher', 'Bot Catcher'], ['thankyou', 'Thank you']];
+const TAB_LIST = [['overview', 'Overview'], ['funnel', 'Funnel'], ['split', 'Split test'], ['traffic', 'Traffic'], ['journey', 'Journey'], ['orders', 'Orders'], ['shipping', 'Shipping'], ['email', 'Email'], ['journal', 'The Ledger'], ['botcatcher', 'Bot Catcher'], ['thankyou', 'Thank you']];
 // Phone bottom bar: Journey · Split test · [logo → Overview] · Orders · More.
 // Everything else lives behind More; when a More tab is active, the More slot
 // shows its name in gold.
@@ -331,6 +331,7 @@ const ICON = (() => {
     orders: svg('<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'),
     shipping: svg('<path d="M1 4h13v11H1z"/><path d="M14 8h4l3 3v4h-7z"/><circle cx="5.5" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/>'),
     email: svg('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/>'),
+    journal: svg('<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v18H5.5A1.5 1.5 0 0 1 4 19.5z"/><path d="M8 7.5h7M8 11h7M8 14.5h4"/>'),
     botcatcher: svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>'),
     thankyou: svg('<path d="M12 20.5C6.5 16.5 3.5 13.4 3.5 9.9 3.5 7.4 5.4 5.5 7.8 5.5c1.6 0 3.1.8 4.2 2.3 1.1-1.5 2.6-2.3 4.2-2.3 2.4 0 4.3 1.9 4.3 4.4 0 3.5-3 6.6-8.5 10.6z"/>'),
     more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
@@ -349,6 +350,9 @@ function paintBotBadges() {
 
 function switchTab(k) {
   state.tab = k;
+  // Leaving the Ledger drops any open editor, so coming back lands on the list
+  // rather than reopening whatever was last being written.
+  if (k !== 'journal') state.journalId = undefined;
   const ms = document.getElementById('more-sheet');
   if (ms) ms.hidden = true;
   renderTabs();
@@ -567,8 +571,167 @@ function show(tab) {
   if (tab === 'orders') return showOrders();
   if (tab === 'shipping') return showShipping();
   if (tab === 'email') return showEmail();
+  if (tab === 'journal') return state.journalId !== undefined ? showJournalEditor(state.journalId) : showJournal();
   if (tab === 'botcatcher') return showBotCatcher();
   if (tab === 'thankyou') return showThankyou();
+}
+
+// ───────── The Ledger ─────────
+// Write, edit and publish research articles without a deploy. Publishing
+// writes a row; the public page is rendered server-side from that row, so a
+// piece is live (and in the sitemap) the moment it's published.
+
+// The body format is a small Markdown subset — see server/journal.js. Kept
+// deliberately narrow so there's no HTML to get wrong and nothing that can
+// break the page's design.
+const LEDGER_HELP = [
+  ['## Heading', 'a section heading (these build the contents rail)'],
+  ['### Smaller heading', 'a sub-heading inside a section'],
+  ['**bold**  *italic*', 'emphasis'],
+  ['&gt; A line on its own', 'a large pull quote'],
+  [':::fact … :::', 'the highlighted "short answer" box'],
+  ['| a | b |', 'a table — first row is the header'],
+  ['^ Caption text', 'a caption, on the line after a table'],
+  ['[^1]', 'a reference marker, linking to the list below'],
+  ['- item', 'a bullet list'],
+];
+
+async function showJournal() {
+  loading();
+  try {
+    const d = await api('/api/admin/journal');
+    const row = (a) => {
+      const live = a.status === 'published';
+      const when = a.published_at ? new Date(a.published_at).toLocaleDateString() : '—';
+      return `<div class="panel jr-row" style="margin-bottom:10px">
+        <div class="row-actions" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0;flex:1">
+            <div class="note" style="margin-bottom:4px">${esc(a.category || 'Notes')} · ${live ? `published ${esc(when)}` : 'draft'}</div>
+            <div style="font-size:16px;line-height:1.35">${esc(a.title)}</div>
+            <div class="note" style="margin-top:4px">/journal/${esc(a.slug)}/</div>
+          </div>
+          <div class="row-actions" style="gap:6px;flex:none">
+            <button class="btn ghost sm jr-edit" data-id="${a.id}">Edit</button>
+            <button class="btn ghost sm jr-prev" data-id="${a.id}">Preview</button>
+            <button class="btn sm jr-pub" data-id="${a.id}" data-live="${live ? 1 : 0}">${live ? 'Unpublish' : 'Publish'}</button>
+            <button class="btn ghost sm jr-del" data-id="${a.id}" data-title="${esc(a.title)}">Delete</button>
+          </div>
+        </div>
+      </div>`;
+    };
+    const pub = d.articles.filter((a) => a.status === 'published');
+    const dr = d.articles.filter((a) => a.status !== 'published');
+    content().innerHTML = `
+      <div class="row-actions" style="margin:6px 0 14px">
+        <button class="btn sm" id="jr-new">+ New article</button>
+        <a class="btn ghost sm" href="/journal/" target="_blank" rel="noopener">View The Ledger</a>
+      </div>
+      <div class="note" style="margin-bottom:16px">Publishing puts an article live immediately and adds it to the sitemap — no deploy. Drafts with a summary show on the index under “In the works”, as a roadmap; their text stays private until published.</div>
+      <h3 style="margin:0 0 8px">Published${pub.length ? ` <span class="note">(${pub.length})</span>` : ''}</h3>
+      ${pub.map(row).join('') || '<div class="note" style="margin-bottom:18px">Nothing published yet.</div>'}
+      <h3 style="margin:22px 0 8px">Drafts${dr.length ? ` <span class="note">(${dr.length})</span>` : ''}</h3>
+      ${dr.map(row).join('') || '<div class="note">No drafts.</div>'}`;
+
+    document.getElementById('jr-new').addEventListener('click', () => { state.journalId = 0; showJournalEditor(0); });
+    document.querySelectorAll('.jr-edit').forEach((b) => b.addEventListener('click', () => {
+      state.journalId = +b.dataset.id; showJournalEditor(+b.dataset.id);
+    }));
+    document.querySelectorAll('.jr-prev').forEach((b) => b.addEventListener('click', () => {
+      window.open(`/api/admin/journal/${b.dataset.id}/preview`, '_blank', 'noopener');
+    }));
+    document.querySelectorAll('.jr-pub').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await api(`/api/admin/journal/${b.dataset.id}/status`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publish: b.dataset.live !== '1' }),
+        });
+        showJournal();
+      } catch (e) { b.disabled = false; alert(e.message); }
+    }));
+    document.querySelectorAll('.jr-del').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm(`Delete “${b.dataset.title}”? This cannot be undone.`)) return;
+      try { await api(`/api/admin/journal/${b.dataset.id}`, { method: 'DELETE' }); showJournal(); }
+      catch (e) { alert(e.message); }
+    }));
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+async function showJournalEditor(id) {
+  loading();
+  let a = { id: 0, title: '', category: '', summary: '', dek: '', body: '', refs: '', read_minutes: '', drop_id: null };
+  let drops = [];
+  try {
+    if (id) a = (await api(`/api/admin/journal/${id}`)).article;
+    drops = (await api('/api/admin/journal/drops')).drops || [];
+  } catch (e) { content().innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+
+  const dropLabel = (d) => {
+    const when = d.opens_at ? new Date(d.opens_at).toLocaleDateString() : 'no date';
+    return `${d.name || 'Untitled drop'} · ${when}${d.barrel ? ' · ' + d.barrel : ''} (${d.status})`;
+  };
+  const dropOptions = `<option value="">Not about a drop — a research piece</option>` +
+    drops.map((d) => `<option value="${d.id}"${String(a.drop_id) === String(d.id) ? ' selected' : ''}>${esc(dropLabel(d))}</option>`).join('');
+
+  const field = (key, label, hint, value, tag, rows) => `
+    <label class="jr-f" style="display:block;margin-bottom:14px">
+      <div style="font-size:13px;margin-bottom:4px">${label}</div>
+      ${hint ? `<div class="note" style="margin-bottom:6px">${hint}</div>` : ''}
+      ${tag === 'textarea'
+        ? `<textarea id="jr-${key}" rows="${rows || 4}" style="width:100%;font-family:inherit;font-size:14px;line-height:1.6;padding:10px;border-radius:6px">${esc(value || '')}</textarea>`
+        : `<input id="jr-${key}" type="text" value="${esc(value || '')}" style="width:100%;font-size:14px;padding:10px;border-radius:6px"/>`}
+    </label>`;
+
+  content().innerHTML = `
+    <div class="row-actions" style="margin:6px 0 16px;justify-content:space-between">
+      <button class="btn ghost sm" id="jr-back">← All articles</button>
+      <div class="row-actions" style="gap:6px">
+        ${id ? `<button class="btn ghost sm" id="jr-preview">Preview</button>` : ''}
+        <button class="btn sm" id="jr-save">Save</button>
+      </div>
+    </div>
+    <div class="panel">
+      <label class="jr-f" style="display:block;margin-bottom:14px">
+        <div style="font-size:13px;margin-bottom:4px">Drop</div>
+        <div class="note" style="margin-bottom:6px">Link this to a drop and the article shows that batch's barrel, origin, varietal, elevation and roast automatically — no retyping, and it can't drift out of step with the bottle. It also files under “This week's drop” on the index while the batch is open.</div>
+        <select id="jr-drop_id" style="width:100%;font-size:14px;padding:10px;border-radius:6px">${dropOptions}</select>
+      </label>
+      ${field('title', 'Title', 'Shown as the headline and used to build the web address.', a.title)}
+      ${field('category', 'Category', 'The small kicker above the headline — e.g. Barrel Aging, Extraction.', a.category)}
+      ${field('summary', 'Summary', 'One or two sentences. Used on the index card, as the search-result description, and as the roadmap line while it is a draft.', a.summary, 'textarea', 3)}
+      ${field('dek', 'Standfirst', 'The larger paragraph directly under the headline. Optional.', a.dek, 'textarea', 3)}
+      ${field('body', 'Article', `Formatting: ${LEDGER_HELP.map(([m, w]) => `<code>${m}</code> ${w}`).join(' · ')}`, a.body, 'textarea', 26)}
+      ${field('refs', 'References', 'One per line. They are numbered in order, and [^1] in the article links to the first.', a.refs, 'textarea', 6)}
+      ${field('read_minutes', 'Read time (minutes)', 'Leave blank to estimate it from the length.', a.read_minutes)}
+      <div class="note" id="jr-msg"></div>
+    </div>`;
+
+  document.getElementById('jr-back').addEventListener('click', () => { state.journalId = undefined; showJournal(); });
+  const prev = document.getElementById('jr-preview');
+  if (prev) prev.addEventListener('click', () => window.open(`/api/admin/journal/${id}/preview`, '_blank', 'noopener'));
+
+  document.getElementById('jr-save').addEventListener('click', async () => {
+    const msg = document.getElementById('jr-msg');
+    const val = (k) => document.getElementById('jr-' + k).value;
+    const payload = {
+      id: id || undefined, title: val('title'), category: val('category'),
+      summary: val('summary'), dek: val('dek'), body: val('body'),
+      refs: val('refs'), read_minutes: val('read_minutes') || null,
+      drop_id: val('drop_id') || null,
+    };
+    // An existing article keeps its slug — changing a published address breaks
+    // inbound links and discards whatever ranking the piece has earned.
+    if (id) payload.slug = a.slug;
+    msg.textContent = 'Saving…';
+    try {
+      const r = await api('/api/admin/journal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      msg.textContent = 'Saved.';
+      if (!id) { state.journalId = r.id; showJournalEditor(r.id); }
+    } catch (e) { msg.textContent = 'Could not save: ' + e.message; }
+  });
 }
 
 // ───────── Thank-you cards ─────────

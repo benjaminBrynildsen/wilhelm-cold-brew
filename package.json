@@ -6,7 +6,8 @@
   "description": "Wilhelm Cold Brew — marketing site, Friday Drop opt-in, analytics + admin",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node server/index.js"
+    "dev": "node server/index.js",
+    "test": "node --import ./test/register.mjs test/ledger.test.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -21,5 +22,8 @@
     "pg": "^8.13.1",
     "stripe": "^22.2.0",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.5"
   }
 }

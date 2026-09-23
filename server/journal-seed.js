@@ -264,9 +264,10 @@ export async function seedJournal() {
     const { rows } = await q(`SELECT COUNT(*)::int n FROM journal_articles`);
     if (rows[0].n > 0) return;
 
+    // Seeded as a draft: Matt reviews it and publishes it himself from the admin.
     await q(`INSERT INTO journal_articles
-               (slug, title, category, summary, dek, body, refs, status, published_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'published', now())`,
+               (slug, title, category, summary, dek, body, refs, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'draft')`,
       ['barrel-aged-coffee-alcohol',
        'Does barrel-aged coffee contain alcohol?',
        'Barrel Aging',

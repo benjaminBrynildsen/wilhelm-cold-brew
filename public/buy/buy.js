@@ -101,7 +101,7 @@
       html += '<div class="cart-item">'
         + '<div class="cart-thumbwrap">'
         + (p.image ? '<img class="cart-thumb" src="' + esc(p.image) + '" alt="' + esc(p.name) + '"/>' : '<div class="cart-thumb"></div>')
-        + '<button type="button" class="cart-notes" data-notes-i="' + i + '" aria-label="Tasting notes for ' + esc(p.name) + '">✦ Notes</button>'
+        + '<button type="button" class="cart-notes" data-notes-i="' + i + '" aria-label="Tasting notes for ' + esc(p.name) + '">✦ Tasting Notes</button>'
         + '</div>'
         + '<div class="cart-meta"><div class="cart-name">' + esc(p.name) + '</div>'
         + '<div class="cart-sub">' + dollars(p.priceCents) + ' · 750mL'

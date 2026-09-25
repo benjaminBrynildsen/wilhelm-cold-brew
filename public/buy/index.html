@@ -77,7 +77,12 @@
     #cart-list{margin:4px 0 6px}
     .cart-item{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid rgba(232,194,74,.18)}
     .cart-item:first-child{border-top:1px solid rgba(232,194,74,.18)}
+    .cart-thumbwrap{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:7px}
     .cart-thumb{flex:0 0 auto;width:66px;height:66px;border-radius:8px;object-fit:cover;background:rgba(232,217,181,.06);border:1px solid rgba(232,194,74,.2)}
+    .cart-notes{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;line-height:1;
+      color:rgba(232,194,74,.92);background:rgba(232,194,74,.08);border:1px solid rgba(232,194,74,.38);
+      border-radius:999px;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+    .cart-notes:hover{background:var(--gold,#e8c24a);border-color:var(--gold,#e8c24a);color:#241a05}
     .cart-meta{flex:1;min-width:0}
     .cart-name{font-family:'Bodoni Moda',Georgia,serif;font-size:18px;color:var(--parch,#f6efda);line-height:1.15}
     .cart-sub{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:rgba(246,239,218,.6);margin-top:3px;text-transform:uppercase}

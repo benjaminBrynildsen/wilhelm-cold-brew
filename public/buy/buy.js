@@ -99,7 +99,10 @@
     for (var i = 0; i < state.products.length; i++) {
       var p = state.products[i], q = state.cart[p.key] || 0, out = p.max <= 0;
       html += '<div class="cart-item">'
+        + '<div class="cart-thumbwrap">'
         + (p.image ? '<img class="cart-thumb" src="' + esc(p.image) + '" alt="' + esc(p.name) + '"/>' : '<div class="cart-thumb"></div>')
+        + '<button type="button" class="cart-notes" data-notes-i="' + i + '" aria-label="Tasting notes for ' + esc(p.name) + '">✦ Notes</button>'
+        + '</div>'
         + '<div class="cart-meta"><div class="cart-name">' + esc(p.name) + '</div>'
         + '<div class="cart-sub">' + dollars(p.priceCents) + ' · 750mL'
           + (out ? ' · <span class="soldout">sold out</span>'
@@ -331,6 +334,8 @@
         renderCart();
         var cl = document.getElementById('cart-list');
         if (cl) cl.addEventListener('click', function (e) {
+          var nb = e.target && e.target.closest ? e.target.closest('button[data-notes-i]') : null;
+          if (nb) { state.notesIndex = parseInt(nb.getAttribute('data-notes-i'), 10) || 0; openNotes(); return; }
           var b = e.target && e.target.closest ? e.target.closest('button[data-cart]') : null; if (!b) return;
           var key = b.getAttribute('data-key'); var cur = state.cart[key] || 0;
           setCartQty(key, cur + (b.getAttribute('data-cart') === 'inc' ? 1 : -1));

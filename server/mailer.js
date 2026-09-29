@@ -199,13 +199,14 @@ export async function sendSignupAlert(email, meta = {}) {
     `New Friday Drop signup:`,
     ``,
     `  Email:   ${email}`,
-    meta.variant ? `  Variant: ${meta.variant}` : null,
-    where ? `  From:    ${where}` : null,
     `  Ad:      ${utm || 'direct / no UTM tag'}`,
     // SMS is usually opted into on the confirmation screen, a moment after this
     // alert fires — so it shows here only if they ticked it right on the form; a
     // separate "added SMS" note follows when they opt in afterward.
     meta.sms ? `  SMS:     yes${meta.phone ? ' — ' + meta.phone : ''}` : null,
+    // Secondary details after the essentials.
+    meta.variant ? `  Variant: ${meta.variant}` : null,
+    where ? `  From:    ${where}` : null,
     ``,
     `See the dashboard: ${SITE}/admin`,
   ].filter((l) => l !== null);

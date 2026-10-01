@@ -142,8 +142,10 @@ group('Seed');
 await seedJournal();
 const seeded = (await q(`SELECT slug, title, status, drop_id FROM journal_articles ORDER BY id`)).rows;
 ok('inserts the expected rows', seeded.length === 8, `got ${seeded.length}`);
-ok('first article is published', seeded[0]?.status === 'published', seeded[0]?.status);
-ok('everything else is a draft', seeded.slice(1).every((r) => r.status === 'draft'));
+// Everything seeds as a draft on purpose: a fresh deploy must not put an
+// unreviewed article straight onto the live site.
+ok('nothing is published by the seed', seeded.every((r) => r.status === 'draft'),
+   seeded.filter((r) => r.status !== 'draft').map((r) => r.slug).join(','));
 await seedJournal();
 ok('is idempotent', (await q(`SELECT COUNT(*)::int n FROM journal_articles`)).rows[0].n === 8);
 
@@ -177,6 +179,11 @@ const send = async (p, method, body) => {
 };
 
 group('Public pages');
+// Nothing is published by the seed, so publish the barrel piece first — that
+// is the path a real article takes to the site.
+const barrelId = (await q(`SELECT id FROM journal_articles WHERE slug='barrel-aged-coffee-alcohol'`)).rows[0].id;
+await send(`/api/admin/journal/${barrelId}/status`, 'POST', { publish: true });
+
 const idx = await get('/journal/');
 ok('index renders', idx.status === 200, String(idx.status));
 ok('lists the published article', /Does barrel-aged coffee contain alcohol\?/.test(idx.body));
@@ -208,6 +215,21 @@ ok('no buy button', !/href="\/buy"/.test(drop.body));
 ok('states when the batch opens', /This batch opens Friday, 9:00 AM CT/.test(drop.body));
 ok('flagged as this week', /jr-flag">This week/.test(drop.body));
 ok("index has a This week's drop section", /jr-sec">This week's drop/.test((await get('/journal/')).body));
+
+// An unset field must be omitted, not rendered as a label with nothing useful
+// against it. The sample drop deliberately leaves origin/varietal/elevation
+// NULL, so those rows should not appear at all.
+ok('unset drop fields are omitted entirely',
+   !/<dt>Varietal<\/dt>/.test(drop.body) && !/<dt>Elevation<\/dt>/.test(drop.body) && !/<dt>Origin<\/dt>/.test(drop.body));
+ok('and nothing says "Not set"', !/Not set/.test(drop.body));
+ok('while the fields we do have still render',
+   /<dt>Barrel<\/dt><dd>Willett bourbon barrel/.test(drop.body) && /<dt>Roast<\/dt><dd>Light/.test(drop.body));
+
+// Filling a field in makes it appear — the admin path that edits drops.
+await q(`UPDATE drops SET varietal='Castillo (Arabica)', elevation='4700 ft' WHERE id=$1`, [dropRow.id]);
+const filled = await get('/journal/the-willett-barrel/');
+ok('a field filled in on the drop appears on the article',
+   /<dt>Varietal<\/dt><dd>Castillo \(Arabica\)/.test(filled.body) && /<dt>Elevation<\/dt><dd>4700 ft/.test(filled.body));
 
 await q(`UPDATE drops SET status='closed' WHERE id=$1`, [dropRow.id]);
 const after = await get('/journal/');

@@ -296,11 +296,13 @@ export async function seedJournal() {
       const friday = new Date();
       friday.setUTCDate(friday.getUTCDate() + ((5 - friday.getUTCDay() + 7) % 7 || 7));
       friday.setUTCHours(14, 0, 0, 0);   // 9:00 AM Central
+      // Only the fields we actually know. Anything unknown stays NULL — the spec
+      // strip omits empty rows, so a blank field shows nothing rather than the
+      // words "Not set", which is placeholder text masquerading as data.
       const d = await q(`INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status,
-                                            barrel, origin, varietal, elevation, roast, tasting_notes)
-                         VALUES ($1,5000,100,$2,'scheduled',$3,$4,$5,$6,$7,$8) RETURNING id`,
-        ['The Willett Barrel', friday,
-         'Willett bourbon barrel', 'Single origin', 'Not set', 'Not set', 'Light',
+                                            barrel, roast, tasting_notes)
+                         VALUES ($1,5000,100,$2,'scheduled',$3,$4,$5) RETURNING id`,
+        ['The Willett Barrel', friday, 'Willett bourbon barrel', 'Light',
          'Dark caramel, vanilla, baking spice, rounded sweetness.']);
       dropId = d.rows[0].id;
       console.log('[journal] created a sample drop for local dev');

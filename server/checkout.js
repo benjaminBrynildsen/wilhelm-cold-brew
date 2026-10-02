@@ -281,11 +281,16 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       // scheduled batch as soon as it's created, and that bug left sold-out
       // "would've bought" votes untagged (dropId null → invisible in the
       // admin's per-drop demand count).
+      // The most recently-active non-scheduled drop. COALESCE(opens_at, created_at)
+      // so a batch that was made live WITHOUT a scheduled open time (null opens_at)
+      // still counts as recent — otherwise NULLS LAST ranked it below an older batch
+      // and the just-sold-out drop fell through to the next-batch countdown instead
+      // of the sold-out page.
       const missedDrop = (d && d.remaining <= 0)
         ? d
         : (await q(
             `SELECT * FROM drops WHERE status <> 'scheduled'
-              ORDER BY opens_at DESC NULLS LAST, created_at DESC LIMIT 1`)).rows[0] || null;
+              ORDER BY COALESCE(opens_at, created_at) DESC, created_at DESC, id DESC LIMIT 1`)).rows[0] || null;
       const soldOut = (d && d.remaining <= 0) || missedDrop?.status === 'soldout';
       const dropId = missedDrop?.id ?? null;
 

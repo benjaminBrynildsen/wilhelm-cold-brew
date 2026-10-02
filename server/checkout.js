@@ -281,16 +281,22 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       // scheduled batch as soon as it's created, and that bug left sold-out
       // "would've bought" votes untagged (dropId null → invisible in the
       // admin's per-drop demand count).
-      // The most recently-active non-scheduled drop. COALESCE(opens_at, created_at)
-      // so a batch that was made live WITHOUT a scheduled open time (null opens_at)
-      // still counts as recent — otherwise NULLS LAST ranked it below an older batch
-      // and the just-sold-out drop fell through to the next-batch countdown instead
-      // of the sold-out page.
+      // The most recently-ACTIVE non-scheduled drop — ranked by its latest sale,
+      // not by opens_at. opens_at is unreliable: going live doesn't stamp it, so a
+      // batch keeps whatever open date it was created with (often months stale), and
+      // ordering by it picked an old batch over the one that just sold out — leaving
+      // /buy on the next-batch countdown instead of the sold-out page. Last paid
+      // order is the true recency signal; fall back to opens_at/created_at for a
+      // batch that never sold anything.
       const missedDrop = (d && d.remaining <= 0)
         ? d
         : (await q(
-            `SELECT * FROM drops WHERE status <> 'scheduled'
-              ORDER BY COALESCE(opens_at, created_at) DESC, created_at DESC, id DESC LIMIT 1`)).rows[0] || null;
+            `SELECT d.* FROM drops d
+               LEFT JOIN (SELECT drop_id, MAX(paid_at) AS last_paid
+                            FROM orders WHERE status = 'paid' GROUP BY drop_id) o ON o.drop_id = d.id
+              WHERE d.status <> 'scheduled'
+              ORDER BY COALESCE(o.last_paid, d.opens_at, d.created_at) DESC NULLS LAST, d.id DESC
+              LIMIT 1`)).rows[0] || null;
       const soldOut = (d && d.remaining <= 0) || missedDrop?.status === 'soldout';
       const dropId = missedDrop?.id ?? null;
 

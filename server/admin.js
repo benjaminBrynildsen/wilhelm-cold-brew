@@ -286,14 +286,47 @@ export function mountAdmin(app) {
     });
   });
 
-  // Capability manifest — lets the bot (and you) see exactly what the token can do.
+  // Capability manifest — a bot (or you) can GET this to learn exactly what the
+  // token can do, with every endpoint, its params, and the write bodies. Keep it
+  // in sync with docs/BOT-API.md.
   app.get('/api/admin/bot/manifest', (req, res) => {
     if (!requireAdmin(req, res)) return;
     res.json({
+      baseUrl: 'https://wilhelmcoldbrew.com',
       auth: { header: 'x-bot-key', note: 'Send the bot token in this header on every request.' },
-      reads: 'Any GET /api/admin/* endpoint — orders, analytics, subscribers, drops, journal, etc.',
-      writesAllowed: BOT_WRITES.map((r) => r.method + ' ' + r.re.source.replace(/\\\//g, '/').replace(/[\^$]/g, '').replace(/\\d\+/g, ':id')),
-      blocked: ['go live / close a drop', 'publish a Ledger article', 'send SMS or email', 'delete anything', 'edit a drop while it is live', 'edit a published article', 'archive / modify subscribers'],
+      conventions: {
+        money: 'All prices are integer CENTS (5000 = $50.00).',
+        time: 'All timestamps are ISO-8601 UTC (e.g. 2026-10-16T14:00:00Z). 9:00 AM Central = 14:00Z (CDT) / 15:00Z (CST).',
+        window: "Analytics endpoints take ?win=today|d7|d30|all, or ?win=custom&from=YYYY-MM-DD&to=YYYY-MM-DD.",
+      },
+      reads: [
+        { path: 'GET /api/admin/overview', desc: 'Since-launch daily rollup: sessions, drink-page visits, signups per day, plus running totals.' },
+        { path: 'GET /api/admin/signups-today', desc: "Today's signups, SMS opt-ins, drink→signup conversion %, and welcome replies (Central day)." },
+        { path: 'GET /api/admin/funnel?win=', desc: 'Funnel conversion for the window (views → signups → buyers), with by-variant breakdown.' },
+        { path: 'GET /api/admin/traffic?win=', desc: 'Page views and unique visitors for the window.' },
+        { path: 'GET /api/admin/orders?dropId=', desc: 'Paid count, revenue, and the order list (with per-bottle line items). Omit dropId for all-time.' },
+        { path: 'GET /api/admin/drops', desc: 'Every drop: name, status, opens_at, sold/cap, price, and products (bottles).' },
+        { path: 'GET /api/admin/subscribers?limit=', desc: 'Subscriber list — CONTAINS PII (emails, phones, UTM source).' },
+        { path: 'GET /api/admin/shipping?dropId=', desc: 'Per-batch shipped/delivered rollup and per-shipment list.' },
+        { path: 'GET /api/admin/botcatcher?win=', desc: 'Signups flagged as likely bots (honeypot/too-fast/etc.).' },
+        { path: 'GET /api/admin/journeys  &  /api/admin/journeys/:sessionId', desc: 'Visitor session list and a single session replay.' },
+        { path: 'GET /api/admin/reviews', desc: 'Welcome-email replies / review responses.' },
+        { path: 'GET /api/admin/email/history  &  /api/admin/email/blasts', desc: 'Email send + open stats.' },
+        { path: 'GET /api/admin/journal  &  /api/admin/journal/:id  &  /api/admin/journal/drops', desc: 'Ledger articles (list / one / linkable drops).' },
+        { path: 'GET /api/admin/orders/packing.html?dropId=', desc: 'Printable per-bottle packing list (HTML).' },
+        { path: 'GET /api/admin/orders/pirateship.csv | usps.csv ?dropId=&scope=&split=', desc: 'Shipping label exports (CSV).' },
+      ],
+      writes: [
+        { method: 'POST', path: '/api/admin/drops', body: { name: 'string', priceCents: 'int', bottleCap: 'int', opensAt: 'ISO UTC (optional)', tastingNotes: 'string (optional)' }, note: "Creates the drop as 'scheduled'. You go live manually." },
+        { method: 'POST', path: '/api/admin/drops/:id/rename', body: { name: 'string' } },
+        { method: 'POST', path: '/api/admin/drops/:id/opens', body: { opensAt: 'ISO UTC (empty clears)' }, note: 'Reschedule. Not allowed while the drop is live.' },
+        { method: 'POST', path: '/api/admin/drops/:id/price', body: { priceCents: 'int' }, note: 'Not allowed while live.' },
+        { method: 'POST', path: '/api/admin/drops/:id/cap', body: { bottleCap: 'int' }, note: 'Not allowed while live.' },
+        { method: 'POST', path: '/api/admin/drops/:id/products', body: { products: '[{name, priceCents, bottleCap, tastingNotes?, origin?, varietal?, elevation?, roast?, image?}] (max 6; replaces all; [] = single-bottle)' }, note: 'Not allowed while live.' },
+        { method: 'POST', path: '/api/admin/drops/:id/notes', body: { tastingNotes: 'string', origin: 'string?', varietal: 'string?', elevation: 'string?', roast: 'string?' }, note: 'Not allowed while live.' },
+        { method: 'POST', path: '/api/admin/journal', body: { id: 'int (omit to create)', title: 'string', category: 'string?', summary: 'string?', dek: 'string?', body: 'markdown', refs: 'string?', drop_id: 'int?' }, note: 'Creates/edits a DRAFT. Cannot edit a published article. Publishing stays manual.' },
+      ],
+      blocked: ['go live / close a drop', 'publish a Ledger article', 'send SMS or email', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
       rateLimit: '120 requests per minute',
     });
   });

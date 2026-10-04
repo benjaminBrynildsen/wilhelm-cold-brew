@@ -35,8 +35,17 @@ const EXCL_PV = `AND ip_hash NOT IN (SELECT ip_hash FROM internal_ips)`;
 const EXCL_EM = `AND LOWER(email) NOT IN (SELECT email FROM internal_emails) AND LOWER(email) NOT LIKE '%test%'`;
 
 // ───────── auth ─────────
+// A separate, LIMITED "bot" token — e.g. for an assistant that reads the admin
+// data and preps drops/articles. Unset by default (''), which turns the whole
+// bot path off. When set, it grants read access to every admin endpoint PLUS a
+// short allowlist of non-destructive writes (see the botGate in mountAdmin); it
+// can never go live, publish, send SMS/email, delete, or touch subscribers.
+const BOT_API_KEY = resolveSecret('BOT_API_KEY', '');
+function isBot(req) { return !!BOT_API_KEY && safeEqual(req.headers['x-bot-key'] || '', BOT_API_KEY); }
+
 function isAdmin(req) {
   if (safeEqual(req.headers['x-admin-key'] || '', ADMIN_API_KEY)) return true;
+  if (isBot(req)) return true;   // bot token — scoped further by botGate
   return req.signedCookies && req.signedCookies[COOKIE] === 'ok';
 }
 export function requireAdmin(req, res) {
@@ -236,6 +245,59 @@ async function runBlast(blastId, recipients, subject, bodyHtml) {
 }
 
 export function mountAdmin(app) {
+  // ── Scoped bot-token gate ───────────────────────────────────────────────────
+  // Applies ONLY to requests carrying a valid x-bot-key; every other request
+  // passes straight through, so normal admin use is unchanged. A bot may READ any
+  // admin endpoint (GET), and call the short write allowlist below. Guards keep it
+  // off anything live/published, and everything not listed is refused. Registered
+  // first so it runs before all admin + journal routes (journal is mounted after).
+  const botLimiter = rateLimit({ windowMs: 60_000, max: 120 });
+  const BOT_WRITES = [
+    { method: 'POST', re: /^\/api\/admin\/drops$/ },                           // schedule a new drop (always 'scheduled')
+    { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/rename$/ },              // rename (safe on any status)
+    { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/opens$/, noLive: true }, // reschedule
+    { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/price$/, noLive: true },
+    { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/cap$/, noLive: true },
+    { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/products$/, noLive: true },
+    { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/notes$/, noLive: true },
+    { method: 'POST', re: /^\/api\/admin\/journal$/, journalDraftOnly: true }, // create / edit a Ledger DRAFT
+  ];
+  const dropIdFromPath = (p) => { const m = p.match(/\/drops\/(\d+)(?:\/|$)/); return m ? +m[1] : null; };
+  app.use('/api/admin', (req, res, next) => {
+    if (!isBot(req)) return next();                                 // not a bot request — normal flow
+    botLimiter(req, res, async () => {
+      if (req.method === 'GET' || req.method === 'HEAD') return next();   // reads: always allowed
+      const path = req.originalUrl.split('?')[0];
+      const rule = BOT_WRITES.find((r) => r.method === req.method && r.re.test(path));
+      if (!rule) return res.status(403).json({ error: 'bot token: action not allowed (reads + a limited set of safe writes only).' });
+      try {
+        if (rule.noLive) {
+          const id = dropIdFromPath(path);
+          const st = id ? (await q(`SELECT status FROM drops WHERE id=$1`, [id])).rows[0]?.status : null;
+          if (st === 'live') return res.status(403).json({ error: 'bot token: cannot edit a drop while it is live.' });
+        }
+        if (rule.journalDraftOnly && req.body?.id) {
+          const st = (await q(`SELECT status FROM journal_articles WHERE id=$1`, [+req.body.id])).rows[0]?.status;
+          if (st === 'published') return res.status(403).json({ error: 'bot token: cannot edit a published article (drafts only).' });
+        }
+      } catch (e) { return res.status(500).json({ error: 'bot guard failed' }); }
+      console.log('[bot] write', req.method, path);
+      next();
+    });
+  });
+
+  // Capability manifest — lets the bot (and you) see exactly what the token can do.
+  app.get('/api/admin/bot/manifest', (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    res.json({
+      auth: { header: 'x-bot-key', note: 'Send the bot token in this header on every request.' },
+      reads: 'Any GET /api/admin/* endpoint — orders, analytics, subscribers, drops, journal, etc.',
+      writesAllowed: BOT_WRITES.map((r) => r.method + ' ' + r.re.source.replace(/\\\//g, '/').replace(/[\^$]/g, '').replace(/\\d\+/g, ':id')),
+      blocked: ['go live / close a drop', 'publish a Ledger article', 'send SMS or email', 'delete anything', 'edit a drop while it is live', 'edit a published article', 'archive / modify subscribers'],
+      rateLimit: '120 requests per minute',
+    });
+  });
+
   // Throttle password guesses per IP so the login can't be brute-forced.
   const loginLimit = rateLimit({ windowMs: 15 * 60_000, max: 10 });
   app.post('/api/admin/login', loginLimit, (req, res) => {

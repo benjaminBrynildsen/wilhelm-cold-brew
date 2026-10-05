@@ -40,8 +40,11 @@ const EXCL_EM = `AND LOWER(email) NOT IN (SELECT email FROM internal_emails) AND
 // bot path off. When set, it grants read access to every admin endpoint PLUS a
 // short allowlist of non-destructive writes (see the botGate in mountAdmin); it
 // can never go live, publish, send SMS/email, delete, or touch subscribers.
-const BOT_API_KEY = resolveSecret('BOT_API_KEY', '');
-function isBot(req) { return !!BOT_API_KEY && safeEqual(req.headers['x-bot-key'] || '', BOT_API_KEY); }
+// Read straight from the env and trim it, so (a) an unset var cleanly DISABLES
+// the bot path (rather than resolving to a random secret in prod) and (b) a stray
+// trailing space or newline pasted into the Render field can't break the match.
+const BOT_API_KEY = (process.env.BOT_API_KEY || '').trim();
+function isBot(req) { return !!BOT_API_KEY && safeEqual(String(req.headers['x-bot-key'] || '').trim(), BOT_API_KEY); }
 
 function isAdmin(req) {
   if (safeEqual(req.headers['x-admin-key'] || '', ADMIN_API_KEY)) return true;
@@ -328,6 +331,20 @@ export function mountAdmin(app) {
       ],
       blocked: ['go live / close a drop', 'publish a Ledger article', 'send SMS or email', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
       rateLimit: '120 requests per minute',
+    });
+  });
+
+  // Unauthenticated diagnostic for wiring up the bot token. Reveals NOTHING about
+  // the real key — only whether the server has one configured, whether the key you
+  // sent matched, and how many chars you sent (to catch truncation/whitespace).
+  // botConfigured:false  → BOT_API_KEY isn't loaded (redeploy, or wrong service/env).
+  // botConfigured:true, matched:false → the Render value differs from what you sent.
+  app.get('/api/admin/bot/ping', (req, res) => {
+    const provided = String(req.headers['x-bot-key'] || '').trim();
+    res.json({
+      botConfigured: !!BOT_API_KEY,
+      matched: !!BOT_API_KEY && safeEqual(provided, BOT_API_KEY),
+      youSent: provided ? `a key (${provided.length} chars)` : 'no x-bot-key header',
     });
   });
 

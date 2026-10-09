@@ -309,7 +309,10 @@ export function mountAdmin(app) {
         { path: 'GET /api/admin/traffic?win=', desc: 'Page views and unique visitors for the window.' },
         { path: 'GET /api/admin/orders?dropId=', desc: 'Paid count, revenue, and the order list (with per-bottle line items). Omit dropId for all-time.' },
         { path: 'GET /api/admin/drops', desc: 'Every drop: name, status, opens_at, sold/cap, price, and products (bottles).' },
-        { path: 'GET /api/admin/subscribers?limit=', desc: 'Subscriber list — CONTAINS PII (emails, phones, UTM source).' },
+        { path: 'GET /api/admin/subscribers?limit=', desc: 'Subscriber list (emails, variant, source, country, signup time). No phone numbers — those come from the SMS endpoints below.' },
+        { path: 'GET /api/admin/sms/contacts', desc: 'All current SMS opt-ins as JSON: {phone, email, optedInAt, source}. Add ?since=YYYY-MM-DD for only new opt-ins on/after that date. Each call is logged to /api/admin/sms/pulls.' },
+        { path: 'GET /api/admin/sms/pulls?limit=', desc: 'History/records of SMS-contact pulls: when, by whom (bot/admin), all vs since, and how many returned.' },
+        { path: 'GET /api/admin/sms-export', desc: 'The same SMS opt-ins as a Mailchimp-ready CSV (US-only, de-duped).' },
         { path: 'GET /api/admin/shipping?dropId=', desc: 'Per-batch shipped/delivered rollup and per-shipment list.' },
         { path: 'GET /api/admin/botcatcher?win=', desc: 'Signups flagged as likely bots (honeypot/too-fast/etc.).' },
         { path: 'GET /api/admin/journeys  &  /api/admin/journeys/:sessionId', desc: 'Visitor session list and a single session replay.' },
@@ -1492,6 +1495,56 @@ export function mountAdmin(app) {
       res.set('Content-Disposition', 'attachment; filename="wilhelm-sms-contacts.csv"');
       res.send(csv);
     } catch (e) { console.error('[sms-export]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── SMS contacts (JSON) — pull all, or just new since a date ─────────
+  // GET /api/admin/sms/contacts            → every current SMS opt-in
+  // GET /api/admin/sms/contacts?since=ISO  → only opt-ins on/after that date
+  // Every call is logged to sms_pulls (readable at /api/admin/sms/pulls) so there
+  // is a record of what was pulled, when, and by whom. Read-only.
+  app.get('/api/admin/sms/contacts', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      let since = null;
+      if (req.query?.since) {
+        since = new Date(String(req.query.since));
+        if (isNaN(since)) return res.status(400).json({ error: 'bad "since" — use an ISO date, e.g. 2026-10-01 or 2026-10-01T00:00:00Z' });
+      }
+      const subs = (await q(
+        `SELECT LOWER(email) email, phone, sms_consent_at ts FROM subscribers
+          WHERE sms_consent = TRUE AND phone IS NOT NULL AND unsubscribed_at IS NULL AND archived_at IS NULL ${EXCL_EM}`)).rows;
+      const leads = (await q(
+        `SELECT NULL email, phone, consent_at ts FROM sms_leads WHERE unsubscribed_at IS NULL`)).rows;
+      const all = subs.map((r) => ({ phone: r.phone, email: r.email || null, ts: r.ts, source: 'email+sms' }))
+        .concat(leads.map((r) => ({ phone: r.phone, email: null, ts: r.ts, source: 'phone-only' })));
+      all.sort((a, b) => (a.ts ? +new Date(a.ts) : Infinity) - (b.ts ? +new Date(b.ts) : Infinity)); // earliest first
+      const seen = new Set();
+      const contacts = [];
+      for (const r of all) {
+        if (!r.phone || seen.has(r.phone)) continue;               // one row per number (keep earliest opt-in)
+        seen.add(r.phone);
+        if (since && (!r.ts || new Date(r.ts) < since)) continue;  // incremental filter
+        contacts.push({ phone: r.phone, email: r.email, optedInAt: r.ts ? new Date(r.ts).toISOString() : null, source: r.source });
+      }
+      contacts.sort((a, b) => (b.optedInAt || '').localeCompare(a.optedInAt || '')); // newest first for output
+      // Record the pull.
+      q(`INSERT INTO sms_pulls (actor, scope, since_ts, returned_count) VALUES ($1,$2,$3,$4)`,
+        [isBot(req) ? 'bot' : 'admin', since ? 'since' : 'all', since ? since.toISOString() : null, contacts.length])
+        .catch((e) => console.warn('[sms/contacts] pull-log failed:', e?.message || e));
+      res.json({ pulledAt: new Date().toISOString(), scope: since ? 'since' : 'all', since: since ? since.toISOString() : null, count: contacts.length, contacts });
+    } catch (e) { console.error('[sms/contacts]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // History of SMS-contact pulls (the audit records). Read-only.
+  app.get('/api/admin/sms/pulls', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit, 10) || 50));
+      const rows = (await q(
+        `SELECT id, pulled_at AS "pulledAt", actor, scope, since_ts AS "since", returned_count AS "count"
+           FROM sms_pulls ORDER BY pulled_at DESC LIMIT $1`, [limit])).rows;
+      res.json({ count: rows.length, pulls: rows });
+    } catch (e) { console.error('[sms/pulls]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Twilio SMS: send drop alerts + the "10 min early" link ─────────

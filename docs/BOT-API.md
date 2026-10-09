@@ -44,7 +44,10 @@ The ones a bot will actually use:
 | `GET /api/admin/traffic?win=` | Page views + unique visitors |
 | `GET /api/admin/orders?dropId=` | Paid count, revenue, order list with per-bottle line items (omit `dropId` = all-time) |
 | `GET /api/admin/drops` | Every drop: name, status, `opens_at`, sold/cap, price, products |
-| `GET /api/admin/subscribers?limit=` | Subscriber list — **contains PII** (emails, phones, UTM source) |
+| `GET /api/admin/subscribers?limit=` | Subscriber list (email, variant, source, country, signup time). **No phone numbers** — those come from the SMS endpoints below |
+| `GET /api/admin/sms/contacts` | **All** current SMS opt-ins as JSON. Add `?since=YYYY-MM-DD` for only **new** opt-ins on/after that date. Each call is logged (see `/sms/pulls`) |
+| `GET /api/admin/sms/pulls?limit=` | **Records of SMS pulls** — when, by whom (bot/admin), all-vs-since, and how many returned |
+| `GET /api/admin/sms-export` | The same SMS opt-ins as a Mailchimp-ready **CSV** (US-only, de-duped) |
 | `GET /api/admin/shipping?dropId=` | Per-batch shipped/delivered rollup + per-shipment list |
 | `GET /api/admin/botcatcher?win=` | Signups flagged as likely bots |
 | `GET /api/admin/journeys` · `/journeys/:sessionId` | Visitor session list / single replay |
@@ -104,3 +107,35 @@ curl -H "$H" -H "Content-Type: application/json" \
   -d '{"title":"How we pick a barrel","body":"## Draft\n\nText here."}' \
   "$BASE/api/admin/journal"
 ```
+
+## SMS contacts — pull all / new, with records
+
+```bash
+# Pull EVERY current SMS opt-in
+curl -H "$H" "$BASE/api/admin/sms/contacts"
+
+# Pull only NEW opt-ins since a date (incremental)
+curl -H "$H" "$BASE/api/admin/sms/contacts?since=2026-10-01"
+
+# See the record of every pull (when, by whom, how many)
+curl -H "$H" "$BASE/api/admin/sms/pulls"
+```
+
+`sms/contacts` returns:
+```json
+{
+  "pulledAt": "2026-10-09T01:23:40Z",
+  "scope": "all",            // or "since"
+  "since": null,             // the ?since value when scope = "since"
+  "count": 4,
+  "contacts": [
+    { "phone": "+13145550003", "email": "new2@fan.co", "optedInAt": "2026-10-08T00:00:00Z", "source": "email+sms" },
+    { "phone": "+13145550004", "email": null,          "optedInAt": "2026-10-06T00:00:00Z", "source": "phone-only" }
+  ]
+}
+```
+Contacts are de-duped by phone (one row per number) and sorted newest opt-in
+first. `source` is `email+sms` (opted in on the signup form) or `phone-only`
+(the countdown "text me" form). Every call writes a row to `sms/pulls`, so to
+pull "just what's new since last time" you can read the last pull's `pulledAt`
+and pass it as `since`.

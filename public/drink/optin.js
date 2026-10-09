@@ -4,6 +4,12 @@
 // Resolved before paint by the inline <head> script.
 const VARIANT = window.__DRINK_VARIANT || 'bullets';
 
+// Shareable preview mode. ?preview=live forces the "batch is live → order page"
+// success state; ?preview=sms forces the SMS early-access card. A preview signup
+// is mocked (never stored) and fires no conversion pixels, so the link is safe.
+const PREVIEW = (new URLSearchParams(location.search).get('preview') || '').toLowerCase();
+const IS_PREVIEW = PREVIEW === 'live' || PREVIEW === 'sms';
+
 // ─────────────────────────────────────────────────────────────────────────
 //  EMAIL CAPTURE — the one place to wire the real ESP.
 //  Until a provider is set, this MOCKS success (validates + shows the
@@ -134,6 +140,7 @@ function newEventId() {
 // `rdtEventId` is the shared conversion id (see newEventId) — passed to the server
 // so its Reddit CAPI SignUp dedups against the browser pixel's SignUp.
 async function subscribeEmail(email, variant, rdtEventId) {
+  if (IS_PREVIEW) { await wait(400); return; }   // preview: never store a signup
   switch (PROVIDER) {
     case 'mock':
       await wait(500);
@@ -219,11 +226,13 @@ function funnel(event, props) {
   // Is a batch buyable right now? If so, we offer a one-tap path to it the moment
   // someone finishes signing up (peak intent). Resolved on load; a signup takes
   // longer than this fetch, so it's ready by the time it matters.
-  let liveDrop = null;   // { dropId, name } when available, else null
-  fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
-    .then((r) => r.json())
-    .then((dd) => { if (dd && dd.available) liveDrop = { dropId: dd.dropId, name: dd.name || null }; })
-    .catch(() => {});
+  let liveDrop = PREVIEW === 'live' ? { dropId: 0, name: 'This week’s batch' } : null;
+  if (!IS_PREVIEW) {
+    fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
+      .then((r) => r.json())
+      .then((dd) => { if (dd && dd.available) liveDrop = { dropId: dd.dropId, name: dd.name || null }; })
+      .catch(() => {});
+  }
 
   const sticky = document.getElementById('sticky-join');
   const nudge = document.getElementById('nudge');
@@ -478,17 +487,19 @@ function funnel(event, props) {
         // are deduped to one conversion.
         const rdtEventId = newEventId();
         await subscribeEmail(email, VARIANT, rdtEventId);
-        funnel('subscribed', { variant: VARIANT });
-        try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
-        try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
-        // Reddit: enrich the pixel with advanced matching (email) now that we have
-        // it, then fire SignUp. conversionId dedups with the server-side CAPI event.
-        try {
-          if (window.rdt) {
-            if (window.__RDT_PIXEL_ID) window.rdt('init', window.__RDT_PIXEL_ID, { email: email });
-            window.rdt('track', 'SignUp', { conversionId: rdtEventId });
-          }
-        } catch (e) {}
+        if (!IS_PREVIEW) {
+          funnel('subscribed', { variant: VARIANT });
+          try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
+          try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
+          // Reddit: enrich the pixel with advanced matching (email) now that we have
+          // it, then fire SignUp. conversionId dedups with the server-side CAPI event.
+          try {
+            if (window.rdt) {
+              if (window.__RDT_PIXEL_ID) window.rdt('init', window.__RDT_PIXEL_ID, { email: email });
+              window.rdt('track', 'SignUp', { conversionId: rdtEventId });
+            }
+          } catch (e) {}
+        }
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();

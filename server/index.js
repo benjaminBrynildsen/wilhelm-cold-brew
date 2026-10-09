@@ -17,7 +17,7 @@ import { mountJournal, publishedArticles } from './journal.js';
 import { seedJournal } from './journal-seed.js';
 import { mountPortal } from './portal.js';
 import { backfillPurchasePoints } from './points.js';
-import { mountCheckout, stripeWebhook } from './checkout.js';
+import { mountCheckout, stripeWebhook, reconcilePendingOrders } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
 import { deliveryEnabled, refreshDeliveryStatuses } from './delivery.js';
 import { verifyWebhook, handleInbound } from './sms.js';
@@ -426,6 +426,11 @@ ensureSchema()
       console.log(`[wilhelm] listening on :${PORT}`);
       // Backfill loyalty points for existing paid orders (idempotent).
       backfillPurchasePoints().catch((e) => console.warn('[points] backfill failed:', e?.message || e));
+      // Recover any payment whose Stripe webhook never landed, so a drop can't get
+      // stuck at "N left" with a charged-but-unrecorded order. Run on boot, then
+      // every 2 minutes.
+      reconcilePendingOrders().catch((e) => console.warn('[reconcile] boot run failed:', e?.message || e));
+      setInterval(() => reconcilePendingOrders().catch(() => {}), 2 * 60 * 1000);
       // Put the first Ledger article in on a fresh database. No-op once the
       // table has anything in it, so it never overwrites an edit.
       seedJournal();

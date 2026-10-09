@@ -589,6 +589,41 @@ async function markPaidBySession(s) {
   });
 }
 
+// Safety net for webhook-only fulfillment. An order becomes 'paid' only when its
+// Stripe webhook lands; if a delivery ever fails (brief outage, signature hiccup),
+// the payment still succeeds (customer charged) but the order is stuck 'pending'
+// and the bottle never counts as sold — which surfaces as a drop frozen at "N left".
+// This reconciles recent pending orders straight against Stripe and marks any that
+// actually succeeded. Idempotent (markPaid* only touch not-yet-paid rows) and a
+// no-op when nothing is pending.
+export async function reconcilePendingOrders({ limit = 25 } = {}) {
+  if (!stripe) return { checked: 0, fixed: 0 };
+  let fixed = 0, checked = 0;
+  try {
+    const rows = (await q(
+      `SELECT id, stripe_payment_intent AS pi, stripe_session_id AS sess FROM orders
+        WHERE status = 'pending'
+          AND (stripe_payment_intent IS NOT NULL OR stripe_session_id IS NOT NULL)
+          AND created_at < now() - interval '2 minutes'
+          AND created_at > now() - interval '3 days'
+        ORDER BY created_at DESC LIMIT $1`, [limit])).rows;
+    checked = rows.length;
+    for (const o of rows) {
+      try {
+        if (o.pi) {
+          const pi = await stripe.paymentIntents.retrieve(o.pi);
+          if (pi && pi.status === 'succeeded') { await markPaidByIntent(pi); fixed++; }
+        } else if (o.sess) {
+          const s = await stripe.checkout.sessions.retrieve(o.sess);
+          if (s && s.payment_status === 'paid') { await markPaidBySession(s); fixed++; }
+        }
+      } catch (e) { console.warn('[reconcile] order', o.id, 'check failed:', e?.message || e); }
+    }
+    if (fixed) console.log(`[reconcile] recovered ${fixed} stuck paid order(s) of ${checked} pending checked`);
+  } catch (e) { console.warn('[reconcile] failed:', e?.message || e); }
+  return { checked, fixed };
+}
+
 // On-page PaymentIntent path: pending order → paid, keyed on the payment intent id.
 async function markPaidByIntent(pi) {
   let email = pi.receipt_email || pi.customer_details?.email || null;

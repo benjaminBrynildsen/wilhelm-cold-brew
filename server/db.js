@@ -244,6 +244,18 @@ export async function ensureSchema() {
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS sms_sends_created_idx ON sms_sends (created_at);
+    -- Audit log of SMS-contact pulls (GET /api/admin/sms/contacts). One row per
+    -- pull, so the bot (or you) can see when contacts were last fetched, by whom,
+    -- whether it was a full pull or an incremental "since", and how many returned.
+    CREATE TABLE IF NOT EXISTS sms_pulls (
+      id             BIGSERIAL PRIMARY KEY,
+      pulled_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      actor          TEXT,                 -- 'bot' | 'admin'
+      scope          TEXT,                 -- 'all' | 'since'
+      since_ts       TIMESTAMPTZ,          -- the ?since value, when scope = 'since'
+      returned_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS sms_pulls_at_idx ON sms_pulls (pulled_at DESC);
     -- One row per email sent (welcome or blast) — powers open tracking via pixel.
     CREATE TABLE IF NOT EXISTS email_sends (
       id            BIGSERIAL PRIMARY KEY,

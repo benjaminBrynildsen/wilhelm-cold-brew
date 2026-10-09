@@ -479,9 +479,6 @@ function funnel(event, props) {
         const rdtEventId = newEventId();
         await subscribeEmail(email, VARIANT, rdtEventId);
         funnel('subscribed', { variant: VARIANT });
-        // Hand the just-confirmed email to this block's SMS early-access card so
-        // its opt-in attaches to the right subscriber.
-        wireSmsCard(successEl, email);
         try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
         try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
         // Reddit: enrich the pixel with advanced matching (email) now that we have
@@ -495,10 +492,18 @@ function funnel(event, props) {
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;
         onConverted();
-        // Peak intent: if a batch is buyable right now, surface it — a pop-up now,
-        // plus a persistent banner on the success screen if they dismiss it.
-        revealLiveBanner(successEl);
-        showLiveDropModal();
+        // Peak intent. If a batch is buyable RIGHT NOW, send them to the order
+        // page — a "text me the link early" upsell makes no sense once it's live —
+        // via the persistent "shop now" banner plus a one-tap pop-up, and the SMS
+        // card is hidden. Only when nothing is live do we offer the SMS card.
+        if (liveDrop) {
+          const smsCard = successEl.querySelector('[data-sms-card]');
+          if (smsCard) smsCard.hidden = true;
+          revealLiveBanner(successEl);
+          showLiveDropModal();
+        } else {
+          wireSmsCard(successEl, email);
+        }
       } catch (err) {
         console.error(err);
         setLoading(false);

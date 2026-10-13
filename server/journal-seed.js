@@ -126,21 +126,6 @@ Roasting then takes those precursors and does its own work on them, through the 
 
 Every step in that chain is sensitive to conditions. Which is why a result obtained with one cultivar, at one altitude, in one season, with one roast profile, is evidence that something is possible — not a recipe that transfers.
 
-## What is genuinely uncertain, and what isn't
-
-It is worth being exact about where the doubt actually sits, because the two practices are not in the same evidentiary position at all.
-
-**Fermenting with a substrate is not in doubt.** Ferment coffee alongside coconut and the cup tastes of coconut. The effect is large, it is intentional, and it is repeatable — which is the entire reason anyone does it. There is no scientific controversy here, and a producer who achieves a clear, named note this way is not making an extravagant claim. They are describing what the technique does.
-
-**Microbial inoculation is where the confident claims outrun the published work.** Several things are asserted in the trade that the literature does not currently support:
-
-- **That a chosen organism yields a chosen note.** The studies report directions — fruitier, more complex, more acidic — rather than targets hit on demand.
-- **That the effects are large.** Reported differences are real but usually moderate, and frequently smaller than the gap between two roast profiles of the same lot.
-- **That the microbe accounts for the whole difference.** Inoculation nearly always arrives alongside changes in tank management, timing and temperature, and few published designs separate the organism's contribution from the processing change around it.
-- **That results carry across origins.** Most studies are single-origin, single-season, and modest in sample size.
-
-None of that makes inoculation illegitimate; it makes it a technique with a real but bounded effect, which is a less thrilling description than the one usually offered. But it is a narrower criticism than it is often taken for. It is about what microbes can be relied upon to do on their own — not about whether fermenting coffee with fruit changes how the coffee tastes. That part is settled.
-
 ## Where the argument actually is
 
 When fruit, spice or coconut goes into the tank, the interesting questions stop being chemical. That the technique works is not in dispute. What the industry argues about is what to call it, and what a buyer is owed.

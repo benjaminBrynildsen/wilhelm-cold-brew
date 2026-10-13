@@ -141,7 +141,9 @@ That argument is unsettled, and the competition rules diverge sharply.
 
 Competition rules are not a verdict on whether a coffee is good. They are decisions about what a competition is for, and a body that excludes a method is protecting the terms of its own contest rather than making a claim about the cup. Plenty of coffee worth drinking has never been eligible for anything.
 
-Our own position is narrow, and we think hard to argue with: whatever went into the tank belongs on the bag. Stated plainly it is a feature — someone who wants a coconut-forward coffee can go and find one. Left vague, the same fact turns into something a competitor gets to characterise for you. Confidence in a method and clarity about it are the same thing.
+We should be clear about where we stand in this. **We do not ferment anything.** Co-fermentation happens at origin, during processing, months before a bag reaches anyone — the producer makes those decisions, in their own tanks, with their own fruit. Our work begins with green coffee and ends in a bottle.
+
+So our position is a buyer's position rather than a producer's, and it is narrow: whatever went into the tank should be known, and we would rather say it than not. Stated plainly it is a feature — someone who wants a coconut-forward coffee can go and find one. Left vague, the same fact becomes something a competitor gets to characterise for you. Confidence in a method and clarity about it tend to be the same thing.
 
 ## How to read a co-fermentation claim
 
@@ -158,7 +160,9 @@ The honest summary is that this field is young.
 
 Sample sizes are small, sensory panels are smaller, and the literature carries the publication bias one would expect of a commercially interesting technique — negative results are not much published. Few studies follow the same lot across multiple seasons, which is where the variability that matters commercially actually lives.
 
-And one gap is conspicuous from where we stand: almost nothing published examines how co-fermented lots behave under **cold** extraction. Cold brew pulls a different compound set than hot water does, at a different rate, and there is no good reason to assume that a fermentation difference measured in an espresso or filter cup survives into a twenty-hour cold extraction at the same magnitude, or at all. We would like to know. As far as we can tell, nobody has published it.`;
+And one gap is conspicuous from where we stand, because it is the part of this chain we actually own. Almost nothing published examines how co-fermented lots behave under **cold** extraction. Cold brew pulls a different compound set than hot water does, at a different rate, and there is no good reason to assume a fermentation difference measured in an espresso or filter cup survives into a twenty-hour cold extraction at the same magnitude — or at all.
+
+The fermentation happened at origin and we had no hand in it. What happens to it in cold water over twenty hours is ours. We would like to know, and as far as we can tell nobody has published it.`;
 
 const COFERM_REFS = [
   'Rabelo, M. H. S., Borém, F. M., Alves, A. P. de C., Pieroni, R. S., Santos, C. M., Nakajima, M. & Sugino, R. *Fermentation of coffee fruit with sequential inoculation of Lactiplantibacillus plantarum and Saccharomyces cerevisiae: Effects on volatile composition and sensory characteristics.* Food Chemistry 444, 138608 (2024). doi:10.1016/j.foodchem.2024.138608',

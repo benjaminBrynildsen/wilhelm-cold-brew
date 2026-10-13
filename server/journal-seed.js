@@ -91,7 +91,7 @@ const REFS = [
 // Second piece. Seeded as a DRAFT — Matt reviews and publishes it from the
 // admin rather than it going live the moment the table is created.
 const COFERM_BODY = `:::fact
-Two different practices share the name. **Microbial co-fermentation** — inoculating the fermenting coffee cherry with selected yeast or lactic acid bacteria — is supported by a real and growing body of peer-reviewed work. **Additive fermentation**, sometimes called infusion, puts fruit, spices or syrups into the tank, and is a question about flavoring and disclosure rather than about fermentation. Most of the public argument comes from treating them as one thing.
+Two different practices share the name, and they sit in very different evidentiary positions. **Microbial co-fermentation** — inoculating the fermenting coffee cherry with selected yeast or lactic acid bacteria — is supported by a real and growing body of peer-reviewed work, though what it can reliably deliver is narrower than the marketing suggests. **Additive fermentation**, sometimes called infusion, ferments the coffee alongside something else: fruit, spices, coconut. That it works is not contested by anyone; the argument about it is over naming and disclosure. Most of the public noise comes from treating the two as one thing.
 :::
 
 ## The word is doing too much work
@@ -126,22 +126,26 @@ Roasting then takes those precursors and does its own work on them, through the 
 
 Every step in that chain is sensitive to conditions. Which is why a result obtained with one cultivar, at one altitude, in one season, with one roast profile, is evidence that something is possible — not a recipe that transfers.
 
-## Where the claims outrun the evidence
+## What is genuinely uncertain, and what isn't
 
-Several things are asserted confidently in the trade that the published work does not currently support.
+It is worth being exact about where the doubt actually sits, because the two practices are not in the same evidentiary position at all.
 
-- **That a specific flavor can be selected in advance.** The studies report directions — fruitier, more complex, more acidic — not targets hit on demand.
-- **That effects are large.** Reported differences are usually real but moderate, and frequently smaller than the difference between two roast profiles of the same lot.
-- **That the microbe is responsible for the whole difference.** Inoculation nearly always accompanies changes in tank management, timing and temperature, and few published designs isolate the organism's contribution from the processing change around it.
-- **That results generalize across origins.** Most studies are single-origin, single-season, and modest in sample size.
+**Fermenting with a substrate is not in doubt.** Ferment coffee alongside coconut and the cup tastes of coconut. The effect is large, it is intentional, and it is repeatable — which is the entire reason anyone does it. There is no scientific controversy here, and a producer who achieves a clear, named note this way is not making an extravagant claim. They are describing what the technique does.
 
-None of this makes inoculated fermentation illegitimate. It makes it a technique with a real but bounded effect, which is a less thrilling description than the one usually offered.
+**Microbial inoculation is where the confident claims outrun the published work.** Several things are asserted in the trade that the literature does not currently support:
 
-## Infusion is a different question
+- **That a chosen organism yields a chosen note.** The studies report directions — fruitier, more complex, more acidic — rather than targets hit on demand.
+- **That the effects are large.** Reported differences are real but usually moderate, and frequently smaller than the gap between two roast profiles of the same lot.
+- **That the microbe accounts for the whole difference.** Inoculation nearly always arrives alongside changes in tank management, timing and temperature, and few published designs separate the organism's contribution from the processing change around it.
+- **That results carry across origins.** Most studies are single-origin, single-season, and modest in sample size.
 
-When fruit, spice or a flavor compound goes into the tank, fermentation is no longer doing the work that the name implies. The material is a flavoring, and the honest questions become commercial rather than chemical: was the buyer told, and does the label reflect it?
+None of that makes inoculation illegitimate; it makes it a technique with a real but bounded effect, which is a less thrilling description than the one usually offered. But it is a narrower criticism than it is often taken for. It is about what microbes can be relied upon to do on their own — not about whether fermenting coffee with fruit changes how the coffee tastes. That part is settled.
 
-The industry has not settled on one answer, and the competition rules diverge sharply.
+## Where the argument actually is
+
+When fruit, spice or coconut goes into the tank, the interesting questions stop being chemical. That the technique works is not in dispute. What the industry argues about is what to call it, and what a buyer is owed.
+
+That argument is unsettled, and the competition rules diverge sharply.
 
 | Body | Position |
 | --- | --- |
@@ -150,7 +154,9 @@ The industry has not settled on one answer, and the competition rules diverge sh
 | Specialty Coffee Association (World Barista Championship) | Permitted infused and co-fermented coffees from late 2023, provided additions occur before the green coffee stage |
 ^ Positions taken by major competition bodies as reported in the trade press, 2023–2024.[^4]
 
-Reasonable people land in different places on whether infusion is an innovation or an adulteration. Our own view is narrower and, we think, harder to argue with: whatever went into the tank should be on the bag. A drinker who knows what they are buying can decide for themselves, and a producer confident in the method should have no reason to be vague about it.
+Competition rules are not a verdict on whether a coffee is good. They are decisions about what a competition is for, and a body that excludes a method is protecting the terms of its own contest rather than making a claim about the cup. Plenty of coffee worth drinking has never been eligible for anything.
+
+Our own position is narrow, and we think hard to argue with: whatever went into the tank belongs on the bag. Stated plainly it is a feature — someone who wants a coconut-forward coffee can go and find one. Left vague, the same fact turns into something a competitor gets to characterise for you. Confidence in a method and clarity about it are the same thing.
 
 ## How to read a co-fermentation claim
 

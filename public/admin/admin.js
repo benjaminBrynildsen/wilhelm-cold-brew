@@ -2120,6 +2120,7 @@ async function showOrders() {
         <label class="note">Varietal <input id="dvarietal" value="${esc(nd.varietal || '')}" placeholder="Heirloom" style="width:150px;${FLD_DARK}"/></label>
         <label class="note">Elevation <input id="delevation" value="${esc(nd.elevation || '')}" placeholder="1,950 m" style="width:120px;${FLD_DARK}"/></label>
         <label class="note">Roast <input id="droast" value="${esc(nd.roast || '')}" placeholder="Medium" style="width:120px;${FLD_DARK}"/></label>
+        <label class="note">Barrel <input id="dbarrel" value="${esc(nd.barrel || '')}" placeholder="Willett bourbon barrel" style="width:200px;${FLD_DARK}"/></label>
       </div>
       <textarea id="dnotes" rows="5" placeholder="Tasting notes — one per line, e.g.&#10;Vanilla Bean — soft, the first thing you meet on the tongue&#10;Charred Oak — a whisper of smoke, the cask saying hello" style="width:100%;${FLD_DARK};resize:vertical;line-height:1.5;margin-top:8px">${esc(nd.tasting_notes || '')}</textarea>
       <div class="row-actions" style="margin-top:8px;align-items:center;gap:8px">
@@ -2367,6 +2368,7 @@ async function showOrders() {
           varietal: document.getElementById('dvarietal').value,
           elevation: document.getElementById('delevation').value,
           roast: document.getElementById('droast').value,
+          barrel: document.getElementById('dbarrel').value,
         }));
         state.editDrop = id; // stay on this drop after refresh
         msg.textContent = 'Saved ✓';

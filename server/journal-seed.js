@@ -91,7 +91,7 @@ const REFS = [
 // Second piece. Seeded as a DRAFT — Matt reviews and publishes it from the
 // admin rather than it going live the moment the table is created.
 const COFERM_BODY = `:::fact
-Two different practices share the name. **Microbial co-fermentation** — inoculating the fermenting coffee cherry with selected yeast or lactic acid bacteria — is supported by a real and growing body of peer-reviewed work. **Additive fermentation**, sometimes called infusion, puts fruit, spices or syrups into the tank, and is a question about flavoring and disclosure rather than about fermentation. Most of the public argument comes from treating them as one thing.
+Two different practices share the name, and they sit in very different evidentiary positions. **Microbial co-fermentation** — inoculating the fermenting coffee cherry with selected yeast or lactic acid bacteria — is supported by a real and growing body of peer-reviewed work, though what it can reliably deliver is narrower than the marketing suggests. **Additive fermentation**, sometimes called infusion, ferments the coffee alongside something else: fruit, spices, coconut. That it works is not contested by anyone; the argument about it is over naming and disclosure. Most of the public noise comes from treating the two as one thing.
 :::
 
 ## The word is doing too much work
@@ -126,22 +126,11 @@ Roasting then takes those precursors and does its own work on them, through the 
 
 Every step in that chain is sensitive to conditions. Which is why a result obtained with one cultivar, at one altitude, in one season, with one roast profile, is evidence that something is possible — not a recipe that transfers.
 
-## Where the claims outrun the evidence
+## Where the argument actually is
 
-Several things are asserted confidently in the trade that the published work does not currently support.
+When fruit, spice or coconut goes into the tank, the interesting questions stop being chemical. That the technique works is not in dispute. What the industry argues about is what to call it, and what a buyer is owed.
 
-- **That a specific flavor can be selected in advance.** The studies report directions — fruitier, more complex, more acidic — not targets hit on demand.
-- **That effects are large.** Reported differences are usually real but moderate, and frequently smaller than the difference between two roast profiles of the same lot.
-- **That the microbe is responsible for the whole difference.** Inoculation nearly always accompanies changes in tank management, timing and temperature, and few published designs isolate the organism's contribution from the processing change around it.
-- **That results generalize across origins.** Most studies are single-origin, single-season, and modest in sample size.
-
-None of this makes inoculated fermentation illegitimate. It makes it a technique with a real but bounded effect, which is a less thrilling description than the one usually offered.
-
-## Infusion is a different question
-
-When fruit, spice or a flavor compound goes into the tank, fermentation is no longer doing the work that the name implies. The material is a flavoring, and the honest questions become commercial rather than chemical: was the buyer told, and does the label reflect it?
-
-The industry has not settled on one answer, and the competition rules diverge sharply.
+That argument is unsettled, and the competition rules diverge sharply.
 
 | Body | Position |
 | --- | --- |
@@ -150,7 +139,11 @@ The industry has not settled on one answer, and the competition rules diverge sh
 | Specialty Coffee Association (World Barista Championship) | Permitted infused and co-fermented coffees from late 2023, provided additions occur before the green coffee stage |
 ^ Positions taken by major competition bodies as reported in the trade press, 2023–2024.[^4]
 
-Reasonable people land in different places on whether infusion is an innovation or an adulteration. Our own view is narrower and, we think, harder to argue with: whatever went into the tank should be on the bag. A drinker who knows what they are buying can decide for themselves, and a producer confident in the method should have no reason to be vague about it.
+Competition rules are not a verdict on whether a coffee is good. They are decisions about what a competition is for, and a body that excludes a method is protecting the terms of its own contest rather than making a claim about the cup. Plenty of coffee worth drinking has never been eligible for anything.
+
+We should be clear about where we stand in this. **We do not ferment anything.** Co-fermentation happens at origin, during processing, months before a bag reaches anyone — the producer makes those decisions, in their own tanks, with their own fruit. Our work begins with green coffee and ends in a bottle.
+
+So our position is a buyer's position rather than a producer's, and it is narrow: whatever went into the tank should be known, and we would rather say it than not. Stated plainly it is a feature — someone who wants a coconut-forward coffee can go and find one. Left vague, the same fact becomes something a competitor gets to characterise for you. Confidence in a method and clarity about it tend to be the same thing.
 
 ## How to read a co-fermentation claim
 
@@ -167,7 +160,9 @@ The honest summary is that this field is young.
 
 Sample sizes are small, sensory panels are smaller, and the literature carries the publication bias one would expect of a commercially interesting technique — negative results are not much published. Few studies follow the same lot across multiple seasons, which is where the variability that matters commercially actually lives.
 
-And one gap is conspicuous from where we stand: almost nothing published examines how co-fermented lots behave under **cold** extraction. Cold brew pulls a different compound set than hot water does, at a different rate, and there is no good reason to assume that a fermentation difference measured in an espresso or filter cup survives into a twenty-hour cold extraction at the same magnitude, or at all. We would like to know. As far as we can tell, nobody has published it.`;
+And one gap is conspicuous from where we stand, because it is the part of this chain we actually own. Almost nothing published examines how co-fermented lots behave under **cold** extraction. Cold brew pulls a different compound set than hot water does, at a different rate, and there is no good reason to assume a fermentation difference measured in an espresso or filter cup survives into a twenty-hour cold extraction at the same magnitude — or at all.
+
+The fermentation happened at origin and we had no hand in it. What happens to it in cold water over twenty hours is ours. We would like to know, and as far as we can tell nobody has published it.`;
 
 const COFERM_REFS = [
   'Rabelo, M. H. S., Borém, F. M., Alves, A. P. de C., Pieroni, R. S., Santos, C. M., Nakajima, M. & Sugino, R. *Fermentation of coffee fruit with sequential inoculation of Lactiplantibacillus plantarum and Saccharomyces cerevisiae: Effects on volatile composition and sensory characteristics.* Food Chemistry 444, 138608 (2024). doi:10.1016/j.foodchem.2024.138608',
@@ -296,11 +291,13 @@ export async function seedJournal() {
       const friday = new Date();
       friday.setUTCDate(friday.getUTCDate() + ((5 - friday.getUTCDay() + 7) % 7 || 7));
       friday.setUTCHours(14, 0, 0, 0);   // 9:00 AM Central
+      // Only the fields we actually know. Anything unknown stays NULL — the spec
+      // strip omits empty rows, so a blank field shows nothing rather than the
+      // words "Not set", which is placeholder text masquerading as data.
       const d = await q(`INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status,
-                                            barrel, origin, varietal, elevation, roast, tasting_notes)
-                         VALUES ($1,5000,100,$2,'scheduled',$3,$4,$5,$6,$7,$8) RETURNING id`,
-        ['The Willett Barrel', friday,
-         'Willett bourbon barrel', 'Single origin', 'Not set', 'Not set', 'Light',
+                                            barrel, roast, tasting_notes)
+                         VALUES ($1,5000,100,$2,'scheduled',$3,$4,$5) RETURNING id`,
+        ['The Willett Barrel', friday, 'Willett bourbon barrel', 'Light',
          'Dark caramel, vanilla, baking spice, rounded sweetness.']);
       dropId = d.rows[0].id;
       console.log('[journal] created a sample drop for local dev');

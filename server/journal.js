@@ -338,6 +338,24 @@ function renderArticle(a) {
     }]
   }</script>` : '';
 
+  // Mid-article capture. The "we write these for the list" card goes into the
+  // MIDDLE of a long enough article (snapped to the next section heading) so it
+  // breaks up the read and never sits right next to the end card. On a short
+  // article we skip it entirely — so the page shows ONE capture, not two stacked.
+  const inlineCapture = capture({
+    cls: 'jr-capture inline',
+    heading: '<h3>We write these for <em>the list.</em></h3>',
+    para: 'New notes go out with the Friday drop — one email, 9:00 AM CT. Fewer than 100 bottles, and they\'re gone in minutes.',
+    success: 'Watch for the welcome email — moving it to your main inbox keeps Friday\'s link out of spam.',
+  });
+  const blocks = renderBody(a.body).split('\n').filter(Boolean);
+  if (blocks.length >= 8) {
+    let i = Math.ceil(blocks.length / 2);
+    while (i < blocks.length && !/^<h[23]/.test(blocks[i])) i++;      // snap to a section break
+    blocks.splice(i < blocks.length ? i : Math.ceil(blocks.length / 2), 0, inlineCapture);
+  }
+  const bodyHtml = blocks.join('\n');
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -392,15 +410,9 @@ ${masthead('/journal/')}
       ${dropSpecs(a)}
 
       <div class="jr-body">
-${renderBody(a.body)}
+${bodyHtml}
       </div>
 
-${capture({
-    cls: 'jr-capture inline',
-    heading: '<h3>We write these for <em>the list.</em></h3>',
-    para: 'New notes go out with the Friday drop — one email, 9:00 AM CT. Fewer than 100 bottles, and they\'re gone in minutes.',
-    success: 'Watch for the welcome email — moving it to your main inbox keeps Friday\'s link out of spam.',
-  })}
 ${refsBlock}
 ${capture({
     id: 'join', cls: 'jr-capture',

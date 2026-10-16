@@ -82,6 +82,10 @@
   var dropFetch = fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      // A batch is LIVE right now — they followed a stale /sold-out link (an old
+      // drop email, a bookmark). Send them to the order page instead of showing a
+      // sold-out prompt and recording a bogus "would've bought" vote on a live drop.
+      if (d && d.available) { location.replace('/buy'); return; }
       if (d && d.dropId != null) soldOutDropId = d.dropId;
       // Between batches: no last-batch talk — just a countdown to the next one.
       if (d && d.phase === 'countdown') { startCountdown(d.nextDropAt, d.nextBatch); return; }

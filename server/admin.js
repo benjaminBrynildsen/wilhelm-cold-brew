@@ -2460,6 +2460,10 @@ export function mountAdmin(app) {
            FROM journey_events
           WHERE event = 'soldout_demand' AND data->>'choice' IS NOT NULL ${EXCL_JE}
             AND ($1::int IS NULL OR data->>'dropId' = $1::text)
+            -- Ignore votes tagged to a batch that's live right now: a live drop
+            -- still has bottles, so any "would've bought" on it is a stale-link
+            -- artifact, not real missed demand.
+            AND COALESCE(data->>'dropId','') NOT IN (SELECT id::text FROM drops WHERE status = 'live')
           GROUP BY 1`, [dropId])).rows;
       const demand = { wouldBuy: 0, justLooking: 0 };
       for (const r of demandRows) {

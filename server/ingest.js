@@ -31,11 +31,28 @@ export async function receiveJourney(req, res) {
 
   const clip = (v, n) => (v ? String(v).slice(0, n) : null);
 
+  // Backstop for stale /sold-out pages: never record a "would've bought" demand
+  // vote against a batch that is LIVE right now (a cached page, or a direct hit,
+  // voting on a drop that still has bottles). A 'live' drop by definition still
+  // has stock — closeIfSoldOut flips it to 'soldout' the moment it's gone.
+  let liveVoteDropIds = new Set();
+  const demandDropIds = [...new Set(events
+    .filter((e) => e && e.event === 'soldout_demand' && e.data && e.data.dropId != null)
+    .map((e) => Number(e.data.dropId)).filter(Number.isFinite))];
+  if (demandDropIds.length) {
+    try {
+      const r = await q(`SELECT id FROM drops WHERE status = 'live' AND id = ANY($1::int[])`, [demandDropIds]);
+      liveVoteDropIds = new Set(r.rows.map((x) => String(x.id)));
+    } catch (e) { /* never block ingest on this check */ }
+  }
+
   // Build a single multi-row INSERT.
   const cols = ['session_id', 'event', 'data', 'ip_hash', 'city', 'region', 'country', 'user_agent', 'page', 'variant'];
   const values = [];
   const tuples = [];
   for (const e of events) {
+    if (e && e.event === 'soldout_demand' && e.data && e.data.dropId != null
+        && liveVoteDropIds.has(String(e.data.dropId))) continue; // bogus vote on a live drop
     const base = values.length;
     const ph = [];
     for (let k = 1; k <= cols.length; k++) ph.push(`$${base + k}`);
@@ -55,6 +72,7 @@ export async function receiveJourney(req, res) {
   }
 
   try {
+    if (!tuples.length) return res.json({ ok: true, count: 0 });
     await q(`INSERT INTO journey_events (${cols.join(',')}) VALUES ${tuples.join(',')}`, values);
     res.json({ ok: true, count: events.length });
   } catch (err) {

@@ -2859,15 +2859,48 @@ export function mountAdmin(app) {
       if (dropId > 0) { params.push(dropId); where.push(`o.drop_id = $${params.length}`); }
       const rows = (await q(
         `SELECT o.id, o.email, o.quantity, o.shipping_name, o.shipping_address, o.stripe_payment_intent,
-                d.name AS drop_name
+                o.created_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
-          WHERE ${where.join(' AND ')} ORDER BY o.id ASC`, params)).rows;
+          WHERE ${where.join(' AND ')} ORDER BY o.created_at ASC, o.id ASC`, params)).rows;
+
+      // When "one box per bottle" (split) is on, a two-bottle batch should come
+      // out of the file grouped by bottle: every box of one bottle first, then
+      // every box of the next, each group in purchase order — so the printed
+      // USPS PDF is all of one bottle's labels, then all of the other's. We read
+      // the per-bottle line items to know which bottle each box is, and sort by
+      // the product's admin order (drop_products.sort), then bottle name, then
+      // the order's purchase time. Orders with no line items (legacy
+      // single-bottle drops) fall back to the flat quantity-based rows, and a
+      // non-split export keeps its plain purchase order unchanged.
+      const itemsByOrder = new Map(); // order_id -> [{ bottle, qty, sort }]
+      if (split && rows.length) {
+        // Same scope as the orders above (reuse the WHERE/params by joining the
+        // order row), so this only pulls line items for orders in the export.
+        const items = (await q(
+          `SELECT oi.order_id,
+                  COALESCE(NULLIF(btrim(oi.name),''), p.name, 'Bottle') AS bottle,
+                  oi.quantity AS qty, COALESCE(p.sort, 0) AS sort
+             FROM order_items oi
+             JOIN orders o ON o.id = oi.order_id
+             LEFT JOIN drop_products p ON p.id = oi.product_id
+            WHERE ${where.join(' AND ')} AND oi.quantity > 0`, params)).rows;
+        for (const it of items) {
+          const key = String(it.order_id);
+          if (!itemsByOrder.has(key)) itemsByOrder.set(key, []);
+          itemsByOrder.get(key).push(it);
+        }
+      }
 
       // Minimal CSV quoting — USPS's importer wants bare values (their own
       // template rows are unquoted); only quote a field that actually needs it.
       const esc = (v) => { const s = String(v ?? ''); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [USPS_HEADER.join(',')]; // header names carry no commas → raw is exact + valid
 
+      // Expand every order into its boxes first, tagging each with the bottle it
+      // holds, then (for split) sort the whole file by bottle so same-bottle
+      // labels print together. A stable sort keeps purchase order within a group.
+      const boxesOut = [];
+      let seq = 0;
       for (const r of rows) {
         let addr = r.shipping_address || null;
         let name = r.shipping_name || null;
@@ -2877,16 +2910,40 @@ export function mountAdmin(app) {
           if (s) { addr = (addr && addr.line1) ? addr : (s.address || addr); name = name || s.name; phone = s.phone || phone; }
         }
         addr = addr || {};
-        const qty = r.quantity || 1;
-        const boxes = split ? qty : 1;
-        const perBox = split ? 1 : qty;
-        let wl = Math.floor(perBox * lbsPerBottle);
-        let wo = Math.round((perBox * lbsPerBottle - wl) * 16);
-        if (wo >= 16) { wl += 1; wo -= 16; }
         const toks = String(name || '').trim().split(/\s+/).filter(Boolean);
         const first = toks.length >= 2 ? toks[0] : '';
         const last = toks.length >= 2 ? toks.slice(1).join(' ') : (toks[0] || '');
-        for (let b = 0; b < boxes; b++) {
+        const common = { r, addr, first, last, phone, seq: seq++ };
+        const items = split ? itemsByOrder.get(String(r.id)) : null;
+        if (items && items.length) {
+          // One box per bottle, tagged with that bottle's name and sort order.
+          for (const it of items) {
+            for (let b = 0; b < (it.qty || 0); b++) {
+              boxesOut.push({ ...common, bottle: it.bottle, sort: it.sort || 0, perBox: 1 });
+            }
+          }
+        } else {
+          const qty = r.quantity || 1;
+          const boxes = split ? qty : 1;
+          const perBox = split ? 1 : qty;
+          for (let b = 0; b < boxes; b++) {
+            boxesOut.push({ ...common, bottle: r.drop_name || '', sort: -1, perBox });
+          }
+        }
+      }
+      if (split) {
+        boxesOut.sort((a, b) =>
+          (a.sort - b.sort) ||
+          String(a.bottle).localeCompare(String(b.bottle)) ||
+          (a.seq - b.seq));
+      }
+
+      for (const box of boxesOut) {
+        const { r, addr, first, last, phone, perBox } = box;
+        let wl = Math.floor(perBox * lbsPerBottle);
+        let wo = Math.round((perBox * lbsPerBottle - wl) * 16);
+        if (wo >= 16) { wl += 1; wo -= 16; }
+        {
           const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
           row['Reference ID'] = 'WCB-' + r.id;
           row['Reference ID 2'] = r.drop_name || '';
@@ -2919,7 +2976,9 @@ export function mountAdmin(app) {
           row['Package Type'] = pkgType;
           row['Package Weight (lb)'] = String(wl);
           row['Package Weight (oz)'] = String(wo);
-          row['Package Comments'] = r.drop_name || '';
+          // The bottle this box holds — the product name on a split two-bottle
+          // export, the batch name otherwise — so the printed label identifies it.
+          row['Package Comments'] = box.bottle || r.drop_name || '';
           lines.push(USPS_HEADER.map((h) => esc(row[h])).join(','));
         }
       }

@@ -1,0 +1,15 @@
+{
+  "name": "Wilhelm Admin",
+  "short_name": "Wilhelm",
+  "description": "Wilhelm Cold Brew — owner admin",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#0c0a08",
+  "theme_color": "#0c0a08",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "maskable" },
+    { "src": "/favicon-48.png", "sizes": "48x48", "type": "image/png" }
+  ]
+}

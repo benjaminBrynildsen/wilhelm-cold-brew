@@ -4,6 +4,7 @@
 import Stripe from 'stripe';
 import { q } from './db.js';
 import { sendOrderConfirmation, sendOrderAlert } from './mailer.js';
+import { pushToOwners } from './notify.js';
 import { awardPurchase } from './points.js';
 
 const SITE = process.env.SITE_URL || 'https://wilhelmcoldbrew.com';
@@ -499,13 +500,16 @@ async function orderLookup(res, column, value) {
 
 // A drop is sold out when every one of its products is at/over its cap; a legacy
 // drop when total paid bottles reach the single cap. Returns true if it closed.
+// Returns true ONLY on the actual live→soldout transition (rowCount), so a
+// caller can notify exactly once — a second call once it's already soldout is a
+// no-op and returns false.
 async function closeIfSoldOut(dropId) {
   const prods = await dropProducts(dropId);
   if (prods.length) {
     const paid = await paidByProduct(dropId);
     if (prods.every((p) => (paid[p.id] || 0) >= p.bottle_cap)) {
-      await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => {});
-      return true;
+      const r = await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => null);
+      return !!(r && r.rowCount);
     }
     return false;
   }
@@ -514,8 +518,8 @@ async function closeIfSoldOut(dropId) {
        (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = $1 AND o.status = 'paid') AS sold
        FROM drops WHERE id = $1`, [dropId])).rows[0];
   if (d && d.sold >= d.bottle_cap) {
-    await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => {});
-    return true;
+    const r = await q(`UPDATE drops SET status = 'soldout' WHERE id = $1 AND status = 'live'`, [dropId]).catch(() => null);
+    return !!(r && r.rowCount);
   }
   return false;
 }
@@ -660,9 +664,10 @@ async function finalizePaidOrder({ orderId, dropId, email, amountCents, shipping
   // Loyalty points, credited the moment the order is paid. Idempotent.
   if (orderId) awardPurchase(orderId).catch((e) => console.warn('[points] purchase award failed:', e?.message || e));
   let dropName = null;
+  let soldOut = false;
   if (dropId) {
     dropName = (await q(`SELECT name FROM drops WHERE id = $1`, [dropId])).rows[0]?.name || null;
-    await closeIfSoldOut(dropId);   // per-product for two-bottle drops; single cap for legacy
+    soldOut = await closeIfSoldOut(dropId);   // per-product for two-bottle drops; single cap for legacy
   }
   // Line items (empty for legacy single-bottle orders) so the emails can list the
   // bottles when there's more than one.
@@ -675,4 +680,18 @@ async function finalizePaidOrder({ orderId, dropId, email, amountCents, shipping
   }
   sendOrderAlert({ email, amountCents, dropName, shippingName, items })
     .catch((e) => console.warn('[webhook] order alert failed:', e?.message || e));
+
+  // Push the owners' phones (admin PWA): one ping per new order, plus a sellout
+  // ping the moment the batch flips. Fire-and-forget — never block fulfillment.
+  const batch = dropName || 'a batch';
+  const amount = Number.isFinite(amountCents) ? ` · $${(amountCents / 100).toFixed(2).replace(/\.00$/, '')}` : '';
+  const what = items.length > 1
+    ? items.map((i) => `${i.quantity}× ${i.name}`).join(', ')
+    : (items[0]?.name || batch);
+  pushToOwners({ title: '🫗 New order', body: `${what}${amount}`, url: '/admin/', tag: 'order' })
+    .catch((e) => console.warn('[push] order alert failed:', e?.message || e));
+  if (soldOut) {
+    pushToOwners({ title: '🎉 Sold out', body: `${batch} just sold out.`, url: '/admin/', tag: 'soldout' })
+      .catch((e) => console.warn('[push] soldout alert failed:', e?.message || e));
+  }
 }

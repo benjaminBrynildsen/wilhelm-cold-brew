@@ -13,6 +13,7 @@ import { smsConfigured, smsCanSchedule, reachableNumbers, sendOne, broadcast, is
 import { normalizePhone } from './util.js';
 import { deliveryEnabled, deliveryProvider, refreshDeliveryStatuses, deliveryProbe } from './delivery.js';
 import { xadsEnabled, xadsSummary } from './xads.js';
+import { getVapidPublicKey, saveSubscription, removeSubscription, countSubscriptions, pushToOwners } from './notify.js';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -364,6 +365,39 @@ export function mountAdmin(app) {
 
   app.post('/api/admin/logout', (req, res) => { res.clearCookie(COOKIE); res.json({ ok: true }); });
   app.get('/api/admin/me', (req, res) => res.json({ authed: isAdmin(req) }));
+
+  // ───────── Web Push (admin PWA notifications) ─────────
+  // Owners install the admin to their Home Screen and enable notifications per
+  // device; the server pushes on a new order, a sellout, and a new signup.
+  app.get('/api/admin/push/public-key', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { res.json({ key: await getVapidPublicKey() }); }
+    catch (e) { console.error('[push/key]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/push/subscribe', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      await saveSubscription(req.body?.subscription, req.get('user-agent') || '');
+      res.json({ ok: true, devices: await countSubscriptions() });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+  app.post('/api/admin/push/unsubscribe', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { await removeSubscription(req.body?.endpoint); res.json({ ok: true, devices: await countSubscriptions() }); }
+    catch (e) { res.status(400).json({ error: e.message }); }
+  });
+  app.get('/api/admin/push/status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { res.json({ devices: await countSubscriptions() }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/push/test', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await pushToOwners({ title: 'Wilhelm — test', body: 'Notifications are on for this device. ☕', tag: 'test' });
+      res.json({ ok: true, ...r });
+    } catch (e) { console.error('[push/test]', e); res.status(500).json({ error: e.message }); }
+  });
 
   // Public: does the site have any passkeys registered? (login page shows the
   // Face ID button only if so). Never throws — worst case hide the button.

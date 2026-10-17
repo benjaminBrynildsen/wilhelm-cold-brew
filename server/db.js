@@ -485,6 +485,20 @@ export async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Web Push subscriptions for the admin PWA — one row per owner device that
+    -- enabled notifications. Not tied to a user account (the admin is a single
+    -- shared identity); each installed device subscribes on its own. Dead
+    -- endpoints (404/410 from the push service) are pruned as they're found.
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id         BIGSERIAL PRIMARY KEY,
+      endpoint   TEXT NOT NULL UNIQUE,
+      p256dh     TEXT NOT NULL,
+      auth       TEXT NOT NULL,
+      label      TEXT,                              -- best-effort device label (user agent)
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_ok_at TIMESTAMPTZ
+    );
+
     -- Loyalty points ledger. Every earn/spend is one immutable row; balances are
     -- derived (SUM of delta = spendable balance; SUM of positive delta = lifetime
     -- earned, which drives permanent status like the Pre-Order privilege). The

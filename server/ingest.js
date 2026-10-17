@@ -4,6 +4,7 @@ import { getClientIp, hashIp, countryFrom, EMAIL_RE, BOT_RE, isDisposableEmail, 
 import { sendWelcome, sendSignupAlert, sendSmsSignupAlert } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
 import { redditTrackAsync } from './reddit.js';
+import { pushToOwners } from './notify.js';
 
 // SMS opt-in happens on the confirmation screen a few seconds after signup, as a
 // separate request. To keep it to ONE notification, we hold the signup alert this
@@ -216,6 +217,11 @@ export async function subscribe(req, res) {
         (async () => {
           const s = (await q(`SELECT sms_consent, phone FROM subscribers WHERE norm_email(email) = norm_email($1)`, [email])).rows[0] || {};
           await sendSignupAlert(email, { ...alertMeta, sms: !!s.sms_consent, phone: s.phone });
+          pushToOwners({
+            title: '📣 New signup',
+            body: s.sms_consent ? `${email} (+ SMS)` : email,
+            url: '/admin/', tag: 'signup',
+          }).catch((e) => console.warn('[subscribe] signup push failed:', e?.message || e));
         })().catch((e) => console.warn('[subscribe] signup alert failed:', e?.message || e));
       }, SIGNUP_ALERT_DELAY_MS);
       if (alertTimer.unref) alertTimer.unref();   // don't keep the process alive for it
@@ -335,6 +341,8 @@ export async function smsSubscribe(req, res) {
     if (r.rows[0] && r.rows[0].inserted) {
       sendSmsSignupAlert(phone, { variant, country: countryFrom(req), source, utmSource: utm_source, utmCampaign: utm_campaign, utmContent: utm_content })
         .catch((e) => console.warn('[sms-subscribe] alert failed:', e?.message || e));
+      pushToOwners({ title: '📣 New SMS signup', body: phone, url: '/admin/', tag: 'signup' })
+        .catch((e) => console.warn('[sms-subscribe] signup push failed:', e?.message || e));
     }
     if (sessionId) {
       q(`INSERT INTO journey_events (session_id, event, data, ip_hash, country, page, variant)

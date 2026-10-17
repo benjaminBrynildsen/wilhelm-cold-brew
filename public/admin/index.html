@@ -8,6 +8,13 @@
   <link rel="icon" href="/favicon.ico" sizes="any"/>
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
   <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <!-- Installable PWA so owners can add the admin to their Home Screen and get push notifications. -->
+  <link rel="manifest" href="/admin/manifest.webmanifest"/>
+  <meta name="theme-color" content="#0c0a08"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Wilhelm"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600;700;800&family=Cinzel:wght@700;800&family=DM+Mono:wght@400;500&display=swap"/>
   <style>
@@ -260,5 +267,6 @@
   <div id="app" class="wrap"></div>
   <script src="webauthn-browser.js"></script>
   <script src="admin.js"></script>
+  <script src="push-client.js" defer></script>
 </body>
 </html>

@@ -275,6 +275,15 @@ function wireActions(scope) {
       window.WilhelmPush.openModal();
     });
   });
+  scope.querySelectorAll('.act-sendtest').forEach((b) => {
+    if (!(window.WilhelmPush && window.WilhelmPush.supported)) { b.hidden = true; return; }
+    b.hidden = false;
+    b.addEventListener('click', () => {
+      const ms = document.getElementById('more-sheet');
+      if (ms) ms.hidden = true;
+      window.WilhelmPush.sendTest();
+    });
+  });
 }
 
 async function renderFaceIdPanel() {
@@ -376,6 +385,7 @@ function renderTabs() {
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}${k === 'botcatcher' ? '<span class="redbadge" data-botbadge hidden></span>' : ''}</div>`).join('')
     + `<span class="tab-actions">
         <button class="btn ghost sm act-notify" hidden>🔔 Notifications</button>
+        <button class="btn ghost sm act-sendtest" hidden>Send test</button>
         <button class="btn ghost sm act-faceid">Face ID</button>
         <button class="btn ghost sm act-logout">Log out</button>
       </span>`;
@@ -405,6 +415,7 @@ function renderTabs() {
       ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${l}</span>${k === 'botcatcher' ? '<span class="redbadge" data-botbadge hidden></span>' : ''}</button>`).join('')
       + `<div class="ms-actions">
           <button class="btn ghost act-notify" hidden>🔔 Notifications</button>
+          <button class="btn ghost act-sendtest" hidden>Send test</button>
           <button class="btn ghost act-faceid">Face ID</button>
           <button class="btn ghost act-logout">Log out</button>
         </div>`;

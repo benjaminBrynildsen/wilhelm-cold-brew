@@ -169,7 +169,8 @@
   async function doTest() {
     try {
       const r = await (await api('/api/admin/push/test', { method: 'POST' })).json();
-      toast(`Test sent to ${r.sent || 0} device${r.sent === 1 ? '' : 's'}.`);
+      if (!r.sent) { toast('No devices enabled yet — tap Enable first.'); return; }
+      toast(`Test sent to ${r.sent} device${r.sent === 1 ? '' : 's'}. 🔔`);
     } catch (e) { toast('Test failed.'); }
   }
 
@@ -189,13 +190,14 @@
   // once we know push is supported here.
   function revealMenuButtons() {
     if (!SUPPORTED) return;
-    document.querySelectorAll('.act-notify').forEach((b) => { b.hidden = false; });
+    document.querySelectorAll('.act-notify, .act-sendtest').forEach((b) => { b.hidden = false; });
   }
 
-  // Public API for admin.js (the More menu / tab bar entry).
+  // Public API for admin.js (the More menu / tab bar entries).
   window.WilhelmPush = {
     supported: SUPPORTED,
     openModal,
+    sendTest: doTest,
     async state() { return computeState(); },
   };
 

@@ -264,6 +264,17 @@ function wireActions(scope) {
     if (p.style.display === 'none') { p.style.display = ''; renderFaceIdPanel(); window.scrollTo({ top: 0 }); }
     else { p.style.display = 'none'; }
   }));
+  // Push notifications live in push-client.js (it owns the modal + state); here
+  // we just open it. The button is hidden when the browser can't do push.
+  scope.querySelectorAll('.act-notify').forEach((b) => {
+    if (!(window.WilhelmPush && window.WilhelmPush.supported)) { b.hidden = true; return; }
+    b.hidden = false;
+    b.addEventListener('click', () => {
+      const ms = document.getElementById('more-sheet');
+      if (ms) ms.hidden = true;
+      window.WilhelmPush.openModal();
+    });
+  });
 }
 
 async function renderFaceIdPanel() {
@@ -364,6 +375,7 @@ function renderTabs() {
   document.getElementById('tabs').innerHTML = TAB_LIST.map(
     ([k, l]) => `<div class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}${k === 'botcatcher' ? '<span class="redbadge" data-botbadge hidden></span>' : ''}</div>`).join('')
     + `<span class="tab-actions">
+        <button class="btn ghost sm act-notify" hidden>🔔 Notifications</button>
         <button class="btn ghost sm act-faceid">Face ID</button>
         <button class="btn ghost sm act-logout">Log out</button>
       </span>`;
@@ -392,6 +404,7 @@ function renderTabs() {
     ms.querySelector('.ms-panel').innerHTML = TAB_LIST.filter(([k]) => !BN_DIRECT.includes(k)).map(
       ([k, l]) => `<button class="ms-item ${state.tab === k ? 'active' : ''}" data-tab="${k}">${ICON[k] || ''}<span>${l}</span>${k === 'botcatcher' ? '<span class="redbadge" data-botbadge hidden></span>' : ''}</button>`).join('')
       + `<div class="ms-actions">
+          <button class="btn ghost act-notify" hidden>🔔 Notifications</button>
           <button class="btn ghost act-faceid">Face ID</button>
           <button class="btn ghost act-logout">Log out</button>
         </div>`;

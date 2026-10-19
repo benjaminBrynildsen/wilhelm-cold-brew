@@ -18,7 +18,7 @@ const SECTIONS = [
 const VARIANTS = ['on-the-list', 'sells-out'];
 const WINS = [['h1', '1 hour'], ['today', 'Today'], ['d7', '7 days'], ['d30', '30 days'], ['all', 'All time']];
 
-const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', botWin: 'today', trafficRange: null, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, shipDrop: null, editDrop: '' };
+const state = { authed: false, tab: 'overview', win: 'today', journeyWin: 'today', splitWin: 'today', botWin: 'today', trafficRange: null, customFrom: '', customTo: '', ovHours: '', ovView: 'list', ovMetrics: ['signups', 'conversionPct'], ovSpan: '30', journeySid: null, emailKind: '', emailBlast: '', ordersDrop: null, shipDrop: null, editDrop: '', ordersSub: 'summary' };
 
 // Known split tests → arms + preview links. The chosen arm is tracked as the
 // journey/subscriber `variant`, so the funnel byVariant data keys off these.
@@ -1997,6 +1997,64 @@ async function showShipping() {
   } catch (e) { content().innerHTML = `<div class="note">Failed to load shipping: ${esc(e.message)}</div>`; }
 }
 
+// Minutes → a short human duration for the race board.
+function fmtMins(m) {
+  if (m == null) return '—';
+  if (m < 1) return '<1 min';
+  if (m < 60) return Math.round(m) + ' min';
+  const h = Math.floor(m / 60), mm = Math.round(m % 60);
+  return mm ? `${h}h ${mm}m` : `${h}h`;
+}
+// The 🏁 Races sub-tab: a friendly leaderboard of how fast each batch sold,
+// timed from its first sale, with record-holders crowned so a new best stands out.
+function renderRaces(speed) {
+  if (!speed || !speed.batches || !speed.batches.length) {
+    return `<h3>🏁 Batch races</h3><div class="note">No paid orders yet. Once batches start selling, this board ranks them by how fast they went — bottles sold in the first 10 / 20 / 30 / 45 / 60 minutes, and time to sell out. New speed records get crowned here. 🏆</div>`;
+  }
+  const { batches, records, thresholds } = speed;
+  const rec = records || {};
+  const recId = (m) => rec['m' + m] && rec['m' + m].id;
+  const newest = batches[0];
+  const held = [];
+  thresholds.forEach((m) => { if (recId(m) === newest.id) held.push(`most in the first ${m === 60 ? 'hour' : m + ' min'}`); });
+  if (rec.fastestSellout && rec.fastestSellout.id === newest.id) held.push('fastest sellout');
+  const banner = held.length
+    ? `<div style="border:1px solid var(--gold);background:rgba(232,194,74,0.08);padding:12px 14px;margin-bottom:14px">
+         <div style="font-family:var(--display);font-size:18px;color:var(--parch)">🏆 ${esc(newest.name || 'Latest batch')} set a record!</div>
+         <div class="k2" style="margin-top:3px">${esc(held.join(' · '))}</div>
+       </div>`
+    : '';
+  const recCard = (label, r, fmt) => `<div class="card"><div class="k">${label}</div>${r ? `<div class="v" style="font-size:20px">${fmt(r.value)}</div><div class="k2">${esc(r.name || '—')}</div>` : '<div class="v">—</div>'}</div>`;
+  const hero = `<div class="cards" style="margin-bottom:16px">
+    ${recCard('Fastest sellout', rec.fastestSellout, (v) => fmtMins(v))}
+    ${recCard('Most · first 10 min', rec.m10, (v) => num(v) + ' <small>bottles</small>')}
+    ${recCard('Most · first 30 min', rec.m30, (v) => num(v) + ' <small>bottles</small>')}
+    ${recCard('Most · first hour', rec.m60, (v) => num(v) + ' <small>bottles</small>')}
+  </div>`;
+  // Leaderboard order: sold-out batches first (fastest sellout wins), then the
+  // rest by most sold in the first hour.
+  const ranked = batches.slice().sort((a, b) => {
+    const aa = a.selloutMin != null, bb = b.selloutMin != null;
+    if (aa && bb) return a.selloutMin - b.selloutMin;
+    if (aa !== bb) return aa ? -1 : 1;
+    return (b.buckets[60] || 0) - (a.buckets[60] || 0);
+  });
+  const medal = (i) => ['🥇', '🥈', '🥉'][i] || (i + 1) + '.';
+  const cell = (b, m) => `<td class="num"${recId(m) === b.id ? ' style="color:var(--gold);font-weight:700"' : ''}>${num(b.buckets[m] || 0)}${recId(m) === b.id ? ' 🏅' : ''}</td>`;
+  const soldCls = (b) => b.status === 'live' ? ' <span class="chip warn">live</span>' : (b.status === 'soldout' ? ' <span class="chip good">sold out</span>' : '');
+  const rows = ranked.map((b, i) => `<tr>
+    <td>${medal(i)} ${esc(b.name || '(unnamed)')}${soldCls(b)}</td>
+    ${thresholds.map((m) => cell(b, m)).join('')}
+    <td class="num"${rec.fastestSellout && rec.fastestSellout.id === b.id ? ' style="color:var(--gold);font-weight:700"' : ''}>${fmtMins(b.selloutMin)}${rec.fastestSellout && rec.fastestSellout.id === b.id ? ' 🏅' : ''}</td>
+    <td class="num">${num(b.sold)}/${num(b.cap)}</td>
+  </tr>`).join('');
+  return `<h3>🏁 Batch races <span class="note">— how fast each batch sold, timed from its first sale</span></h3>
+    ${banner}${hero}
+    <table><thead><tr><th>Batch</th>${thresholds.map((m) => `<th class="num">${m === 60 ? '1 hr' : m + ' min'}</th>`).join('')}<th class="num">Sellout</th><th class="num">Sold</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="note" style="margin-top:8px">Each batch is timed from its <b>first paid sale</b> (the start line) — go-live isn't separately recorded, and the rush starts at the first order anyway. The minute columns are bottles sold within that long after the first sale; <b>Sellout</b> is how long it took to reach the cap. 🏅 marks the current record-holder in each column.</div>`;
+}
+
 async function showOrders() {
   loading();
   try {
@@ -2013,9 +2071,10 @@ async function showOrders() {
     if (state.ordersDrop === null) state.ordersDrop = currentBatch();
     else if (state.ordersDrop && !dd.drops.some((d) => String(d.id) === String(state.ordersDrop))) state.ordersDrop = currentBatch();
     const dropQ = state.ordersDrop ? ('?dropId=' + encodeURIComponent(state.ordersDrop)) : '';
-    const [o, shipTpl] = await Promise.all([
+    const [o, shipTpl, speed] = await Promise.all([
       api('/api/admin/orders' + dropQ),
       api('/api/admin/ship-email').catch(() => null),
+      api('/api/admin/orders/speed').catch(() => null),
     ]);
     // Card stats follow the selected drop (or the live one when viewing all).
     const shown = o.selected || o.liveDrop;
@@ -2047,6 +2106,14 @@ async function showOrders() {
           <td>${dropActions(d)}</td></tr>`).join('')
       : '<tr><td class="note" colspan="6">No drops yet — create one below.</td></tr>';
 
+    // Sub-tabs — the Orders page is long, so split it into sections you can jump
+    // to. Toggled by show/hide (below), so every section stays wired.
+    const SUBS = [['summary', 'Summary'], ['orders', 'Orders'], ['shipping', 'Shipping'], ['batches', 'Batches'], ['races', '🏁 Races']];
+    if (!SUBS.some(([k]) => k === state.ordersSub)) state.ordersSub = 'summary';
+    const dsp = (k) => (state.ordersSub === k ? '' : 'none');
+    const subBar = `<div class="winbar osubbar" style="margin:2px 0 16px">${SUBS.map(([k, l]) =>
+      `<div class="win osub ${state.ordersSub === k ? 'active' : ''}" data-sec="${k}">${l}</div>`).join('')}</div>`;
+
     content().innerHTML = `
       <div class="row-actions" style="margin-bottom:14px;align-items:center">
         <label class="note">Viewing <select id="ordersDrop" style="${FLD_DARK}">${dropOpts}</select></label>
@@ -2056,6 +2123,8 @@ async function showOrders() {
           <button class="btn ghost" id="demo-clear" title="Remove the sample orders from an email">Clear demo</button>
         </span>
       </div>
+      ${subBar}
+      <div class="osec" data-sec="summary" style="display:${dsp('summary')}">
       <div class="cards">
         <div class="card"><div class="k">Paid orders${scoped ? ' (this drop)' : ''}</div><div class="v">${num(o.paid)}</div></div>
         <div class="card"><div class="k">Revenue${scoped ? ' (this drop)' : ''}</div><div class="v">${money(o.revenueCents)}</div></div>
@@ -2076,6 +2145,8 @@ async function showOrders() {
           <td class="num">${num(c.n)}</td>
           <td class="num">${fs.orders ? Math.round((100 * c.n) / fs.orders) : 0}%</td></tr>`).join('')}</tbody></table>` : ''}
 
+      </div>
+      <div class="osec" data-sec="shipping" style="display:${dsp('shipping')}">
       <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
         <a class="btn" id="ps-export" href="/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
@@ -2117,10 +2188,17 @@ async function showOrders() {
       <div class="note">After you buy labels, upload the shipments file here (.xlsx or .csv). <b>Pirate Ship</b>: export the shipments. <b>USPS Click-N-Ship</b>: export your shipping history / label report — our export stamps each label with <code>WCB-&lt;order&gt;</code> in the Reference ID, which USPS echoes back, so it matches even though USPS's file has no Order ID or email. It records each tracking number, marks the order shipped, emails the purchaser their link, and the status then shows on their account page. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
       <div id="trackresult" style="margin-top:8px"></div>
 
+      </div>
+      <div class="osec" data-sec="orders" style="display:${dsp('orders')}">
       <h3>Recent orders</h3>
       <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th>Ship to</th><th class="num">Total</th><th>Status</th><th>Tracking</th></tr></thead>
         <tbody>${orderRows}</tbody></table>
+      </div>
+      <div class="osec" data-sec="races" style="display:${dsp('races')}">
+      ${renderRaces(speed)}
+      </div>
 
+      <div class="osec" data-sec="batches" style="display:${dsp('batches')}">
       <h3>Drops</h3>
       <table><thead><tr><th>Name</th><th class="num">Price</th><th class="num">Sold</th><th>Status</th><th>Opens</th><th></th></tr></thead>
         <tbody>${dropRows}</tbody></table>
@@ -2194,10 +2272,20 @@ async function showOrders() {
         <button class="btn" id="dcreate">Create drop</button>
         <span class="note" id="dmsg"></span>
       </div>
-      <div class="note" style="margin-top:6px">Times are U.S. Central (CT) — pick any date &amp; time; defaults to the next Friday 9:00 AM. "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>`;
+      <div class="note" style="margin-top:6px">Times are U.S. Central (CT) — pick any date &amp; time; defaults to the next Friday 9:00 AM. "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>
+      </div>`;
 
     const odSel = document.getElementById('ordersDrop');
     if (odSel) odSel.addEventListener('change', (e) => { state.ordersDrop = e.target.value; showOrders(); });
+
+    // Sub-tabs: show one section at a time (pure show/hide — all sections stay in
+    // the DOM so their handlers below keep working regardless of which is active).
+    document.querySelectorAll('.osub[data-sec]').forEach((b) => b.addEventListener('click', () => {
+      state.ordersSub = b.dataset.sec;
+      document.querySelectorAll('.osub[data-sec]').forEach((x) => x.classList.toggle('active', x.dataset.sec === state.ordersSub));
+      document.querySelectorAll('.osec[data-sec]').forEach((s) => { s.style.display = s.dataset.sec === state.ordersSub ? '' : 'none'; });
+      window.scrollTo({ top: 0 });
+    }));
 
     // Demo data: populate/clear the customer Cellar for an email (preview tool).
     const seedBtn = document.getElementById('demo-seed');

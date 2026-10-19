@@ -3023,6 +3023,69 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[usps-export]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ───────── Batch speed leaderboard ─────────
+  // How fast each batch sold — a friendly competition between drops. The "start
+  // line" is the batch's FIRST paid sale (we don't reliably stamp go-live), so
+  // every bucket is measured from there: bottles sold within the first
+  // 10/20/30/45/60 minutes, and minutes to reach the cap (sellout). Records are
+  // the batch holding each title, so the UI can celebrate a new best.
+  app.get('/api/admin/orders/speed', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(
+        `SELECT o.drop_id, COALESCE(o.paid_at, o.created_at) AS t, o.quantity,
+                d.name AS drop_name, d.bottle_cap, d.status
+           FROM orders o JOIN drops d ON d.id = o.drop_id
+          WHERE o.status = 'paid'
+          ORDER BY o.drop_id ASC, t ASC`)).rows;
+      const THRESH = [10, 20, 30, 45, 60]; // minutes from first sale
+      const byDrop = new Map();
+      for (const r of rows) {
+        if (!byDrop.has(r.drop_id)) byDrop.set(r.drop_id, {
+          id: r.drop_id, name: r.drop_name, cap: r.bottle_cap || 0, status: r.status, sales: [],
+        });
+        byDrop.get(r.drop_id).sales.push({ t: new Date(r.t).getTime(), qty: r.quantity || 1 });
+      }
+      const batches = [];
+      for (const d of byDrop.values()) {
+        d.sales.sort((a, b) => a.t - b.t);
+        const t0 = d.sales[0].t;
+        const sold = d.sales.reduce((s, x) => s + x.qty, 0);
+        const buckets = {};
+        for (const m of THRESH) {
+          const cut = t0 + m * 60000;
+          buckets[m] = d.sales.reduce((s, x) => s + (x.t <= cut ? x.qty : 0), 0);
+        }
+        // Minutes from first sale to the sale that reached the cap.
+        let selloutMin = null;
+        if (d.cap > 0 && sold >= d.cap) {
+          let run = 0;
+          for (const x of d.sales) { run += x.qty; if (run >= d.cap) { selloutMin = (x.t - t0) / 60000; break; } }
+        }
+        batches.push({ id: d.id, name: d.name, cap: d.cap, status: d.status, sold, firstSale: new Date(t0).toISOString(), buckets, selloutMin });
+      }
+      batches.sort((a, b) => b.id - a.id); // newest batch first
+      const bestMax = (val) => {
+        let top = null;
+        for (const b of batches) { const v = val(b); if (v == null) continue; if (!top || v > top.value) top = { id: b.id, name: b.name, value: v }; }
+        return top;
+      };
+      const records = {
+        m10: bestMax((b) => b.buckets[10]),
+        m20: bestMax((b) => b.buckets[20]),
+        m30: bestMax((b) => b.buckets[30]),
+        m45: bestMax((b) => b.buckets[45]),
+        m60: bestMax((b) => b.buckets[60]),
+        fastestSellout: (() => {
+          let top = null;
+          for (const b of batches) { if (b.selloutMin == null) continue; if (!top || b.selloutMin < top.value) top = { id: b.id, name: b.name, value: b.selloutMin }; }
+          return top;
+        })(),
+      };
+      res.json({ thresholds: THRESH, batches, records });
+    } catch (e) { console.error('[orders/speed]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // ───────── Packing list (by bottle) ─────────
   // A clear, printable "who gets which bottle" sheet for a two-bottle drop.
   // Groups every paid order by the bottle it contains (from order_items), so a

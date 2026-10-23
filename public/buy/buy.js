@@ -103,15 +103,20 @@
         + (p.image ? '<img class="cart-thumb" src="' + esc(p.image) + '" alt="' + esc(p.name) + '"/>' : '<div class="cart-thumb"></div>')
         + '<button type="button" class="cart-notes" data-notes-i="' + i + '" aria-label="Tasting notes for ' + esc(p.name) + '">✦ Tasting Notes</button>'
         + '</div>'
+        // Title runs full-width on top; the price line and the stepper share the
+        // row beneath it, so a long name (e.g. "Batch 75 (Coconut Co-Ferment)")
+        // reads on one or two lines instead of a cramped narrow column.
         + '<div class="cart-meta"><div class="cart-name">' + esc(p.name) + '</div>'
+        + '<div class="cart-row2">'
         + '<div class="cart-sub">' + dollars(p.priceCents) + ' · 750mL'
           + (out ? ' · <span class="soldout">sold out</span>'
                  : (p.remaining > 0 ? ' · <span class="cart-left">' + p.remaining + ' left</span>' : ''))
-          + '</div></div>'
+          + '</div>'
         + '<div class="cart-qty"><div class="qty-stepper" role="group" aria-label="Quantity for ' + esc(p.name) + '">'
         + '<button type="button" data-cart="dec" data-key="' + esc(p.key) + '"' + (q <= 0 ? ' disabled' : '') + '>−</button>'
         + '<span data-qty="' + esc(p.key) + '" aria-live="polite">' + q + '</span>'
         + '<button type="button" data-cart="inc" data-key="' + esc(p.key) + '"' + (q >= p.max ? ' disabled' : '') + '>+</button>'
+        + '</div></div>'
         + '</div></div></div>';
     }
     wrap.innerHTML = html;

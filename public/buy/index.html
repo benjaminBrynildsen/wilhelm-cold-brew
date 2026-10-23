@@ -83,10 +83,10 @@
       color:rgba(232,194,74,.92);background:rgba(232,194,74,.08);border:1px solid rgba(232,194,74,.38);
       border-radius:999px;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
     .cart-notes:hover{background:var(--gold,#e8c24a);border-color:var(--gold,#e8c24a);color:#241a05}
-    .cart-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+    .cart-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;text-align:left}
     .cart-name{font-family:'Bodoni Moda',Georgia,serif;font-size:18px;color:var(--parch,#f6efda);line-height:1.15}
-    /* Price line + stepper share the row beneath the full-width title. */
-    .cart-row2{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    /* Price line + stepper share the row beneath the full-width title, left-aligned. */
+    .cart-row2{display:flex;align-items:center;justify-content:flex-start;gap:12px 16px;flex-wrap:wrap}
     .cart-sub{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:rgba(246,239,218,.6);text-transform:uppercase;min-width:0}
     .cart-sub .soldout{color:#e08a7d}
     .cart-sub .cart-left{color:rgba(232,194,74,.9)}

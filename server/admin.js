@@ -219,6 +219,82 @@ async function runShipNotices(list) {
   }
 }
 
+// Pull (tracking #, WCB-order reference) pairs out of a USPS Click-N-Ship label
+// PDF — one label per page. Each page's text carries "USPS TRACKING # 9434 …"
+// and our "WCB-<orderId>" reference, so a batch of labels maps straight back to
+// its orders with no shipment-history spreadsheet. Text-layer only (no OCR);
+// Click-N-Ship labels have selectable text, so this is reliable.
+export async function extractUspsLabels(buffer) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, isEvalSupported: false }).promise;
+  const out = [];
+  try {
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const tc = await page.getTextContent();
+      const text = tc.items.map((i) => i.str).join(' ').replace(/\s+/g, ' ');
+      // Tracking: the digits (grouped with spaces) printed after "USPS TRACKING #",
+      // stopping at the WCB reference or the next word. Fall back to a looser grab.
+      const tm = text.match(/USPS TRACKING #\s*([\d][\d ]{18,30}?)(?=\s+WCB|\s+[A-Z]{2,})/i)
+              || text.match(/USPS TRACKING #\s*([\d ]{18,32})/i);
+      const tracking = tm ? tm[1].replace(/\D/g, '') : null;
+      const rm = text.match(/WCB[-\s]?(\d+)/i);
+      const refId = rm ? rm[1] : null;
+      if (tracking && tracking.length >= 20 && refId) out.push({ page: p, refId, tracking });
+    }
+  } finally { try { await doc.destroy(); } catch (e) { /* ignore */ } }
+  return out;
+}
+
+// Parse a USPS label PDF and match each label to its paid order by the
+// WCB-<order> reference, scoped to a batch. No DB writes, no emails — just the
+// plan: who gets notified, who's already been notified, and which labels didn't
+// match an order. Several labels for one order (box-per-bottle) accumulate.
+async function buildLabelImport(buffer, dropId) {
+  const labels = await extractUspsLabels(buffer);
+  const orders = (await q(
+    `SELECT o.id, o.email, o.shipping_name, o.ship_notified_at, d.name AS drop_name
+       FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+      WHERE o.status='paid' AND ($1::int IS NULL OR o.drop_id = $1)`, [dropId])).rows;
+  const byId = new Map(orders.map((o) => [String(o.id), o]));
+  const acc = new Map();
+  const unmatched = [];
+  for (const lb of labels) {
+    const order = byId.get(String(lb.refId));
+    if (!order) { unmatched.push({ tracking: lb.tracking, orderId: lb.refId }); continue; }
+    const e = acc.get(order.id) || acc.set(order.id, { order, trackings: [] }).get(order.id);
+    if (!e.trackings.some((t) => t.tracking === lb.tracking)) e.trackings.push({ tracking: lb.tracking, carrier: 'USPS' });
+  }
+  const matched = [], skipped = [];
+  for (const { order, trackings } of acc.values()) {
+    const row = {
+      orderId: order.id, email: order.email, name: order.shipping_name,
+      tracking: trackings.map((t) => t.tracking).join(', '), carrier: 'USPS', trackings, dropName: order.drop_name,
+    };
+    (order.ship_notified_at ? skipped : matched).push(row);
+  }
+  return { labels: labels.length, matched, skipped, unmatched };
+}
+
+// Record tracking for every matched + already-notified order (so the numbers are
+// on file), then email only the ones not yet notified. Re-checks ship_notified_at
+// at send time so approving a stale draft can never double-email.
+async function sendLabelImport({ matched, skipped }) {
+  const all = (matched || []).concat(skipped || []);
+  for (const m of all) {
+    await q(`UPDATE orders SET tracking_number=$1, tracking_carrier=$2, tracking_numbers=$3, shipped_at=COALESCE(shipped_at, now()) WHERE id=$4`,
+      [m.trackings[0].tracking, 'USPS', JSON.stringify(m.trackings), m.orderId])
+      .catch((e) => console.warn('[labels] update failed:', e?.message));
+  }
+  const toEmail = [];
+  for (const m of (matched || [])) {
+    const already = (await q(`SELECT ship_notified_at FROM orders WHERE id=$1`, [m.orderId])).rows[0]?.ship_notified_at;
+    if (!already) toEmail.push(m);
+  }
+  runShipNotices(toEmail);   // fire-and-forget; sets ship_notified_at per success
+  return { recorded: all.length, emailing: toEmail.length, skipped: (skipped || []).length };
+}
+
 // partly delivered. Progress lands in the blast's sent/failed counts (visible in
 // Blast history). Recipients are recorded to email_sends only on actual success.
 async function runBlast(blastId, recipients, subject, bodyHtml) {
@@ -265,6 +341,7 @@ export function mountAdmin(app) {
     { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/products$/, noLive: true },
     { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/notes$/, noLive: true },
     { method: 'POST', re: /^\/api\/admin\/journal$/, journalDraftOnly: true }, // create / edit a Ledger DRAFT
+    { method: 'POST', re: /^\/api\/admin\/orders\/import-labels$/ },           // upload a USPS label PDF → record tracking + email buyers
   ];
   const dropIdFromPath = (p) => { const m = p.match(/\/drops\/(\d+)(?:\/|$)/); return m ? +m[1] : null; };
   app.use('/api/admin', (req, res, next) => {
@@ -332,8 +409,10 @@ export function mountAdmin(app) {
         { method: 'POST', path: '/api/admin/drops/:id/products', body: { products: '[{name, priceCents, bottleCap, tastingNotes?, origin?, varietal?, elevation?, roast?, image?}] (max 6; replaces all; [] = single-bottle)' }, note: 'Not allowed while live.' },
         { method: 'POST', path: '/api/admin/drops/:id/notes', body: { tastingNotes: 'string', origin: 'string?', varietal: 'string?', elevation: 'string?', roast: 'string?' }, note: 'Not allowed while live.' },
         { method: 'POST', path: '/api/admin/journal', body: { id: 'int (omit to create)', title: 'string', category: 'string?', summary: 'string?', dek: 'string?', body: 'markdown', refs: 'string?', drop_id: 'int?' }, note: 'Creates/edits a DRAFT. Cannot edit a published article. Publishing stays manual.' },
+        { method: 'POST', path: '/api/admin/orders/import-labels', upload: 'raw PDF bytes, Content-Type: application/pdf', query: { dropId: 'int? — scope matching to that batch' }, note: 'Upload a USPS Click-N-Ship label PDF (one label/page). The bot ALWAYS creates a DRAFT for Ben to approve — it pulls each tracking # + WCB-<order> reference and matches to orders, but sends NOTHING. Returns {draftId, matched, skipped, unmatched}. Ben approves in the admin to actually record tracking and email buyers. Re-uploading is safe.' },
       ],
-      blocked: ['go live / close a drop', 'publish a Ledger article', 'send SMS or email', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
+      blocked: ['go live / close a drop', 'publish a Ledger article', 'send marketing SMS or email blasts', 'send shipping emails directly (the bot prepares a label-import DRAFT; only Ben approves it)', 'approve/discard a label-import draft', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
+      notes: 'The bot can PREPARE a shipping batch by uploading a USPS label PDF to /orders/import-labels, which saves a pending draft and pings Ben to approve. The bot cannot send any customer email itself — Ben approves the draft to send.',
       rateLimit: '120 requests per minute',
     });
   });
@@ -3392,6 +3471,138 @@ export function mountAdmin(app) {
       runShipNotices(matched);   // fire-and-forget; sets ship_notified_at per success
       res.json({ ok: true, recorded: matched.length + skipped.length, emailing: matched.length, skipped: skipped.length, unmatched: unmatched.length });
     } catch (e) { console.error('[import-tracking]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Import tracking straight from the USPS Click-N-Ship LABEL PDF (one label per
+  // page), for when the shipment-history spreadsheet is too big to export. Reads
+  // each label's "USPS TRACKING #" and our "WCB-<order>" reference and matches to
+  // the order (scoped to the selected batch). POST the raw PDF bytes with
+  // Content-Type application/pdf; ?dropId= scopes the match. Modes:
+  //   (default)   PREVIEW — returns the plan + a sample email; no writes/sends.
+  //   ?commit=1   SEND NOW — record tracking, mark shipped, email buyers (admin).
+  //   ?draft=1    SAVE A DRAFT for approval — no sends; shows up under pending
+  //               approvals until you approve it.
+  // A bot token may ONLY create a draft (commit is ignored for bots), so the bot
+  // prepares the batch and you approve before any customer email goes out.
+  app.post('/api/admin/orders/import-labels',
+    express.raw({ type: ['application/pdf', 'application/octet-stream'], limit: '40mb' }),
+    async (req, res) => {
+      if (!requireAdmin(req, res)) return;
+      if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
+      try {
+        const bot = isBot(req);
+        const asDraft = bot || /^(1|true)$/i.test(String(req.query?.draft || ''));
+        const commit = !bot && /^(1|true)$/i.test(String(req.query?.commit || ''));
+        const dropId = parseInt(req.query?.dropId, 10) || null;
+        const buf = Buffer.isBuffer(req.body) ? req.body : null;
+        if (!buf || !buf.length) return res.status(400).json({ error: 'no PDF uploaded — POST the raw label PDF with Content-Type: application/pdf' });
+        if (buf.slice(0, 5).toString('latin1') !== '%PDF-') return res.status(400).json({ error: 'that file is not a PDF' });
+
+        let imp;
+        try { imp = await buildLabelImport(buf, dropId); }
+        catch (e) { return res.status(400).json({ error: 'could not read the label PDF: ' + (e?.message || e) }); }
+        if (!imp.labels) return res.status(400).json({ error: 'no USPS labels found — expected "USPS TRACKING #" and a "WCB-<order>" reference on each page.' });
+
+        if (asDraft) {
+          const summary = { matched: imp.matched, skipped: imp.skipped, unmatched: imp.unmatched };
+          const row = (await q(
+            `INSERT INTO label_imports (drop_id, status, source, labels, summary)
+             VALUES ($1, 'pending', $2, $3, $4) RETURNING id, created_at`,
+            [dropId, bot ? 'bot' : 'admin', imp.labels, JSON.stringify(summary)])).rows[0];
+          pushToOwners({
+            title: '📦 Labels ready to approve',
+            body: `${bot ? 'Grok' : 'You'} prepared ${imp.matched.length} shipping notice${imp.matched.length === 1 ? '' : 's'}` +
+                  `${imp.unmatched.length ? ` · ${imp.unmatched.length} unmatched` : ''}. Tap to review.`,
+            url: '/admin/', tag: 'labels',
+          }).catch(() => {});
+          return res.json({ draft: true, draftId: row.id, labels: imp.labels, willEmail: imp.matched.length,
+            matched: imp.matched.length, skipped: imp.skipped.length, unmatched: imp.unmatched.length });
+        }
+
+        if (!commit) {
+          let sampleEmail = null;
+          if (imp.matched.length) {
+            const m = imp.matched[0];
+            const r = await renderShippingEmail({ shippingName: m.name, trackings: m.trackings, dropName: m.dropName });
+            sampleEmail = { to: m.email, name: m.name, subject: r.subject, html: r.html };
+          }
+          return res.json({ preview: true, labels: imp.labels, willEmail: imp.matched.length,
+            matched: imp.matched, skipped: imp.skipped, unmatched: imp.unmatched, sampleEmail });
+        }
+
+        const r = await sendLabelImport(imp);
+        res.json({ ok: true, labels: imp.labels, ...r, unmatched: imp.unmatched.length });
+      } catch (e) { console.error('[import-labels]', e); res.status(500).json({ error: e.message }); }
+    });
+
+  // ───────── Label-import drafts (bot prepares → you approve) ─────────
+  // List pending drafts (and recent decided ones) so the admin can review and
+  // approve/discard what the bot prepared.
+  app.get('/api/admin/label-imports', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(
+        `SELECT li.id, li.drop_id, li.status, li.source, li.labels, li.created_at, li.decided_at,
+                (li.summary->'matched') AS m, (li.summary->'skipped') AS s, (li.summary->'unmatched') AS u,
+                d.name AS drop_name
+           FROM label_imports li LEFT JOIN drops d ON d.id = li.drop_id
+          ORDER BY (li.status='pending') DESC, li.created_at DESC
+          LIMIT 50`)).rows;
+      const list = rows.map((r) => ({
+        id: r.id, dropId: r.drop_id, dropName: r.drop_name, status: r.status, source: r.source,
+        labels: r.labels, createdAt: r.created_at, decidedAt: r.decided_at,
+        willEmail: Array.isArray(r.m) ? r.m.length : 0,
+        alreadyNotified: Array.isArray(r.s) ? r.s.length : 0,
+        unmatched: Array.isArray(r.u) ? r.u.length : 0,
+      }));
+      res.json({ pending: list.filter((x) => x.status === 'pending'), recent: list.filter((x) => x.status !== 'pending') });
+    } catch (e) { console.error('[label-imports]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // One draft in full, with a rendered sample email for review.
+  app.get('/api/admin/label-imports/:id', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const row = (await q(
+        `SELECT li.id, li.drop_id, li.status, li.source, li.labels, li.summary, li.created_at, li.decided_at,
+                d.name AS drop_name
+           FROM label_imports li LEFT JOIN drops d ON d.id = li.drop_id WHERE li.id=$1`, [parseInt(req.params.id, 10)])).rows[0];
+      if (!row) return res.status(404).json({ error: 'not found' });
+      const s = row.summary || {};
+      let sampleEmail = null;
+      if (Array.isArray(s.matched) && s.matched.length) {
+        const m = s.matched[0];
+        const r = await renderShippingEmail({ shippingName: m.name, trackings: m.trackings, dropName: m.dropName });
+        sampleEmail = { to: m.email, name: m.name, subject: r.subject, html: r.html };
+      }
+      res.json({ id: row.id, dropId: row.drop_id, dropName: row.drop_name, status: row.status, source: row.source,
+        labels: row.labels, createdAt: row.created_at, decidedAt: row.decided_at,
+        matched: s.matched || [], skipped: s.skipped || [], unmatched: s.unmatched || [], sampleEmail });
+    } catch (e) { console.error('[label-imports/:id]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Approve a pending draft → record tracking + email buyers now. Admin only
+  // (never in the bot allowlist), so the bot can prepare but only you send.
+  app.post('/api/admin/label-imports/:id/approve', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    if (!mailReady()) return res.status(501).json({ error: 'email not configured' });
+    try {
+      const id = parseInt(req.params.id, 10);
+      // Claim the pending row so a double-tap can't send twice.
+      const row = (await q(`UPDATE label_imports SET status='sent', decided_at=now() WHERE id=$1 AND status='pending' RETURNING summary`, [id])).rows[0];
+      if (!row) return res.status(409).json({ error: 'draft is not pending (already approved, discarded, or missing)' });
+      const s = row.summary || {};
+      const r = await sendLabelImport({ matched: s.matched || [], skipped: s.skipped || [] });
+      res.json({ ok: true, ...r, unmatched: (s.unmatched || []).length });
+    } catch (e) { console.error('[label-imports/approve]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/admin/label-imports/:id/discard', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const n = (await q(`UPDATE label_imports SET status='discarded', decided_at=now() WHERE id=$1 AND status='pending'`, [parseInt(req.params.id, 10)])).rowCount;
+      res.json({ ok: true, discarded: n });
+    } catch (e) { console.error('[label-imports/discard]', e); res.status(500).json({ error: e.message }); }
   });
 
   // Send a single shipping email to Ben's own inbox (the from-address) using a

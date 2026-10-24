@@ -19,6 +19,7 @@
     "imapflow": "^1.4.6",
     "mailparser": "^3.9.14",
     "nodemailer": "^6.9.16",
+    "pdfjs-dist": "^4.10.38",
     "pg": "^8.13.1",
     "stripe": "^22.2.0",
     "web-push": "^3.6.7",

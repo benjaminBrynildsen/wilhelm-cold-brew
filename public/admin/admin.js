@@ -2055,6 +2055,25 @@ function renderRaces(speed) {
     <div class="note" style="margin-top:8px">Each batch is timed from its <b>first paid sale</b> (the start line) — go-live isn't separately recorded, and the rush starts at the first order anyway. The minute columns are bottles sold within that long after the first sale; <b>Sellout</b> is how long it took to reach the cap. 🏅 marks the current record-holder in each column.</div>`;
 }
 
+// Shared render for a USPS-label import result (used by the manual preview and
+// the "Review" of a bot-prepared draft). opts.frameId names the sample-email
+// iframe; opts.showSend adds the "Send now" button (preview only).
+function labelPreviewHtml(r, opts) {
+  opts = opts || {};
+  const frameId = opts.frameId || 'lblframe';
+  const names = (r.matched || []).slice(0, 60).map((m) =>
+    `<li>${esc(m.name || m.email || '—')} <span class="note">— order ${esc(m.orderId)}${m.trackings && m.trackings.length > 1 ? ' · ' + m.trackings.length + ' boxes' : ''}</span></li>`).join('');
+  const um = (r.unmatched || []).slice(0, 15).map((u) =>
+    `<li>${esc(u.tracking)} <span class="note">— WCB-${esc(u.orderId || '?')} (no paid order in this batch)</span></li>`).join('');
+  return `<div class="note" style="margin:6px 0"><b>${num(r.labels || 0)}</b> labels read · <b style="color:var(--good)">${num(r.willEmail || 0)}</b> will be emailed`
+    + `${(r.skipped && r.skipped.length) ? ` · ${num(r.skipped.length)} already notified (skipped)` : ''}`
+    + `${(r.unmatched && r.unmatched.length) ? ` · <span style="color:var(--bad)">${num(r.unmatched.length)} unmatched</span>` : ''}.</div>`
+    + `${(r.matched && r.matched.length) ? `<h4 style="margin:12px 0 4px">Who will be emailed</h4><ul style="margin:4px 0;columns:2;column-gap:28px">${names}${r.matched.length > 60 ? '<li>…</li>' : ''}</ul>` : ''}`
+    + `${(r.unmatched && r.unmatched.length) ? `<div class="note" style="color:var(--bad)">Unmatched (won't be emailed):<ul style="margin:4px 0 0">${um}${r.unmatched.length > 15 ? '<li>…</li>' : ''}</ul></div>` : ''}`
+    + `${r.sampleEmail ? `<h4 style="margin:16px 0 4px">Email preview <span class="note">— subject: "${esc(r.sampleEmail.subject)}"</span></h4><iframe id="${frameId}" title="shipping email preview" style="width:100%;max-width:600px;height:520px;border:1px solid rgba(232,217,181,0.2);border-radius:6px;background:#fff"></iframe>` : ''}`
+    + `${opts.showSend ? `<div class="row-actions" style="margin-top:14px;border-top:1px solid rgba(232,217,181,0.15);padding-top:12px">${r.willEmail ? `<button class="btn" id="lblsend">Send ${num(r.willEmail)} tracking email${r.willEmail === 1 ? '' : 's'} now</button>` : '<span class="note">Nothing to send.</span>'}<span class="note" id="lblsendmsg"></span></div>` : ''}`;
+}
+
 async function showOrders() {
   loading();
   try {
@@ -2187,6 +2206,16 @@ async function showOrders() {
       </div>
       <div class="note">After you buy labels, upload the shipments file here (.xlsx or .csv). <b>Pirate Ship</b>: export the shipments. <b>USPS Click-N-Ship</b>: export your shipping history / label report — our export stamps each label with <code>WCB-&lt;order&gt;</code> in the Reference ID, which USPS echoes back, so it matches even though USPS's file has no Order ID or email. It records each tracking number, marks the order shipped, emails the purchaser their link, and the status then shows on their account page. Preview first, then send — re-uploading the same file won't email anyone twice.</div>
       <div id="trackresult" style="margin-top:8px"></div>
+
+      <h3 style="margin-top:26px">Import from USPS labels (PDF) <span class="note">— when the shipment-history export is too big</span></h3>
+      <div id="label-approvals"></div>
+      <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
+        <input type="file" id="labelfile" accept="application/pdf,.pdf" style="${FLD_DARK};padding:6px;max-width:320px"/>
+        <button class="btn ghost" id="labelpreview">Preview labels</button>
+        <span class="note" id="labelmsg"></span>
+      </div>
+      <div class="note">Upload the USPS Click-N-Ship <b>label PDF</b> itself (one label per page) when the shipment-history spreadsheet is too big to export. We read each label's tracking # and the <code>WCB-&lt;order&gt;</code> reference, match it to the order in the selected batch, then record tracking + email the buyer their link. Preview first; re-uploading is safe (never double-emails). Your bot can upload here too — it prepares a <b>draft for your approval</b> that appears above.</div>
+      <div id="labelresult" style="margin-top:8px"></div>
 
       </div>
       <div class="osec" data-sec="orders" style="display:${dsp('orders')}">
@@ -2451,6 +2480,85 @@ async function showOrders() {
         });
       } catch (e) { tmsg.textContent = 'Failed: ' + e.message; }
     });
+
+    // ── USPS label PDF: manual preview/send + bot-prepared approvals ──
+    const uploadLabels = async (extraQs) => {
+      const lf = document.getElementById('labelfile');
+      if (!lf || !lf.files || !lf.files[0]) throw new Error('Choose your USPS label PDF first.');
+      const parts = [];
+      if (state.ordersDrop) parts.push('dropId=' + encodeURIComponent(state.ordersDrop));
+      if (extraQs) parts.push(extraQs);
+      const r = await fetch('/api/admin/orders/import-labels' + (parts.length ? '?' + parts.join('&') : ''), {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/pdf' }, body: lf.files[0],
+      });
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j;
+    };
+    const lprev = document.getElementById('labelpreview');
+    if (lprev) lprev.addEventListener('click', async () => {
+      const msg = document.getElementById('labelmsg'), out = document.getElementById('labelresult');
+      msg.textContent = 'Reading labels…'; out.innerHTML = '';
+      try {
+        const r = await uploadLabels(null);                     // preview (no commit)
+        msg.textContent = '';
+        out.innerHTML = labelPreviewHtml(r, { showSend: true, frameId: 'lblframe' });
+        if (r.sampleEmail) { const fr = document.getElementById('lblframe'); if (fr) fr.srcdoc = r.sampleEmail.html; }
+        const send = document.getElementById('lblsend');
+        if (send) send.addEventListener('click', async () => {
+          if (!confirm(`Send tracking emails to ${r.willEmail} buyer(s) now?`)) return;
+          send.disabled = true; document.getElementById('lblsendmsg').textContent = ' Sending…';
+          try {
+            const rr = await uploadLabels('commit=1');
+            document.getElementById('lblsendmsg').textContent = ` Recorded ${rr.recorded}, emailing ${rr.emailing} in the background.`;
+            setTimeout(showOrders, 2500);
+          } catch (e) { send.disabled = false; document.getElementById('lblsendmsg').textContent = ' Failed: ' + e.message; }
+        });
+      } catch (e) { msg.textContent = 'Failed: ' + e.message; out.innerHTML = ''; }
+    });
+
+    // Pending label-import drafts (what the bot — or you — prepared for approval).
+    (async function loadApprovals() {
+      const box = document.getElementById('label-approvals'); if (!box) return;
+      let data; try { data = await api('/api/admin/label-imports'); } catch (e) { return; }
+      const p = (data && data.pending) || [];
+      if (!p.length) { box.innerHTML = ''; return; }
+      box.innerHTML = `<div style="border:1px solid var(--gold);border-radius:8px;padding:12px 14px;margin:6px 0 14px;background:rgba(232,194,74,0.06)">
+        <div style="font-weight:700;color:var(--gold);margin-bottom:6px">📦 Label batches awaiting your approval (${p.length})</div>
+        ${p.map((d) => `<div data-draft="${d.id}" style="padding:8px 0;border-top:1px solid rgba(232,194,74,0.15)">
+          <div class="row-actions" style="align-items:center;gap:10px;flex-wrap:wrap">
+            <span>${esc(d.dropName || ('Batch ' + (d.dropId || '?')))} <span class="note">— ${d.source === 'bot' ? 'prepared by your bot' : 'prepared by you'} · ${num(d.labels)} labels</span></span>
+            <span class="note"><b style="color:var(--good)">${num(d.willEmail)}</b> to email${d.alreadyNotified ? ` · ${num(d.alreadyNotified)} already` : ''}${d.unmatched ? ` · <span style="color:var(--bad)">${num(d.unmatched)} unmatched</span>` : ''}</span>
+            <span style="flex:1;min-width:10px"></span>
+            <button class="btn ghost sm lbl-review" data-id="${d.id}">Review</button>
+            <button class="btn sm lbl-approve" data-id="${d.id}">Approve &amp; send</button>
+            <button class="btn ghost sm lbl-discard" data-id="${d.id}">Discard</button>
+          </div>
+          <div class="lbl-detail" id="lbl-detail-${d.id}" style="margin-top:8px"></div>
+        </div>`).join('')}
+      </div>`;
+      box.querySelectorAll('.lbl-approve').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('Approve and send these tracking emails to buyers now?')) return;
+        b.disabled = true; b.textContent = 'Sending…';
+        try { const rr = await api(`/api/admin/label-imports/${b.dataset.id}/approve`, { method: 'POST' });
+          alert(`Recorded ${rr.recorded}, emailing ${rr.emailing} in the background.`); showOrders();
+        } catch (e) { b.disabled = false; b.textContent = 'Approve & send'; alert('Failed: ' + e.message); }
+      }));
+      box.querySelectorAll('.lbl-discard').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('Discard this prepared batch? No emails are sent.')) return;
+        try { await api(`/api/admin/label-imports/${b.dataset.id}/discard`, { method: 'POST' }); loadApprovals(); }
+        catch (e) { alert('Failed: ' + e.message); }
+      }));
+      box.querySelectorAll('.lbl-review').forEach((b) => b.addEventListener('click', async () => {
+        const det = document.getElementById('lbl-detail-' + b.dataset.id);
+        if (det.innerHTML) { det.innerHTML = ''; return; }
+        det.innerHTML = '<div class="note">Loading…</div>';
+        try { const d = await api(`/api/admin/label-imports/${b.dataset.id}`);
+          det.innerHTML = labelPreviewHtml(
+            { labels: d.labels, willEmail: (d.matched || []).length, matched: d.matched, skipped: d.skipped, unmatched: d.unmatched, sampleEmail: d.sampleEmail },
+            { showSend: false, frameId: 'lblframe-' + b.dataset.id });
+          if (d.sampleEmail) { const fr = document.getElementById('lblframe-' + b.dataset.id); if (fr) fr.srcdoc = d.sampleEmail.html; }
+        } catch (e) { det.innerHTML = '<div class="note">Failed: ' + esc(e.message) + '</div>'; }
+      }));
+    })();
 
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
       try {

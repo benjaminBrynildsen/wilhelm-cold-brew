@@ -499,6 +499,22 @@ export async function ensureSchema() {
       last_ok_at TIMESTAMPTZ
     );
 
+    -- USPS label-PDF imports prepared for approval. The bot (or admin) uploads a
+    -- label PDF; we parse tracking + WCB-<order> refs and store the plan here as
+    -- 'pending'. Approving sends the customer tracking emails and marks it 'sent';
+    -- summary holds the matched/skipped/unmatched sets so approval needs no re-upload.
+    CREATE TABLE IF NOT EXISTS label_imports (
+      id         BIGSERIAL PRIMARY KEY,
+      drop_id    BIGINT,
+      status     TEXT NOT NULL DEFAULT 'pending',   -- pending | sent | discarded
+      source     TEXT NOT NULL DEFAULT 'admin',     -- admin | bot
+      labels     INTEGER NOT NULL DEFAULT 0,        -- total labels parsed from the PDF
+      summary    JSONB NOT NULL,                    -- { matched:[…], skipped:[…], unmatched:[…] }
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      decided_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS label_imports_status_idx ON label_imports (status, created_at DESC);
+
     -- Loyalty points ledger. Every earn/spend is one immutable row; balances are
     -- derived (SUM of delta = spendable balance; SUM of positive delta = lifetime
     -- earned, which drives permanent status like the Pre-Order privilege). The

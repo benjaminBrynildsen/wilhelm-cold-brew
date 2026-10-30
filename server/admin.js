@@ -2951,7 +2951,10 @@ export function mountAdmin(app) {
       const scope = String(req.query?.scope || 'unshipped');
       const dropId = parseInt(req.query?.dropId, 10);
       const lbsPerBottle = Math.max(0.1, parseFloat(req.query?.lbs) || 3);
-      const split = req.query?.split === '1';
+      // productId = export ONE bottle of a two-bottle batch, so each bottle type
+      // can be imported into USPS as its own file. It implies per-bottle rows.
+      const productId = parseInt(req.query?.productId, 10) || null;
+      const split = req.query?.split === '1' || !!productId;
       const service = req.query?.service ? String(req.query.service).slice(0, 60) : 'USPS Ground Advantage';
       const pkgType = req.query?.package ? String(req.query.package).slice(0, 40) : 'Custom Packaging';
       // Return address — USPS's bulk file requires the sender in-file (it doesn't
@@ -2989,6 +2992,10 @@ export function mountAdmin(app) {
       if (split && rows.length) {
         // Same scope as the orders above (reuse the WHERE/params by joining the
         // order row), so this only pulls line items for orders in the export.
+        // With productId set, restrict to that one bottle.
+        const iparams = params.slice();
+        let pfilter = '';
+        if (productId) { iparams.push(productId); pfilter = ` AND oi.product_id = $${iparams.length}`; }
         const items = (await q(
           `SELECT oi.order_id,
                   COALESCE(NULLIF(btrim(oi.name),''), p.name, 'Bottle') AS bottle,
@@ -2996,7 +3003,7 @@ export function mountAdmin(app) {
              FROM order_items oi
              JOIN orders o ON o.id = oi.order_id
              LEFT JOIN drop_products p ON p.id = oi.product_id
-            WHERE ${where.join(' AND ')} AND oi.quantity > 0`, params)).rows;
+            WHERE ${where.join(' AND ')} AND oi.quantity > 0${pfilter}`, iparams)).rows;
         for (const it of items) {
           const key = String(it.order_id);
           if (!itemsByOrder.has(key)) itemsByOrder.set(key, []);
@@ -3024,7 +3031,10 @@ export function mountAdmin(app) {
         }
         addr = addr || {};
         const toks = String(name || '').trim().split(/\s+/).filter(Boolean);
-        const first = toks.length >= 2 ? toks[0] : '';
+        // USPS's bulk import rejects a recipient with a blank first OR last name,
+        // so a one-word name (e.g. "CJ") is duplicated into both fields ("CJ CJ")
+        // to get through. Two-plus words split first / rest as usual.
+        const first = toks.length >= 2 ? toks[0] : (toks[0] || '');
         const last = toks.length >= 2 ? toks.slice(1).join(' ') : (toks[0] || '');
         const common = { r, addr, first, last, phone, seq: seq++ };
         const items = split ? itemsByOrder.get(String(r.id)) : null;
@@ -3035,6 +3045,9 @@ export function mountAdmin(app) {
               boxesOut.push({ ...common, bottle: it.bottle, sort: it.sort || 0, perBox: 1 });
             }
           }
+        } else if (productId) {
+          // Per-bottle export: this order has no box of the requested bottle → skip it.
+          continue;
         } else {
           const qty = r.quantity || 1;
           const boxes = split ? qty : 1;
@@ -3096,8 +3109,15 @@ export function mountAdmin(app) {
         }
       }
 
+      // Name per-bottle files distinctly so two batch exports don't overwrite.
+      let fname = 'wilhelm-usps.csv';
+      if (productId) {
+        const slug = String(boxesOut[0]?.bottle || ('bottle-' + productId))
+          .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || ('bottle-' + productId);
+        fname = `wilhelm-usps-${slug}.csv`;
+      }
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-usps.csv"');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
       res.send(lines.join('\n'));
     } catch (e) { console.error('[usps-export]', e); res.status(500).json({ error: e.message }); }
   });

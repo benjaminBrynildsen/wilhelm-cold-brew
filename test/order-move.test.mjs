@@ -64,5 +64,21 @@ ok('bot CAN move an order', bot.status === 200 && bot.body.to === 'Batch 70', JS
 const blocked = await fetch(`${base}/api/admin/orders/900/tracking`, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr('bot')), body: JSON.stringify({ tracking: '123' }) });
 ok('bot still blocked from non-allowlisted write (403)', blocked.status === 403, String(blocked.status));
 
+console.log('\nOrder search');
+await q(`INSERT INTO orders (id,drop_id,email,quantity,status,shipping_name,paid_at,created_at) VALUES
+  (910,70,'cj@gmail.com',1,'paid','CJ',now(),now()),
+  (911,70,'maria.lopez@x.com',1,'paid','Maria Lopez',now(),now()),
+  (912,70,'nobuy@x.com',1,'pending','Pending Person',now(),now())`);
+const search = async (term, k) => { const r = await fetch(`${base}/api/admin/orders/search?q=${encodeURIComponent(term)}`, { headers: hdr(k || 'admin') }); return { status: r.status, body: await r.json() }; };
+const names = (b) => (b.results || []).map((x) => x.name).sort();
+ok('search by name (partial, case-insensitive)', names((await search('maria')).body).includes('Maria Lopez'));
+ok('search by email', names((await search('cj@gmail')).body).includes('CJ'));
+ok('search by order #', (await search('911')).body.results.some((x) => String(x.id) === '911'));
+const mres = (await search('maria')).body.results[0];
+ok('results carry name/email/batch', mres && mres.name === 'Maria Lopez' && mres.email === 'maria.lopez@x.com' && mres.dropName === 'Batch 70', JSON.stringify(mres));
+ok('excludes non-paid orders', !names((await search('Pending')).body).includes('Pending Person'));
+ok('short query returns nothing', ((await search('m')).body.results || []).length === 0);
+ok('bot can search (GET allowed)', (await search('maria', 'bot')).status === 200);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 server.close(() => process.exit(fail ? 1 : 0));

@@ -91,20 +91,23 @@ const base = `http://127.0.0.1:${server.address().port}`;
 
 const fetchCsv = async (p) => {
   const r = await fetch(base + p, { headers: { 'x-admin-key': 'testkey' } });
-  return { status: r.status, body: await r.text() };
+  return { status: r.status, body: await r.text(), cd: r.headers.get('content-disposition') || '' };
 };
 
-// Parse: for each data row, pull Reference ID (order) and Package Comments (bottle).
+// Parse: for each data row, pull Reference ID, Package Comments (bottle), and the
+// recipient first/last name.
 const COL = (header, name) => header.indexOf(name);
 const parse = (csv) => {
   const rows = csv.split('\n');
   const header = rows[0].split(',');
   const ri = COL(header, 'Reference ID');
   const pc = COL(header, 'Package Comments');
+  const fn = COL(header, 'Recipient First Name');
+  const ln = COL(header, 'Recipient Last Name');
   return rows.slice(1).filter(Boolean).map((line) => {
     // naive split is safe here — our seeded fields carry no commas
     const f = line.split(',');
-    return { order: f[ri], bottle: f[pc] };
+    return { order: f[ri], bottle: f[pc], first: f[fn], last: f[ln] };
   });
 };
 
@@ -134,6 +137,28 @@ const fr = parse(flat.body);
 ok('one row per order (4)', fr.length === 4, `got ${fr.length}`);
 ok('kept in purchase order', JSON.stringify(fr.map((r) => r.order)) === JSON.stringify(['WCB-101', 'WCB-102', 'WCB-103', 'WCB-104']), JSON.stringify(fr.map((r) => r.order)));
 ok('comments show the batch name', fr.every((r) => r.bottle === 'Batch No 7'), JSON.stringify(fr.map((r) => r.bottle)));
+
+// Per-bottle export: one USPS file per bottle type, that bottle only.
+console.log('\nUSPS per-bottle export (productId)');
+const z = await fetchCsv('/api/admin/orders/usps.csv?dropId=7&scope=all&productId=1');
+const zr = parse(z.body);
+ok('Zomba-only file: 4 boxes, all Zomba', zr.length === 4 && zr.every((r) => r.bottle === 'Zomba Peaberry'), JSON.stringify(zr.map((r) => r.bottle)));
+ok('Zomba-only orders', JSON.stringify(zr.map((r) => r.order)) === JSON.stringify(['WCB-101', 'WCB-101', 'WCB-102', 'WCB-104']), JSON.stringify(zr.map((r) => r.order)));
+ok('filename names the bottle', /zomba/i.test(z.cd), z.cd);
+const av = await fetchCsv('/api/admin/orders/usps.csv?dropId=7&scope=all&productId=2');
+const avr = parse(av.body);
+ok('Aravaca-only file: 2 boxes', avr.length === 2 && avr.every((r) => r.bottle === 'Aravaca Natural'), JSON.stringify(avr.map((r) => r.bottle)));
+ok('Aravaca-only orders', JSON.stringify(avr.map((r) => r.order)) === JSON.stringify(['WCB-102', 'WCB-103']), JSON.stringify(avr.map((r) => r.order)));
+
+// One-word recipient name → duplicated into first + last so USPS accepts it.
+console.log('\nOne-word name duplication');
+await mkOrder(105, 5, 'CJ', 'Chicago');
+await item(105, 1, 'Zomba Peaberry', 1);
+const z2 = parse((await fetchCsv('/api/admin/orders/usps.csv?dropId=7&scope=all&productId=1')).body);
+const cj = z2.find((r) => r.order === 'WCB-105');
+ok('one-word "CJ" → first=CJ, last=CJ', cj && cj.first === 'CJ' && cj.last === 'CJ', JSON.stringify(cj));
+const alpha = z2.find((r) => r.order === 'WCB-101');
+ok('two-word name still splits (Al / Pha)', alpha && alpha.first === 'Al' && alpha.last === 'Pha', JSON.stringify(alpha));
 
 // Legacy order (no line items) with split: falls back to quantity-based boxes.
 console.log('\nLegacy order + split');

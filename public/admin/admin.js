@@ -2177,6 +2177,18 @@ async function showOrders() {
         <span class="note" id="shipmsg"></span>
         ${o.addrIssues ? `<span class="note" style="color:#e0902a;font-weight:600;white-space:nowrap">⚠ ${num(o.addrIssues)} order${o.addrIssues === 1 ? '' : 's'} with an incomplete address — fix (⚠ / ✎ below) before exporting.</span>` : ''}
       </div>
+      ${(() => {
+        // Two-bottle batch: offer a separate USPS file per bottle, so each can be
+        // imported into Click-N-Ship on its own (one box per bottle, that bottle only).
+        const sd = dd.drops.find((d) => String(d.id) === String(state.ordersDrop));
+        const prods = (sd && sd.products) || [];
+        if (!state.ordersDrop || prods.length < 2) return '';
+        const base = '/api/admin/orders/usps.csv?dropId=' + encodeURIComponent(state.ordersDrop);
+        return `<div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px;margin-top:2px">
+          <span class="note">Or one USPS file per bottle (import each separately):</span>
+          ${prods.map((p) => `<a class="btn ghost" href="${base}&productId=${p.id}">USPS — ${esc(p.name || 'Bottle')}</a>`).join('')}
+        </div>`;
+      })()}
       <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Both assume 3 lbs/bottle — override with <code>?lbs=</code> if that's off. With <b>one box per bottle</b> ticked, a 2-bottle order becomes two rows (two labels, 1-bottle weight each). <b>Packing list by bottle</b> opens a printable sheet grouping every buyer under the bottle they ordered (anyone who bought both appears on both lists) — use it to pack the right bottles for the right people. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
       ${(() => {

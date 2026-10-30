@@ -342,6 +342,7 @@ export function mountAdmin(app) {
     { method: 'POST', re: /^\/api\/admin\/drops\/\d+\/notes$/, noLive: true },
     { method: 'POST', re: /^\/api\/admin\/journal$/, journalDraftOnly: true }, // create / edit a Ledger DRAFT
     { method: 'POST', re: /^\/api\/admin\/orders\/import-labels$/ },           // upload a USPS label PDF → record tracking + email buyers
+    { method: 'POST', re: /^\/api\/admin\/orders\/\d+\/move$/ },               // move a paid order onto a batch so it ships with it
   ];
   const dropIdFromPath = (p) => { const m = p.match(/\/drops\/(\d+)(?:\/|$)/); return m ? +m[1] : null; };
   app.use('/api/admin', (req, res, next) => {
@@ -410,6 +411,7 @@ export function mountAdmin(app) {
         { method: 'POST', path: '/api/admin/drops/:id/notes', body: { tastingNotes: 'string', origin: 'string?', varietal: 'string?', elevation: 'string?', roast: 'string?' }, note: 'Not allowed while live.' },
         { method: 'POST', path: '/api/admin/journal', body: { id: 'int (omit to create)', title: 'string', category: 'string?', summary: 'string?', dek: 'string?', body: 'markdown', refs: 'string?', drop_id: 'int?' }, note: 'Creates/edits a DRAFT. Cannot edit a published article. Publishing stays manual.' },
         { method: 'POST', path: '/api/admin/orders/import-labels', upload: 'raw PDF bytes, Content-Type: application/pdf', query: { dropId: 'int? — scope matching to that batch' }, note: 'Upload a USPS Click-N-Ship label PDF (one label/page). The bot ALWAYS creates a DRAFT for Ben to approve — it pulls each tracking # + WCB-<order> reference and matches to orders, but sends NOTHING. Returns {draftId, matched, skipped, unmatched}. Ben approves in the admin to actually record tracking and email buyers. Re-uploading is safe.' },
+        { method: 'POST', path: '/api/admin/orders/:id/move', body: { dropId: 'int — the target batch' }, note: 'Move a PAID order onto another batch so it ships with it (e.g. a past order that never went out). Un-ships it, clears any stale tracking + the already-notified flag, so it re-enters that batch’s unshipped export and the buyer gets fresh tracking when shipped. Shifts the order’s revenue/sold from its old batch to the new one.' },
       ],
       blocked: ['go live / close a drop', 'publish a Ledger article', 'send marketing SMS or email blasts', 'send shipping emails directly (the bot prepares a label-import DRAFT; only Ben approves it)', 'approve/discard a label-import draft', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
       notes: 'The bot can PREPARE a shipping batch by uploading a USPS label PDF to /orders/import-labels, which saves a pending draft and pings Ben to approve. The bot cannot send any customer email itself — Ben approves the draft to send.',
@@ -2739,6 +2741,37 @@ export function mountAdmin(app) {
       if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
       res.json({ ok: true, count: nums.length });
     } catch (e) { console.error('[orders] tracking update', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Move a paid order onto a different batch — for a past order that never
+  // shipped (e.g. a bad address) so it goes out with the chosen batch. Reassigns
+  // the batch and resets fulfillment (un-ships, clears any stale tracking, and
+  // clears the "already notified" flag) so it re-enters that batch's unshipped
+  // export and the buyer gets the fresh tracking email when it's shipped. Note:
+  // this shifts the order's revenue/sold count from its old batch to the new one.
+  app.post('/api/admin/orders/:id/move', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const id = parseInt(req.params.id, 10);
+    const dropId = parseInt(req.body?.dropId, 10);
+    if (!id) return res.status(400).json({ error: 'bad order id' });
+    if (!dropId) return res.status(400).json({ error: 'a target dropId is required' });
+    try {
+      const drop = (await q(`SELECT id, name FROM drops WHERE id=$1`, [dropId])).rows[0];
+      if (!drop) return res.status(404).json({ error: 'no such batch' });
+      const ord = (await q(
+        `SELECT o.id, o.status, o.email, o.shipping_name, o.drop_id,
+                d.name AS from_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id WHERE o.id=$1`, [id])).rows[0];
+      if (!ord) return res.status(404).json({ error: 'no such order' });
+      if (ord.status !== 'paid') return res.status(409).json({ error: `order #${id} is ${ord.status}, not paid — only paid orders can be moved to a batch` });
+      await q(
+        `UPDATE orders SET drop_id=$2, shipped_at=NULL, ship_notified_at=NULL,
+                tracking_number=NULL, tracking_numbers=NULL, tracking_carrier=NULL,
+                tracking_status=NULL, delivered_at=NULL, tracking_checked_at=NULL
+          WHERE id=$1`, [id, dropId]);
+      res.json({ ok: true, orderId: id, email: ord.email, name: ord.shipping_name,
+        from: ord.from_name || (ord.drop_id ? 'Batch ' + ord.drop_id : 'no batch'), to: drop.name || ('Batch ' + drop.id), toDropId: drop.id });
+    } catch (e) { console.error('[orders] move', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Shipping tracker: per-batch delivery overview + per-shipment list ─────────

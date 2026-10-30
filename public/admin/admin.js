@@ -2191,6 +2191,16 @@ async function showOrders() {
       })()}
       <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Both assume 3 lbs/bottle — override with <code>?lbs=</code> if that's off. With <b>one box per bottle</b> ticked, a 2-bottle order becomes two rows (two labels, 1-bottle weight each). <b>Packing list by bottle</b> opens a printable sheet grouping every buyer under the bottle they ordered (anyone who bought both appears on both lists) — use it to pack the right bottles for the right people. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
+      ${scoped && shown ? `
+      <h4 style="margin:18px 0 4px">Move a past order into this batch</h4>
+      <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
+        <input id="moveorder-id" placeholder="Order #" inputmode="numeric" style="${FLD_DARK};width:120px"/>
+        <button class="btn ghost" id="moveorder-btn">Move into ${esc(shown.name || 'this batch')}</button>
+        <span class="note" id="moveorder-msg"></span>
+      </div>
+      <div class="note">For a paid order from a previous week that never shipped (e.g. a bad address). It's reassigned to this batch, un-marked shipped, and any old tracking is cleared — so it shows in this batch's export above and the buyer gets fresh tracking when it goes out. After moving, it appears in <b>Recent orders</b> (Orders tab), where you can fix the address (✎) before exporting. Note: this shifts that order's revenue into this batch.</div>
+      ` : ''}
+
       ${(() => {
         const t = (shipTpl && shipTpl.tpl) || {};
         return `<h3>Shipping email <span class="note">— the tracking email each purchaser receives</span></h3>
@@ -2415,6 +2425,23 @@ async function showOrders() {
         document.getElementById('shipmsg').textContent = `Marked ${r.marked} shipped.`;
         showOrders();
       } catch (e) { document.getElementById('shipmsg').textContent = 'Failed: ' + e.message; }
+    });
+
+    // Move a past order into the selected batch (reassign + un-ship so it exports here).
+    const mvBtn = document.getElementById('moveorder-btn');
+    if (mvBtn) mvBtn.addEventListener('click', async () => {
+      const idEl = document.getElementById('moveorder-id'), msg = document.getElementById('moveorder-msg');
+      const oid = parseInt(String(idEl.value || '').replace(/[^0-9]/g, ''), 10);
+      if (!oid) { msg.textContent = 'Enter an order #.'; return; }
+      if (!confirm(`Move order #${oid} into this batch? It will ship with this batch, and the buyer gets fresh tracking when it goes out.`)) return;
+      mvBtn.disabled = true; msg.textContent = ' Moving…';
+      try {
+        const r = await api(`/api/admin/orders/${oid}/move`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dropId: state.ordersDrop }),
+        });
+        msg.textContent = ` Moved #${r.orderId} (${r.name || r.email || 'order'}) from ${r.from} → ${r.to}. Fix its address in Recent orders if needed.`;
+        setTimeout(showOrders, 1800);
+      } catch (e) { mvBtn.disabled = false; msg.textContent = ' Failed: ' + e.message; }
     });
 
     // Import tracking from a Pirate Ship export (.xlsx or .csv): preview, then send.

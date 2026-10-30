@@ -343,6 +343,7 @@ export function mountAdmin(app) {
     { method: 'POST', re: /^\/api\/admin\/journal$/, journalDraftOnly: true }, // create / edit a Ledger DRAFT
     { method: 'POST', re: /^\/api\/admin\/orders\/import-labels$/ },           // upload a USPS label PDF → record tracking + email buyers
     { method: 'POST', re: /^\/api\/admin\/orders\/\d+\/move$/ },               // move a paid order onto a batch so it ships with it
+    { method: 'POST', re: /^\/api\/admin\/orders\/manual$/ },                  // add a manual / comp order (no charge)
   ];
   const dropIdFromPath = (p) => { const m = p.match(/\/drops\/(\d+)(?:\/|$)/); return m ? +m[1] : null; };
   app.use('/api/admin', (req, res, next) => {
@@ -412,6 +413,7 @@ export function mountAdmin(app) {
         { method: 'POST', path: '/api/admin/journal', body: { id: 'int (omit to create)', title: 'string', category: 'string?', summary: 'string?', dek: 'string?', body: 'markdown', refs: 'string?', drop_id: 'int?' }, note: 'Creates/edits a DRAFT. Cannot edit a published article. Publishing stays manual.' },
         { method: 'POST', path: '/api/admin/orders/import-labels', upload: 'raw PDF bytes, Content-Type: application/pdf', query: { dropId: 'int? — scope matching to that batch' }, note: 'Upload a USPS Click-N-Ship label PDF (one label/page). The bot ALWAYS creates a DRAFT for Ben to approve — it pulls each tracking # + WCB-<order> reference and matches to orders, but sends NOTHING. Returns {draftId, matched, skipped, unmatched}. Ben approves in the admin to actually record tracking and email buyers. Re-uploading is safe.' },
         { method: 'POST', path: '/api/admin/orders/:id/move', body: { dropId: 'int — the target batch' }, note: 'Move a PAID order onto another batch so it ships with it (e.g. a past order that never went out). Un-ships it, clears any stale tracking + the already-notified flag, so it re-enters that batch’s unshipped export and the buyer gets fresh tracking when shipped. Shifts the order’s revenue/sold from its old batch to the new one.' },
+        { method: 'POST', path: '/api/admin/orders/manual', body: { dropId: 'int — the batch to add to', name: 'string — recipient (required)', email: 'string? — for the tracking email later', address: '{line1, line2?, city, state, postal_code}', items: '[{productId, quantity}] — for a two-bottle batch (GET /drops for product ids)', quantity: 'int? — bottle count when the batch has one bottle (default 1)', amountCents: 'int? — default 0 (a free comp; set it for a real amount)', note: 'string? — why it was added' }, note: 'Add a manual / COMP order with NO charge (no Stripe). Creates a paid order on the batch so it flows into the USPS export, label import and tracking email like any other. Marked manual (kept out of the sales-speed race). To search, read GET /api/admin/orders/search?q=.' },
       ],
       blocked: ['go live / close a drop', 'publish a Ledger article', 'send marketing SMS or email blasts', 'send shipping emails directly (the bot prepares a label-import DRAFT; only Ben approves it)', 'approve/discard a label-import draft', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
       notes: 'The bot can PREPARE a shipping batch by uploading a USPS label PDF to /orders/import-labels, which saves a pending draft and pings Ben to approve. The bot cannot send any customer email itself — Ben approves the draft to send.',
@@ -2413,7 +2415,7 @@ export function mountAdmin(app) {
           WHERE ($1::int IS NULL OR drop_id = $1)`, [dropId])).rows[0];
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
-                o.shipping_address, o.variant, o.created_at, o.paid_at, o.shipped_at,
+                o.shipping_address, o.variant, o.created_at, o.paid_at, o.shipped_at, o.manual,
                 o.tracking_number, o.tracking_numbers, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name,
                 -- how many distinct batches this buyer has paid for (>1 = recurring)
                 (SELECT COUNT(DISTINCT p.drop_id) FROM orders p
@@ -2799,6 +2801,60 @@ export function mountAdmin(app) {
         dropId: r.drop_id, dropName: r.drop_name || (r.drop_id ? 'Batch ' + r.drop_id : '—'),
       })) });
     } catch (e) { console.error('[orders] search', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Add a manual / comp order — put someone on a batch's shipping list WITHOUT
+  // charging them (no Stripe). Creates a paid order (default $0) with the given
+  // recipient + bottle(s), so it flows into the USPS export, label import and
+  // tracking email like any other order. Marked manual so it stays out of the
+  // sales-speed race. For a two-bottle batch, pass items:[{productId, quantity}];
+  // otherwise quantity is the bottle count.
+  app.post('/api/admin/orders/manual', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const dropId = parseInt(req.body?.dropId, 10);
+      if (!dropId) return res.status(400).json({ error: 'dropId is required' });
+      const drop = (await q(`SELECT id, name FROM drops WHERE id=$1`, [dropId])).rows[0];
+      if (!drop) return res.status(404).json({ error: 'no such batch' });
+      const name = String(req.body?.name || '').trim().slice(0, 200);
+      if (!name) return res.status(400).json({ error: 'a recipient name is required' });
+      const email = req.body?.email ? String(req.body.email).trim().toLowerCase().slice(0, 254) : null;
+      const a = req.body?.address || {};
+      const address = {
+        line1: String(a.line1 || '').trim().slice(0, 200),
+        line2: String(a.line2 || '').trim().slice(0, 200),
+        city: String(a.city || '').trim().slice(0, 100),
+        state: String(a.state || '').trim().slice(0, 40).toUpperCase(),
+        postal_code: String(a.postal_code || a.zip || '').trim().slice(0, 20),
+      };
+      const amountCents = Math.max(0, parseInt(req.body?.amountCents, 10) || 0);
+      const note = req.body?.note ? String(req.body.note).slice(0, 500) : null;
+
+      // Resolve the batch's bottles so items can be validated + named/priced.
+      const prods = (await q(`SELECT id, name, price_cents FROM drop_products WHERE drop_id=$1`, [dropId])).rows;
+      const byPid = new Map(prods.map((p) => [String(p.id), p]));
+      let items = Array.isArray(req.body?.items) ? req.body.items : [];
+      items = items
+        .map((it) => ({ productId: parseInt(it.productId, 10), quantity: Math.max(0, parseInt(it.quantity, 10) || 0) }))
+        .filter((it) => it.productId && it.quantity > 0);
+      for (const it of items) {
+        if (!byPid.has(String(it.productId))) return res.status(400).json({ error: `product ${it.productId} is not a bottle in this batch` });
+      }
+      const quantity = items.length ? items.reduce((s, it) => s + it.quantity, 0) : Math.max(1, parseInt(req.body?.quantity, 10) || 1);
+      if (quantity < 1) return res.status(400).json({ error: 'at least one bottle is required' });
+
+      const ord = (await q(
+        `INSERT INTO orders (drop_id, email, quantity, amount_total_cents, currency, status,
+                             shipping_name, shipping_address, paid_at, created_at, manual, note)
+         VALUES ($1,$2,$3,$4,'usd','paid',$5,$6::jsonb, now(), now(), TRUE, $7) RETURNING id`,
+        [dropId, email, quantity, amountCents, name, JSON.stringify(address), note])).rows[0];
+      for (const it of items) {
+        const p = byPid.get(String(it.productId));
+        await q(`INSERT INTO order_items (order_id, product_id, name, unit_price_cents, quantity) VALUES ($1,$2,$3,$4,$5)`,
+          [ord.id, it.productId, p.name, p.price_cents, it.quantity]);
+      }
+      res.json({ ok: true, orderId: ord.id, dropId, dropName: drop.name || ('Batch ' + drop.id), quantity, amountCents, items: items.length });
+    } catch (e) { console.error('[orders] manual', e); res.status(500).json({ error: e.message }); }
   });
 
   // ───────── Shipping tracker: per-batch delivery overview + per-shipment list ─────────
@@ -3195,7 +3251,7 @@ export function mountAdmin(app) {
         `SELECT o.drop_id, COALESCE(o.paid_at, o.created_at) AS t, o.quantity,
                 d.name AS drop_name, d.bottle_cap, d.status
            FROM orders o JOIN drops d ON d.id = o.drop_id
-          WHERE o.status = 'paid'
+          WHERE o.status = 'paid' AND o.manual IS NOT TRUE
           ORDER BY o.drop_id ASC, t ASC`)).rows;
       const THRESH = [10, 20, 30, 45, 60]; // minutes from first sale
       const byDrop = new Map();

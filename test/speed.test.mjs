@@ -20,6 +20,7 @@ const grab = (re) => dbSrc.match(re)[0];
 const { q } = await import(mod('db.js'));
 await q(grab(/CREATE TABLE IF NOT EXISTS drops \([\s\S]*?\);/));
 await q(grab(/CREATE TABLE IF NOT EXISTS orders \([\s\S]*?\);/));
+await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS manual BOOLEAN NOT NULL DEFAULT FALSE`);
 
 await q(`INSERT INTO drops (id, name, price_cents, bottle_cap, status) VALUES
   (1, 'Batch One', 5000, 100, 'closed'),

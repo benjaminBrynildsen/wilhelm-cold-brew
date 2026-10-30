@@ -2110,7 +2110,7 @@ async function showOrders() {
             : (r.quantity > 1 ? ` <span class="note">×${num(r.quantity)}</span>` : '')}</td>
           <td>${r.addressIssue ? `<span title="${esc(r.addressIssue)} — fix before exporting" style="color:#e0902a;cursor:default">⚠</span> ` : ''}${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
-          <td>${orderStatusBadge(r.status)}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
+          <td>${orderStatusBadge(r.status)}${r.manual ? ' <span class="chip" title="Manually added — no charge">comp</span>' : ''}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
           <td>${r.tracking_number
             ? `<a href="${esc(trackUrl(r.tracking_number, r.tracking_carrier))}" target="_blank" rel="noopener">${esc(String(r.tracking_number).slice(0, 14))}${String(r.tracking_number).length > 14 ? '…' : ''}</a>${r.ship_notified_at ? ' <span style="color:var(--good)" title="purchaser emailed">✓</span>' : ' <span class="note" title="tracking on file, not yet emailed">·</span>'}`
             : '<span class="note">—</span>'}${r.status === 'paid' ? ` <button class="btn ghost otrack" data-id="${r.id}" style="padding:0 7px" title="Edit tracking number">✎</button>` : ''}</td></tr>`).join('')
@@ -2199,6 +2199,36 @@ async function showOrders() {
       </div>
       <div id="moveorder-results" style="margin-top:6px"></div>
       <div class="note">For a paid order from a previous week that never shipped (e.g. a bad address). Search for it, then "Move here" reassigns it to <b>${esc(shown.name || 'this batch')}</b>, un-marks it shipped, and clears any old tracking — so it shows in this batch's export above and the buyer gets fresh tracking when it goes out. After moving, it appears in <b>Recent orders</b> (Orders tab), where you can fix the address (✎) before exporting. Note: this shifts that order's revenue into this batch.</div>
+
+      ${(() => {
+        const sd = dd.drops.find((d) => String(d.id) === String(state.ordersDrop));
+        const prods = (sd && sd.products) || [];
+        const bottleInputs = prods.length >= 2
+          ? prods.map((p) => `<label class="note">${esc(p.name || 'Bottle')} <input class="mo-qty" data-pid="${p.id}" type="number" min="0" step="1" value="0" style="${FLD_DARK};width:58px"/></label>`).join('')
+          : `<label class="note">Bottles <input id="mo-qty1" type="number" min="1" step="1" value="1" style="${FLD_DARK};width:58px"/></label>`;
+        return `
+      <h4 style="margin:18px 0 4px">Add an order manually <span class="note">— no charge (comp)</span></h4>
+      <div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center">
+        <input id="mo-name" placeholder="Recipient name" style="${FLD_DARK};width:180px"/>
+        <input id="mo-email" placeholder="Email (for the tracking notice)" style="${FLD_DARK};width:230px"/>
+      </div>
+      <div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+        <input id="mo-l1" placeholder="Street address" style="${FLD_DARK};width:210px"/>
+        <input id="mo-l2" placeholder="Apt / unit" style="${FLD_DARK};width:110px"/>
+        <input id="mo-city" placeholder="City" style="${FLD_DARK};width:130px"/>
+        <input id="mo-state" placeholder="State" style="${FLD_DARK};width:58px"/>
+        <input id="mo-zip" placeholder="Zip" style="${FLD_DARK};width:90px"/>
+      </div>
+      <div class="row-actions" style="flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px">
+        ${bottleInputs}
+        <label class="note">Amount $ <input id="mo-amount" type="number" min="0" step="0.01" value="0" style="${FLD_DARK};width:80px"/></label>
+        <input id="mo-note" placeholder="Note (optional)" style="${FLD_DARK};width:180px"/>
+        <button class="btn" id="mo-add">Add to ${esc(shown.name || 'this batch')}</button>
+        <span class="note" id="mo-msg"></span>
+      </div>
+      <div class="note">Adds someone to this batch's shipping list <b>without charging them</b> (a comp). It appears in Recent orders (tagged "comp") and in this batch's USPS export, and gets the tracking email when you ship it. Leave Amount at 0 for a free comp. ${prods.length >= 2 ? 'Set a quantity for each bottle you’re sending.' : ''}</div>
+        `;
+      })()}
       ` : ''}
 
       ${(() => {
@@ -2472,6 +2502,32 @@ async function showOrders() {
         }, 250);
       });
     }
+
+    // Add a manual / comp order (no charge) to the selected batch.
+    const moAdd = document.getElementById('mo-add');
+    if (moAdd) moAdd.addEventListener('click', async () => {
+      const msg = document.getElementById('mo-msg');
+      const val = (id) => (document.getElementById(id) ? document.getElementById(id).value : '').trim();
+      const name = val('mo-name');
+      if (!name) { msg.textContent = ' Enter a recipient name.'; return; }
+      const qtyInputs = [...document.querySelectorAll('.mo-qty')];
+      const items = qtyInputs.map((el) => ({ productId: el.dataset.pid, quantity: parseInt(el.value, 10) || 0 })).filter((x) => x.quantity > 0);
+      if (qtyInputs.length && !items.length) { msg.textContent = ' Set a quantity for at least one bottle.'; return; }
+      const body = {
+        dropId: state.ordersDrop, name, email: val('mo-email') || null,
+        address: { line1: val('mo-l1'), line2: val('mo-l2'), city: val('mo-city'), state: val('mo-state'), postal_code: val('mo-zip') },
+        amountCents: Math.max(0, Math.round((parseFloat(val('mo-amount')) || 0) * 100)),
+        note: val('mo-note') || null,
+      };
+      if (items.length) body.items = items;
+      else { const q1 = document.getElementById('mo-qty1'); body.quantity = q1 ? (parseInt(q1.value, 10) || 1) : 1; }
+      moAdd.disabled = true; msg.textContent = ' Adding…';
+      try {
+        const r = await api('/api/admin/orders/manual', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        msg.textContent = ` Added order #${r.orderId} (${r.quantity} bottle${r.quantity === 1 ? '' : 's'}) to ${r.dropName}.`;
+        setTimeout(showOrders, 1500);
+      } catch (e) { moAdd.disabled = false; msg.textContent = ' Failed: ' + e.message; }
+    });
 
     // Import tracking from a Pirate Ship export (.xlsx or .csv): preview, then send.
     let trackPayload = null;   // { xlsx: base64 } or { csv: text }

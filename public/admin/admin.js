@@ -2730,7 +2730,21 @@ async function showOrders() {
       const ed = document.createElement('tr');
       ed.id = 'addr-editor';
       ed.dataset.for = b.dataset.id;
-      ed.innerHTML = `<td colspan="7"><div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0">
+      // Show the detected issue (if any) right where it's fixed, so you don't
+      // have to hover the ⚠ to learn what's wrong.
+      const issueHint = {
+        'No shipping address': 'This order has no address at all — enter it below.',
+        'No street number': 'Line 1 has no house/street number. Put the numbered street in “Street address” (e.g. "1881 N. Nash St") and the building/unit in “Apt / unit”.',
+        'Missing street': 'The street address (line 1) is blank.',
+        'Missing city': 'The city is blank.',
+        'Missing state': 'The state is blank.',
+        'Missing ZIP': 'The ZIP code is blank.',
+        'Check ZIP': 'The ZIP doesn’t look like 5 digits (or ZIP+4) — check it.',
+      };
+      const banner = ord.addressIssue
+        ? `<div style="color:#e0902a;font-weight:600;margin:4px 0 6px">⚠ ${esc(ord.addressIssue)}<span class="note" style="color:#e0902a;font-weight:400"> — ${esc(issueHint[ord.addressIssue] || 'fix the fields below before exporting')}</span></div>`
+        : '';
+      ed.innerHTML = `<td colspan="7">${banner}<div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0">
           ${f('oa-name', 'Name', ord.shipping_name, 150)}
           ${f('oa-l1', 'Street address', a.line1, 210)}
           ${f('oa-l2', 'Apt / unit', a.line2, 110)}

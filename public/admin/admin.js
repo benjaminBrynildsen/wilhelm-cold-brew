@@ -2194,11 +2194,11 @@ async function showOrders() {
       ${scoped && shown ? `
       <h4 style="margin:18px 0 4px">Move a past order into this batch</h4>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
-        <input id="moveorder-id" placeholder="Order #" inputmode="numeric" style="${FLD_DARK};width:120px"/>
-        <button class="btn ghost" id="moveorder-btn">Move into ${esc(shown.name || 'this batch')}</button>
+        <input id="moveorder-q" placeholder="Search by name, email, or order #…" autocomplete="off" style="${FLD_DARK};width:min(340px,100%)"/>
         <span class="note" id="moveorder-msg"></span>
       </div>
-      <div class="note">For a paid order from a previous week that never shipped (e.g. a bad address). It's reassigned to this batch, un-marked shipped, and any old tracking is cleared — so it shows in this batch's export above and the buyer gets fresh tracking when it goes out. After moving, it appears in <b>Recent orders</b> (Orders tab), where you can fix the address (✎) before exporting. Note: this shifts that order's revenue into this batch.</div>
+      <div id="moveorder-results" style="margin-top:6px"></div>
+      <div class="note">For a paid order from a previous week that never shipped (e.g. a bad address). Search for it, then "Move here" reassigns it to <b>${esc(shown.name || 'this batch')}</b>, un-marks it shipped, and clears any old tracking — so it shows in this batch's export above and the buyer gets fresh tracking when it goes out. After moving, it appears in <b>Recent orders</b> (Orders tab), where you can fix the address (✎) before exporting. Note: this shifts that order's revenue into this batch.</div>
       ` : ''}
 
       ${(() => {
@@ -2427,22 +2427,51 @@ async function showOrders() {
       } catch (e) { document.getElementById('shipmsg').textContent = 'Failed: ' + e.message; }
     });
 
-    // Move a past order into the selected batch (reassign + un-ship so it exports here).
-    const mvBtn = document.getElementById('moveorder-btn');
-    if (mvBtn) mvBtn.addEventListener('click', async () => {
-      const idEl = document.getElementById('moveorder-id'), msg = document.getElementById('moveorder-msg');
-      const oid = parseInt(String(idEl.value || '').replace(/[^0-9]/g, ''), 10);
-      if (!oid) { msg.textContent = 'Enter an order #.'; return; }
-      if (!confirm(`Move order #${oid} into this batch? It will ship with this batch, and the buyer gets fresh tracking when it goes out.`)) return;
-      mvBtn.disabled = true; msg.textContent = ' Moving…';
-      try {
-        const r = await api(`/api/admin/orders/${oid}/move`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dropId: state.ordersDrop }),
-        });
-        msg.textContent = ` Moved #${r.orderId} (${r.name || r.email || 'order'}) from ${r.from} → ${r.to}. Fix its address in Recent orders if needed.`;
-        setTimeout(showOrders, 1800);
-      } catch (e) { mvBtn.disabled = false; msg.textContent = ' Failed: ' + e.message; }
-    });
+    // Move a past order into the selected batch: search by name/email/#, then
+    // pick the match to reassign it here (un-shipped, so it exports with this batch).
+    const mvQ = document.getElementById('moveorder-q');
+    if (mvQ) {
+      const msg = document.getElementById('moveorder-msg');
+      const out = document.getElementById('moveorder-results');
+      const fmtDate = (s) => { try { return new Date(s).toLocaleDateString(); } catch (e) { return ''; } };
+      const doMove = async (oid, name) => {
+        if (!confirm(`Move ${name ? name + ' (#' + oid + ')' : 'order #' + oid} into this batch? It will ship with this batch, and the buyer gets fresh tracking when it goes out.`)) return;
+        msg.textContent = ' Moving…';
+        try {
+          const r = await api(`/api/admin/orders/${oid}/move`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dropId: state.ordersDrop }),
+          });
+          out.innerHTML = '';
+          msg.textContent = ` Moved #${r.orderId} (${r.name || r.email || 'order'}) from ${r.from} → ${r.to}. Fix its address in Recent orders if needed.`;
+          setTimeout(showOrders, 1800);
+        } catch (e) { msg.textContent = ' Failed: ' + e.message; }
+      };
+      let mvSeq = 0;
+      const render = (results) => {
+        if (!results.length) { out.innerHTML = '<div class="note">No matching paid orders.</div>'; return; }
+        out.innerHTML = results.map((o) => `<div class="row-actions" style="align-items:center;gap:10px;padding:6px 0;border-top:1px solid rgba(232,217,181,0.12)">
+          <span>${esc(o.name || '—')} <span class="note">— ${esc(o.email || 'no email')} · ${esc(o.dropName)} · ${esc(fmtDate(o.createdAt))} · #${esc(o.id)}${o.shipped ? ' · <span style="color:var(--good)">shipped</span>' : ''}</span></span>
+          <span style="flex:1;min-width:8px"></span>
+          <button class="btn ghost sm mv-pick" data-id="${esc(o.id)}" data-name="${esc(o.name || '')}">Move here</button>
+        </div>`).join('');
+        out.querySelectorAll('.mv-pick').forEach((b) => b.addEventListener('click', () => doMove(b.dataset.id, b.dataset.name)));
+      };
+      let tmr = null;
+      mvQ.addEventListener('input', () => {
+        msg.textContent = '';
+        const term = mvQ.value.trim();
+        clearTimeout(tmr);
+        if (term.length < 2) { out.innerHTML = ''; return; }
+        const mine = ++mvSeq;
+        tmr = setTimeout(async () => {
+          try {
+            const r = await api('/api/admin/orders/search?q=' + encodeURIComponent(term));
+            if (mine !== mvSeq) return;   // a newer keystroke won
+            render(r.results || []);
+          } catch (e) { if (mine === mvSeq) out.innerHTML = '<div class="note">Search failed: ' + esc(e.message) + '</div>'; }
+        }, 250);
+      });
+    }
 
     // Import tracking from a Pirate Ship export (.xlsx or .csv): preview, then send.
     let trackPayload = null;   // { xlsx: base64 } or { csv: text }

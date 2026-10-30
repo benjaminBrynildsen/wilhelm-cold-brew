@@ -2774,6 +2774,33 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[orders] move', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Search paid orders by name / email / order # — powers the "move an order
+  // into this batch" type-ahead so you pick the right one instead of guessing an
+  // id. Returns a short list across all batches. (GET → the bot can search too.)
+  app.get('/api/admin/orders/search', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const qstr = String(req.query?.q || '').trim();
+      if (qstr.length < 2) return res.json({ results: [] });
+      const limit = Math.min(25, Math.max(1, parseInt(req.query?.limit, 10) || 12));
+      const like = '%' + qstr.replace(/[%_]/g, (m) => '\\' + m) + '%';
+      const asId = /^\d+$/.test(qstr) ? parseInt(qstr, 10) : -1;
+      const rows = (await q(
+        `SELECT o.id, o.email, o.shipping_name, o.status, o.created_at, o.drop_id,
+                (o.shipped_at IS NOT NULL) AS shipped, d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE o.status = 'paid'
+            AND (o.shipping_name ILIKE $1 OR o.email ILIKE $1 OR o.id = $2)
+          ORDER BY o.created_at DESC
+          LIMIT $3`, [like, asId, limit])).rows;
+      res.json({ results: rows.map((r) => ({
+        id: r.id, email: r.email, name: r.shipping_name, status: r.status,
+        createdAt: r.created_at, shipped: r.shipped,
+        dropId: r.drop_id, dropName: r.drop_name || (r.drop_id ? 'Batch ' + r.drop_id : '—'),
+      })) });
+    } catch (e) { console.error('[orders] search', e); res.status(500).json({ error: e.message }); }
+  });
+
   // ───────── Shipping tracker: per-batch delivery overview + per-shipment list ─────────
   app.get('/api/admin/shipping', async (req, res) => {
     if (!requireAdmin(req, res)) return;

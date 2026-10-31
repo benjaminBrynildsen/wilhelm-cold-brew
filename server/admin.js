@@ -3485,8 +3485,8 @@ export function mountAdmin(app) {
           if (!nums.length) continue;
           const carrier = m.carrier ? String(m.carrier).slice(0, 40) : 'USPS';
           const ord = (await q(
-            `SELECT o.id, o.email, o.shipping_name, (SELECT name FROM drops d WHERE d.id = o.drop_id) drop_name
-               FROM orders o WHERE o.id = $1 AND o.status = 'paid'`, [oid])).rows[0];
+            `SELECT o.id, o.email, o.shipping_name, d.name AS drop_name
+               FROM orders o LEFT JOIN drops d ON d.id = o.drop_id WHERE o.id = $1 AND o.status = 'paid'`, [oid])).rows[0];
           if (!ord) continue;
           const trackings = nums.map((t) => ({ tracking: t, carrier }));
           await q(`UPDATE orders SET tracking_number=$1, tracking_carrier=$2, tracking_numbers=$3,
@@ -3499,16 +3499,40 @@ export function mountAdmin(app) {
         runShipNotices(results);
         return res.json({ ok: true, recorded: results.length, emailing: results.length, skipped: 0, unmatched: 0 });
       }
-      let rows;
-      if (req.body?.xlsx) {
-        // Excel (.xlsx/.xls) — SheetJS to an array-of-arrays. raw:false keeps long
-        // tracking numbers as text rather than mangling them into scientific notation.
-        try {
+      // Parse one file payload ({xlsx: base64} or {csv: text}) to an array-of-arrays.
+      // raw:false keeps long tracking numbers as text (not scientific notation).
+      const parseOne = async (payload) => {
+        if (payload && payload.xlsx) {
           const XLSX = await import('xlsx');
-          const wb = XLSX.read(Buffer.from(String(req.body.xlsx), 'base64'), { type: 'buffer' });
-          const sheet = wb.Sheets[wb.SheetNames[0]];
-          rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '', blankrows: false });
-        } catch (e) { return res.status(400).json({ error: 'could not read the spreadsheet: ' + (e?.message || e) }); }
+          const wb = XLSX.read(Buffer.from(String(payload.xlsx), 'base64'), { type: 'buffer' });
+          return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '', blankrows: false });
+        }
+        return parseCsv(String((payload && payload.csv) || ''));
+      };
+      let rows;
+      // Accept several files at once (the two per-bottle USPS exports) and merge
+      // them by column NAME, so a multi-bottle order split across files still
+      // lands under one order → one combined tracking email.
+      const files = Array.isArray(req.body?.files) && req.body.files.length ? req.body.files : null;
+      if (files) {
+        const parsed = [];
+        for (const f of files) {
+          try { parsed.push(await parseOne(f)); }
+          catch (e) { return res.status(400).json({ error: 'could not read one of the files: ' + (e?.message || e) }); }
+        }
+        const nonEmpty = parsed.map((r) => (r || []).filter((x) => Array.isArray(x) && x.some((c) => String(c).trim() !== ''))).filter((r) => r.length);
+        if (!nonEmpty.length) return res.status(400).json({ error: 'no file provided' });
+        const master = nonEmpty[0][0].map((h) => String(h));
+        const masterLc = master.map((h) => h.trim().toLowerCase());
+        rows = [master];
+        for (const fr of nonEmpty) {
+          const hdrLc = fr[0].map((h) => String(h).trim().toLowerCase());
+          const map = hdrLc.map((h, ci) => { let idx = masterLc.indexOf(h); if (idx < 0) { master.push(String(fr[0][ci])); masterLc.push(h); idx = master.length - 1; } return idx; });
+          for (let i = 1; i < fr.length; i++) { const dst = new Array(master.length).fill(''); fr[i].forEach((v, ci) => { dst[map[ci]] = v; }); rows.push(dst); }
+        }
+      } else if (req.body?.xlsx) {
+        try { rows = await parseOne({ xlsx: req.body.xlsx }); }
+        catch (e) { return res.status(400).json({ error: 'could not read the spreadsheet: ' + (e?.message || e) }); }
       } else {
         const csv = String(req.body?.csv || '');
         if (!csv.trim()) return res.status(400).json({ error: 'no file provided' });
@@ -3543,9 +3567,8 @@ export function mountAdmin(app) {
       // so an email/Order-ID can't match an old order from a different batch.
       const dropId = parseInt(req.body?.dropId, 10) || null;
       const orders = (await q(
-        `SELECT o.id, o.email, o.shipping_name, o.ship_notified_at,
-                (SELECT name FROM drops d WHERE d.id = o.drop_id) AS drop_name
-           FROM orders o
+        `SELECT o.id, o.email, o.shipping_name, o.ship_notified_at, d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE o.status='paid' AND ($1::int IS NULL OR o.drop_id = $1)`, [dropId])).rows;
       const byId = new Map(orders.map((o) => [String(o.id), o]));
       const byEmail = new Map();

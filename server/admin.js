@@ -2567,7 +2567,32 @@ export function mountAdmin(app) {
           `SELECT id, name, price_cents, bottle_cap, status,
                   (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
              FROM drops WHERE id = $1`, [dropId])).rows[0] || null;
-        if (selected) selected.remaining = Math.max(0, selected.bottle_cap - selected.sold);
+        if (selected) {
+          // Two-bottle drops have a cap PER bottle (e.g. 100 + 30), and the batch
+          // keeps selling past the drop-level `bottle_cap` until EACH bottle hits
+          // its own cap — this is what the buy page's sellout logic actually does.
+          // So for the dashboard card, sum the per-bottle caps/paid/remaining
+          // instead of showing the single-bottle `bottle_cap`. Legacy (one-bottle)
+          // drops have no drop_products rows and fall through to the simple cap.
+          const prods = (await q(
+            `SELECT id, name, bottle_cap FROM drop_products WHERE drop_id = $1 ORDER BY sort, id`, [dropId])).rows;
+          if (prods.length) {
+            const paidRows = (await q(
+              `SELECT oi.product_id pid, COALESCE(SUM(oi.quantity),0)::int n
+                 FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                WHERE o.drop_id = $1 AND o.status = 'paid' GROUP BY oi.product_id`, [dropId])).rows;
+            const paid = Object.fromEntries(paidRows.map((x) => [x.pid, x.n]));
+            selected.products = prods.map((p) => {
+              const sold = paid[p.id] || 0;
+              return { ...p, sold, remaining: Math.max(0, p.bottle_cap - sold) };
+            });
+            selected.bottle_cap = selected.products.reduce((s, p) => s + p.bottle_cap, 0);
+            selected.sold = selected.products.reduce((s, p) => s + p.sold, 0);
+            selected.remaining = selected.products.reduce((s, p) => s + p.remaining, 0);
+          } else {
+            selected.remaining = Math.max(0, selected.bottle_cap - selected.sold);
+          }
+        }
       }
       // Missed-drop demand signal from the sold-out page (one vote per session).
       // Scoped to the selected drop when one is chosen; votes recorded before we

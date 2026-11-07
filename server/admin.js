@@ -585,8 +585,16 @@ export function mountAdmin(app) {
     catch (e) { console.error('[webauthn/delete]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // Since-launch day-by-day rollup cache (see the overview route).
-  let overviewDailyCache = { key: '', at: 0, daily: null };
+  // Since-launch day-by-day rollup cache (see the overview route). `byDay` holds
+  // every day's aggregates strictly BEFORE `boundary` (a Central-midnight
+  // instant); today's row is always recomputed live, so the history is frozen and
+  // cacheable. When the Central day rolls over, `boundary` moves and this goes
+  // stale — but rather than block the first load of the new day on a full
+  // since-launch rescan (the midnight stall), we serve the stale history and
+  // rebuild it in the background. `refreshing` guards against a stampede of
+  // midnight requests all kicking off the rebuild at once.
+  let overviewDailyCache = { key: '', hourFrag: null, boundary: null, byDay: null };
+  let overviewDailyRefreshing = false;
   // Traffic tab's fixed-window view/visitor cards (24h/7d/30d/all-time) scan the
   // whole page_views table; they move slowly, so a short cache keeps the tab
   // snappy without noticeably stale numbers.
@@ -939,10 +947,41 @@ export function mountAdmin(app) {
           fold(byDay, rep.rows, 'replies'); fold(byDay, real.rows, 'real');
           return byDay;
         };
-        if (overviewDailyCache.key !== histKey) {
-          overviewDailyCache = { key: histKey, byDay: await slice('created_at < $1', [todayFrom]) };
+        // Keep the expensive full-history rescan off the request path when all
+        // that changed is the day boundary. `histByDay` is the frozen history we
+        // merge today's live slice onto; `liveFrom` is where that live slice
+        // starts (normally today's midnight).
+        let liveFrom = todayFrom;
+        let histByDay;
+        if (overviewDailyCache.key === histKey) {
+          histByDay = overviewDailyCache.byDay;                 // fresh cache hit
+        } else {
+          const stale = overviewDailyCache;
+          if (stale.byDay && stale.hourFrag === hourFrag) {
+            // Same hour slice, only the Central day rolled over: serve yesterday's
+            // frozen history now and widen the live slice back to the stale
+            // boundary so the just-rolled-over day(s) are still counted, then
+            // rebuild the frozen history in the background and swap it in.
+            histByDay = stale.byDay;
+            liveFrom = stale.boundary || todayFrom;
+            if (!overviewDailyRefreshing) {
+              overviewDailyRefreshing = true;
+              (async () => {
+                try {
+                  const fresh = await slice('created_at < $1', [todayFrom]);
+                  overviewDailyCache = { key: histKey, hourFrag, boundary: todayFrom, byDay: fresh };
+                } catch (e) { console.error('[overview] daily history refresh failed', e); }
+                finally { overviewDailyRefreshing = false; }
+              })();
+            }
+          } else {
+            // Cold cache (process start) or an hour slice we've never computed —
+            // nothing usable to serve, so build the history synchronously.
+            histByDay = await slice('created_at < $1', [todayFrom]);
+            overviewDailyCache = { key: histKey, hourFrag, boundary: todayFrom, byDay: histByDay };
+          }
         }
-        const byDay = { ...overviewDailyCache.byDay, ...(await slice('created_at >= $1', [todayFrom])) };
+        const byDay = { ...histByDay, ...(await slice('created_at >= $1', [liveFrom])) };
         return Object.entries(byDay)
           .map(([day, v]) => {
             const ds = v.drinkSessions || 0, su = v.signups || 0, og = v.organic || 0;

@@ -54,6 +54,11 @@ const FROM = process.env.MAIL_FROM || 'Wilhelm Cold Brew <ben@wilhelmcoldbrew.co
 // inbox (defaults to the sending account); Matt is always on the list too.
 const SIGNUP_NOTIFY = [process.env.SIGNUP_NOTIFY || USER, 'mattbrynildsen@gmail.com']
   .filter(Boolean).join(', ');
+// New-signup alert EMAILS to the owners (Ben + Matt) are OFF by default — they
+// were too noisy in the inbox. The admin web-push ("📣 New signup") is separate
+// and still fires. To turn the emails back on, set SIGNUP_EMAIL_ALERTS=on in
+// Render (any other value / unset keeps them off).
+const SIGNUP_EMAIL_ALERTS = (process.env.SIGNUP_EMAIL_ALERTS || '').trim().toLowerCase() === 'on';
 
 let transporter = null;
 if (USER && PASS) {
@@ -190,6 +195,7 @@ export async function sendWelcome(to, { record = true } = {}) {
 // Plain notification: no tracking pixel, no unsubscribe link, not logged to
 // email_sends. Fire-and-forget so it never blocks or breaks the signup flow.
 export async function sendSignupAlert(email, meta = {}) {
+  if (!SIGNUP_EMAIL_ALERTS) return;   // owner email alerts off by default (push still fires)
   if (!transporter || !SIGNUP_NOTIFY) return;
   const where = [meta.city, meta.region, meta.country].filter(Boolean).join(', ');
   // The ad that brought them: the raw UTM captured at signup, source / campaign /
@@ -226,6 +232,7 @@ export async function sendSignupAlert(email, meta = {}) {
 // Phone-only SMS sign-up alert (the countdown "text me the drop link" form). No
 // email exists for these, so it's its own note keyed on the number.
 export async function sendSmsSignupAlert(phone, meta = {}) {
+  if (!SIGNUP_EMAIL_ALERTS) return;   // owner email alerts off by default (push still fires)
   if (!transporter || !SIGNUP_NOTIFY) return;
   const where = [meta.city, meta.region, meta.country].filter(Boolean).join(', ');
   const utm = [meta.utmSource, meta.utmCampaign, meta.utmContent].filter(Boolean).join(' / ');

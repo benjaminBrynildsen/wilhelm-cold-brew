@@ -87,7 +87,11 @@
       #pagetitle{font-family:'Cinzel',var(--display);font-weight:800;color:var(--gold);font-size:21px;letter-spacing:3px;text-transform:uppercase}
       .signups-badge{top:10px;right:16px}
       .wrap{padding-bottom:96px}
-      .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:rgba(12,10,8,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
+      /* Opaque, and deliberately NO backdrop-filter: a position:fixed bar WITH
+         backdrop-filter is mispainted by iOS/WebKit — it detaches and floats
+         mid-screen during scroll instead of staying pinned to the bottom. The bar
+         was already 94% opaque, so dropping the blur is visually near-identical. */
+      .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;background:#0c0a08;border-top:1px solid var(--line);padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
       .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;border-top:2px solid transparent;color:var(--dim);font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;padding:9px 2px 7px;overflow:hidden}
       .bn-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
       .bn-item.active{color:var(--gold);border-top-color:var(--gold)}

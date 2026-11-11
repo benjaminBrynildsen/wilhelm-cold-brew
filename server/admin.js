@@ -585,8 +585,16 @@ export function mountAdmin(app) {
     catch (e) { console.error('[webauthn/delete]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // Since-launch day-by-day rollup cache (see the overview route).
-  let overviewDailyCache = { key: '', at: 0, daily: null };
+  // Since-launch day-by-day rollup cache (see the overview route). `byDay` holds
+  // every day's aggregates strictly BEFORE `boundary` (a Central-midnight
+  // instant); today's row is always recomputed live, so the history is frozen and
+  // cacheable. When the Central day rolls over, `boundary` moves and this goes
+  // stale — but rather than block the first load of the new day on a full
+  // since-launch rescan (the midnight stall), we serve the stale history and
+  // rebuild it in the background. `refreshing` guards against a stampede of
+  // midnight requests all kicking off the rebuild at once.
+  let overviewDailyCache = { key: '', hourFrag: null, boundary: null, byDay: null };
+  let overviewDailyRefreshing = false;
   // Traffic tab's fixed-window view/visitor cards (24h/7d/30d/all-time) scan the
   // whole page_views table; they move slowly, so a short cache keeps the tab
   // snappy without noticeably stale numbers.
@@ -939,10 +947,41 @@ export function mountAdmin(app) {
           fold(byDay, rep.rows, 'replies'); fold(byDay, real.rows, 'real');
           return byDay;
         };
-        if (overviewDailyCache.key !== histKey) {
-          overviewDailyCache = { key: histKey, byDay: await slice('created_at < $1', [todayFrom]) };
+        // Keep the expensive full-history rescan off the request path when all
+        // that changed is the day boundary. `histByDay` is the frozen history we
+        // merge today's live slice onto; `liveFrom` is where that live slice
+        // starts (normally today's midnight).
+        let liveFrom = todayFrom;
+        let histByDay;
+        if (overviewDailyCache.key === histKey) {
+          histByDay = overviewDailyCache.byDay;                 // fresh cache hit
+        } else {
+          const stale = overviewDailyCache;
+          if (stale.byDay && stale.hourFrag === hourFrag) {
+            // Same hour slice, only the Central day rolled over: serve yesterday's
+            // frozen history now and widen the live slice back to the stale
+            // boundary so the just-rolled-over day(s) are still counted, then
+            // rebuild the frozen history in the background and swap it in.
+            histByDay = stale.byDay;
+            liveFrom = stale.boundary || todayFrom;
+            if (!overviewDailyRefreshing) {
+              overviewDailyRefreshing = true;
+              (async () => {
+                try {
+                  const fresh = await slice('created_at < $1', [todayFrom]);
+                  overviewDailyCache = { key: histKey, hourFrag, boundary: todayFrom, byDay: fresh };
+                } catch (e) { console.error('[overview] daily history refresh failed', e); }
+                finally { overviewDailyRefreshing = false; }
+              })();
+            }
+          } else {
+            // Cold cache (process start) or an hour slice we've never computed —
+            // nothing usable to serve, so build the history synchronously.
+            histByDay = await slice('created_at < $1', [todayFrom]);
+            overviewDailyCache = { key: histKey, hourFrag, boundary: todayFrom, byDay: histByDay };
+          }
         }
-        const byDay = { ...overviewDailyCache.byDay, ...(await slice('created_at >= $1', [todayFrom])) };
+        const byDay = { ...histByDay, ...(await slice('created_at >= $1', [liveFrom])) };
         return Object.entries(byDay)
           .map(([day, v]) => {
             const ds = v.drinkSessions || 0, su = v.signups || 0, og = v.organic || 0;
@@ -2567,7 +2606,32 @@ export function mountAdmin(app) {
           `SELECT id, name, price_cents, bottle_cap, status,
                   (SELECT COALESCE(SUM(o.quantity),0)::int FROM orders o WHERE o.drop_id = drops.id AND o.status='paid') AS sold
              FROM drops WHERE id = $1`, [dropId])).rows[0] || null;
-        if (selected) selected.remaining = Math.max(0, selected.bottle_cap - selected.sold);
+        if (selected) {
+          // Two-bottle drops have a cap PER bottle (e.g. 100 + 30), and the batch
+          // keeps selling past the drop-level `bottle_cap` until EACH bottle hits
+          // its own cap — this is what the buy page's sellout logic actually does.
+          // So for the dashboard card, sum the per-bottle caps/paid/remaining
+          // instead of showing the single-bottle `bottle_cap`. Legacy (one-bottle)
+          // drops have no drop_products rows and fall through to the simple cap.
+          const prods = (await q(
+            `SELECT id, name, bottle_cap FROM drop_products WHERE drop_id = $1 ORDER BY sort, id`, [dropId])).rows;
+          if (prods.length) {
+            const paidRows = (await q(
+              `SELECT oi.product_id pid, COALESCE(SUM(oi.quantity),0)::int n
+                 FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                WHERE o.drop_id = $1 AND o.status = 'paid' GROUP BY oi.product_id`, [dropId])).rows;
+            const paid = Object.fromEntries(paidRows.map((x) => [x.pid, x.n]));
+            selected.products = prods.map((p) => {
+              const sold = paid[p.id] || 0;
+              return { ...p, sold, remaining: Math.max(0, p.bottle_cap - sold) };
+            });
+            selected.bottle_cap = selected.products.reduce((s, p) => s + p.bottle_cap, 0);
+            selected.sold = selected.products.reduce((s, p) => s + p.sold, 0);
+            selected.remaining = selected.products.reduce((s, p) => s + p.remaining, 0);
+          } else {
+            selected.remaining = Math.max(0, selected.bottle_cap - selected.sold);
+          }
+        }
       }
       // Missed-drop demand signal from the sold-out page (one vote per session).
       // Scoped to the selected drop when one is chosen; votes recorded before we

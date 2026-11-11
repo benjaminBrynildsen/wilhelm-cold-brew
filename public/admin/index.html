@@ -180,6 +180,12 @@
     /* Phones: a wide table scrolls sideways inside its own box instead of spilling
        past panel borders and forcing the whole page to zoom out / pan. */
     @media(max-width:760px){table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+    /* Conversion-by-channel table: the "source / campaign / ad" labels get long,
+       so let that column wrap and keep all four columns (Landed/Joined/Conv.) on
+       screen at any width, instead of the table scrolling sideways and hiding the
+       numbers. Stays a real table on phones rather than the sideways-scroll block. */
+    .chanconv table td:first-child,.chanconv table th:first-child{white-space:normal;overflow-wrap:anywhere}
+    @media(max-width:760px){.chanconv table{display:table;width:100%}}
     h3{font-family:var(--display);color:var(--gold);margin:30px 0 8px;font-weight:600;font-size:20px}
     h3 .note{font-family:var(--sans);font-weight:400;font-size:12.5px;letter-spacing:.2px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}

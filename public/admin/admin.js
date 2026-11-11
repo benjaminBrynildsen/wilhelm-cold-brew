@@ -1743,7 +1743,7 @@ async function showTraffic() {
       </div>
       <div id="xads-panel" style="margin:2px 0 6px"></div>
       <div class="grid2">
-        <div style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juBody, [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
+        <div class="chanconv" style="grid-column:1/-1">${tbl(`Conversion by channel — landed → joined (${esc(w('all-time'))})`, juBody, [{ h: 'channel (source / campaign / ad)' }, { h: 'Landed', num: 1 }, { h: 'Joined', num: 1 }, { h: 'Conv.', num: 1 }])}
           ${ju.length > JU_PAGE ? `<button class="btn ghost sm" id="ju-more" style="margin-top:8px">Show 25 more (${ju.length - JU_PAGE} hidden)</button>` : ''}
           ${d.joiners ? `<div class="note" style="margin-top:6px">${num(d.joiners.attributed)} of ${num(d.joiners.total)} joiners matched to an entry channel · ${num(d.joiners.direct)} came in as "direct" (no referrer). "X (untagged)" = X clicks with no UTM; conv. = joined ÷ landed, first-touch by entry page view${rlab ? ' · entries limited to the selected dates; "joined" = subscribed on/after the range start (already-subscribed visitors don’t count)' : ''}.</div>` : ''}</div>
         <div>${tbl(`Top paths (${esc(w('30d'))})`, d.topPaths.map((r) => `<tr><td>${esc(r.path)}</td><td class="num">${num(r.count)}</td></tr>`).join('') || '<tr><td class="note">—</td><td></td></tr>', [{ h: 'Path' }, { h: 'Views', num: 1 }])}</div>

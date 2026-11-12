@@ -3894,6 +3894,7 @@ export function mountAdmin(app) {
       if (ids.length) {
         const prods = (await q(
           `SELECT dp.id, dp.drop_id, dp.sort, dp.name, dp.price_cents, dp.bottle_cap, dp.image, dp.tasting_notes,
+                  dp.origin, dp.varietal, dp.elevation, dp.roast,
                   (SELECT COALESCE(SUM(oi.quantity),0)::int FROM order_items oi JOIN orders o ON o.id=oi.order_id
                     WHERE oi.product_id = dp.id AND o.status='paid') AS sold
              FROM drop_products dp WHERE dp.drop_id = ANY($1) ORDER BY dp.sort, dp.id`, [ids])).rows;
@@ -4095,7 +4096,15 @@ export function mountAdmin(app) {
         [src.name, src.price_cents, src.bottle_cap,
          src.opens_at ? new Date(new Date(src.opens_at).getTime() + 7 * 86400000).toISOString() : null,
          src.tasting_notes, src.origin, src.varietal, src.elevation, src.roast]);
-      res.json({ ok: true, id: r.rows[0].id });
+      const newId = r.rows[0].id;
+      // Carry over the two-bottle setup too: copy every drop_products row (each
+      // bottle's name/price/cap/photo/tasting card) into the new drop. Without
+      // this, a duplicated two-bottle batch came back as a single-bottle drop.
+      await q(
+        `INSERT INTO drop_products (drop_id, sort, name, price_cents, bottle_cap, image, tasting_notes, origin, varietal, elevation, roast)
+         SELECT $1::int, sort, name, price_cents, bottle_cap, image, tasting_notes, origin, varietal, elevation, roast
+           FROM drop_products WHERE drop_id = $2::int ORDER BY sort, id`, [newId, id]);
+      res.json({ ok: true, id: newId });
     } catch (e) { console.error('[drops/duplicate]', e); res.status(500).json({ error: e.message }); }
   });
 

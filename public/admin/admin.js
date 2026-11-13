@@ -2290,12 +2290,17 @@ async function showOrders() {
         if (!nd) return '';
         const editOpts = dd.drops.map((d) =>
           `<option value="${d.id}" ${String(nd.id) === String(d.id) ? 'selected' : ''}>${esc(d.name || '(unnamed)')} — ${esc(d.status)}</option>`).join('');
+        // A two-bottle drop is driven entirely by its per-bottle rows below, so the
+        // drop-level price/bottles/tasting card don't apply — grey them out.
+        const twoBottle = (nd.products || []).length > 1;
         return `
       <h3>Edit drop</h3>
       <div class="row-actions" style="margin-bottom:8px;align-items:center">
         <label class="note">Editing <select id="editDropSel" style="${FLD_DARK}">${editOpts}</select></label>
         <span class="note">Pick any drop (including a duplicated one) to edit its price, bottles, and tasting card.</span>
       </div>
+      ${twoBottle ? `<div class="note" style="margin:0 0 8px;color:var(--gold)">This is a two-bottle drop — these drop-level fields don’t apply. Edit each bottle in the <b>Two bottles</b> section below.</div>` : ''}
+      <fieldset style="border:0;padding:0;margin:0;min-width:0${twoBottle ? ';opacity:.4' : ''}"${twoBottle ? ' disabled' : ''}>
       <div class="row-actions" style="flex-wrap:wrap;gap:10px;align-items:center">
         <label class="note">Price $<input id="dedit-price" type="number" min="1" step="0.01" value="${(nd.price_cents / 100).toFixed(2)}" style="width:90px;${FLD_DARK}"/></label>
         <label class="note">Bottles <input id="dedit-cap" type="number" min="1" step="1" value="${esc(nd.bottle_cap)}" style="width:80px;${FLD_DARK}"/></label>
@@ -2313,12 +2318,14 @@ async function showOrders() {
         <span class="note" id="dbatch-msg"></span>
       </div>
       <div class="note" style="margin-top:4px">Price/bottles/tasting card for the selected drop. Name and date are edited with the Rename / Reschedule buttons in the table above. Notes: one per line; text before a "—" is emphasized; blank fields fall back to the defaults.</div>
+      </fieldset>
       ${(() => {
         // Two-bottle prototype editor. Bottle A pre-fills from the drop's products
         // (or, for a legacy single drop, from the drop's own fields); Bottle B is
         // the second bottle. Fill both to make it a two-bottle mixed-cart drop.
         const P = nd.products || [];
-        const A = P[0] || { name: nd.name || '', price_cents: nd.price_cents, bottle_cap: nd.bottle_cap, image: '', tasting_notes: nd.tasting_notes || '' };
+        const A = P[0] || { name: nd.name || '', price_cents: nd.price_cents, bottle_cap: nd.bottle_cap, image: '', tasting_notes: nd.tasting_notes || '',
+          origin: nd.origin, varietal: nd.varietal, elevation: nd.elevation, roast: nd.roast };
         const B = P[1] || { name: '', price_cents: '', bottle_cap: '', image: '', tasting_notes: '' };
         const pv = (c) => (c === '' || c == null ? '' : (Number(c) / 100).toFixed(2));
         const slot = (k, s, ph) => `
@@ -2332,6 +2339,12 @@ async function showOrders() {
             <label class="note">Photo <input type="file" id="dp${k}-file" accept="image/*" style="max-width:180px;${FLD_DARK};padding:5px"/></label>
             <span class="note" id="dp${k}-imgmsg"></span>
             <input type="hidden" id="dp${k}-img" value="${esc(s.image || '')}"/>
+          </div>
+          <div class="row-actions" style="flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+            <label class="note">Origin &amp; region <input id="dp${k}-origin" value="${esc(s.origin || '')}" placeholder="Ethiopia · Yirgacheffe" style="width:180px;${FLD_DARK}"/></label>
+            <label class="note">Varietal <input id="dp${k}-varietal" value="${esc(s.varietal || '')}" placeholder="Heirloom" style="width:140px;${FLD_DARK}"/></label>
+            <label class="note">Elevation <input id="dp${k}-elevation" value="${esc(s.elevation || '')}" placeholder="1,950 m" style="width:110px;${FLD_DARK}"/></label>
+            <label class="note">Roast <input id="dp${k}-roast" value="${esc(s.roast || '')}" placeholder="Medium" style="width:110px;${FLD_DARK}"/></label>
           </div>
           <textarea id="dp${k}-notes" rows="2" placeholder="Tasting notes (one per line)" style="width:100%;${FLD_DARK};margin-top:6px;line-height:1.4">${esc(s.tasting_notes || '')}</textarea>
         </div>`;
@@ -2731,9 +2744,11 @@ async function showOrders() {
       const priceCents = Math.round(parseFloat(document.getElementById('dp' + k + '-price').value) * 100);
       const bottleCap = parseInt(document.getElementById('dp' + k + '-cap').value, 10);
       if (!name || !(priceCents > 0) || !(bottleCap > 0)) return null;
+      const val = (suffix) => { const el = document.getElementById('dp' + k + '-' + suffix); return el && el.value.trim() ? el.value.trim() : null; };
       return { name, priceCents, bottleCap,
         image: (document.getElementById('dp' + k + '-img').value || '').trim() || null,
-        tastingNotes: document.getElementById('dp' + k + '-notes').value || null };
+        tastingNotes: document.getElementById('dp' + k + '-notes').value || null,
+        origin: val('origin'), varietal: val('varietal'), elevation: val('elevation'), roast: val('roast') };
     };
     const postProducts = async (id, products, msgEl) => {
       const J = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products }) };

@@ -355,6 +355,15 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
 
   // On-page payment: reserve against the cap, create a PaymentIntent the buy page
   // confirms with Apple/Google Pay (Express Checkout Element) or card (Payment Element).
+  // Attribution source for an order: an explicit utm_source sent from the buy
+  // page if present, else the sticky first-party cookie a vanity link like
+  // /buy-sms dropped on this device. Short, lowercased; null = untagged / direct.
+  const orderSource = (req) => {
+    const raw = (req.body && req.body.utm_source) || (req.cookies && req.cookies.wcb_src) || '';
+    const s = String(raw).toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+    return s || null;
+  };
+
   app.post('/api/pay/intent', payLimit, async (req, res) => {
     if (!stripe) return res.status(503).json({ error: 'payments not configured' });
     try {
@@ -363,6 +372,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
 
       const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
       const twclid = req.body?.twclid ? String(req.body.twclid).slice(0, 120) : null;
+      const utmSource = orderSource(req);
 
       // Build the cart. Multi-bottle drops take items:[{productId, qty}]; legacy
       // drops take a single quantity (or one item). Each line is clamped to what's
@@ -374,9 +384,9 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       const amount = lines.reduce((s, l) => s + l.qty * l.product.price_cents, 0) + SHIP_CENTS;
 
       const order = await q(
-        `INSERT INTO orders (drop_id, quantity, variant, twclid, status)
-         VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-        [d.id, totalQty, variant, twclid]);
+        `INSERT INTO orders (drop_id, quantity, variant, twclid, utm_source, status)
+         VALUES ($1,$2,$3,$4,$5,'pending') RETURNING id`,
+        [d.id, totalQty, variant, twclid, utmSource]);
       const orderId = order.rows[0].id;
       // Record line items for multi-product orders (legacy single lines have no id).
       for (const l of lines) {
@@ -398,7 +408,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
         metadata: {
           order_id: String(orderId), drop_id: String(d.id),
           qty: String(totalQty), items: lines.map((l) => `${l.qty}x${l.product.id ?? 'legacy'}`).join(',').slice(0, 480),
-          variant: variant || '', twclid: twclid || '',
+          variant: variant || '', twclid: twclid || '', source: utmSource || '',
         },
       }, { idempotencyKey: `pi_order_${orderId}` });
 
@@ -426,11 +436,12 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
 
       const variant = req.body?.variant ? String(req.body.variant).slice(0, 40) : null;
       const twclid = req.body?.twclid ? String(req.body.twclid).slice(0, 120) : null;
+      const utmSource = orderSource(req);
 
       const order = await q(
-        `INSERT INTO orders (drop_id, quantity, variant, twclid, status)
-         VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-        [d.id, totalQty, variant, twclid]);
+        `INSERT INTO orders (drop_id, quantity, variant, twclid, utm_source, status)
+         VALUES ($1,$2,$3,$4,$5,'pending') RETURNING id`,
+        [d.id, totalQty, variant, twclid, utmSource]);
       const orderId = order.rows[0].id;
       for (const l of lines) {
         if (l.product.id == null) continue;
@@ -463,7 +474,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
         }],
         automatic_tax: { enabled: TAX_ENABLED },
         phone_number_collection: { enabled: true },
-        metadata: { order_id: String(orderId), drop_id: String(d.id), qty: String(totalQty), variant: variant || '', twclid: twclid || '' },
+        metadata: { order_id: String(orderId), drop_id: String(d.id), qty: String(totalQty), variant: variant || '', twclid: twclid || '', source: utmSource || '' },
         success_url: `${SITE}/thank-you?s={CHECKOUT_SESSION_ID}`,
         cancel_url: `${SITE}/buy`,
       });

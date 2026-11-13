@@ -347,6 +347,10 @@ export async function ensureSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_events     JSONB;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_eta        TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS orders_delivery_idx ON orders (drop_id, delivered_at);
+    -- Attribution: which link the buyer came through (utm_source captured on the
+    -- buy page, e.g. 'sms'). Null = untagged / direct. Lets the admin break
+    -- purchases down by source the same way page-view traffic already is.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_source TEXT;
 
     -- PROTOTYPE: two-bottle drops. A drop can carry MULTIPLE products (one row per
     -- bottle). When a drop has NO rows here it's a legacy single-product drop and

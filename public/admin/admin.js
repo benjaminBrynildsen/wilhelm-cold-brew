@@ -2090,11 +2090,16 @@ async function showOrders() {
     if (state.ordersDrop === null) state.ordersDrop = currentBatch();
     else if (state.ordersDrop && !dd.drops.some((d) => String(d.id) === String(state.ordersDrop))) state.ordersDrop = currentBatch();
     const dropQ = state.ordersDrop ? ('?dropId=' + encodeURIComponent(state.ordersDrop)) : '';
-    const [o, shipTpl, speed] = await Promise.all([
+    const [o, shipTpl, speed, bySource] = await Promise.all([
       api('/api/admin/orders' + dropQ),
       api('/api/admin/ship-email').catch(() => null),
       api('/api/admin/orders/speed').catch(() => null),
+      api('/api/admin/orders/by-source' + dropQ).catch(() => null),
     ]);
+    // Purchases attributed to the SMS buy link (/buy-sms) vs everything else.
+    const srcList = (bySource && bySource.sources) || [];
+    const smsSrc = srcList.find((s) => s.source === 'sms') || { orders: 0, bottles: 0, revenueCents: 0 };
+    const nonSmsOrders = srcList.reduce((n, s) => n + (s.source === 'sms' ? 0 : s.orders), 0);
     // Card stats follow the selected drop (or the live one when viewing all).
     const shown = o.selected || o.liveDrop;
     const scoped = !!state.ordersDrop;
@@ -2147,6 +2152,7 @@ async function showOrders() {
       <div class="cards">
         <div class="card"><div class="k">Paid orders${scoped ? ' (this drop)' : ''}</div><div class="v">${num(o.paid)}</div></div>
         <div class="card"><div class="k">Revenue${scoped ? ' (this drop)' : ''}</div><div class="v">${money(o.revenueCents)}</div></div>
+        <div class="card"><div class="k">From SMS${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${num(smsSrc.orders)}<small> ${smsSrc.orders === 1 ? 'order' : 'orders'} · ${money(smsSrc.revenueCents)}</small></div><div class="k2">via the /buy-sms link${nonSmsOrders ? ` · ${num(nonSmsOrders)} from other sources` : ''}</div></div>
         <div class="card"><div class="k">${scoped && shown ? esc(shown.name || 'Selected drop') : 'This drop'}</div><div class="v" style="font-size:22px">${shown ? num(shown.sold) + '<small>/' + num(shown.bottle_cap) + ' sold</small>' : (scoped ? '—' : 'none live')}</div>${shown && shown.products && shown.products.length > 1 ? `<div class="k2">${shown.products.map((p) => `${esc(p.name || 'Bottle')}: ${num(p.sold)}/${num(p.bottle_cap)}`).join(' · ')}</div>` : ''}</div>
         <div class="card"><div class="k">Remaining</div><div class="v">${shown ? num(shown.remaining) : '—'}</div></div>
         <div class="card"><div class="k">Missed-drop demand${scoped ? ' (this drop)' : ''}</div><div class="v" style="font-size:22px">${o.demand ? num(o.demand.wouldBuy) : 0}<small> would've bought · ${o.demand ? num(o.demand.justLooking) : 0} just looking</small></div></div>

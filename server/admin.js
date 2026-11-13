@@ -2683,6 +2683,28 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // Paid orders broken down by attribution source (the utm_source captured at
+  // checkout — e.g. 'sms' from the /buy-sms link). Null/empty reads as 'direct'.
+  // Manual/comp orders are excluded (no real purchase, no source). Scoped to a
+  // drop with ?dropId, else all-time. Powers the "From SMS" card on Orders.
+  app.get('/api/admin/orders/by-source', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const dropId = req.query?.dropId ? parseInt(req.query.dropId, 10) : null;
+      const SRC = `CASE WHEN COALESCE(utm_source, '') = '' THEN 'direct' ELSE LOWER(utm_source) END`;
+      const rows = (await q(
+        `SELECT ${SRC} AS source,
+                COUNT(*)::int AS orders,
+                COALESCE(SUM(quantity), 0)::int AS bottles,
+                COALESCE(SUM(amount_total_cents), 0) AS revenue_cents
+           FROM orders
+          WHERE status = 'paid' AND manual IS NOT TRUE
+            AND ($1::int IS NULL OR drop_id = $1)
+          GROUP BY ${SRC} ORDER BY COUNT(*) DESC`, [dropId])).rows;
+      res.json({ sources: rows.map((r) => ({ source: r.source, orders: r.orders, bottles: r.bottles, revenueCents: Number(r.revenue_cents) })) });
+    } catch (e) { console.error('[orders/by-source]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // Fix an order's shipping address after the fact (customer emailed a
   // correction). Stripe won't let a completed payment's shipping block be
   // edited in its dashboard, so the admin's stored copy is the source of

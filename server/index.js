@@ -68,7 +68,7 @@ app.use((req, _res, next) => {
     // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
     // below) — the visit is counted there, so don't also log the bounce here
     // (it would double-count every one of those visits).
-    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p.startsWith('/r/')) return next();
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p.startsWith('/r/')) return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -234,6 +234,17 @@ app.get(['/drinkup', '/drinkup/'], (_req, res) => {
 // as its own source so reply-driven joins read separately from the bio link.
 app.get(['/join', '/join/'], (_req, res) => {
   res.redirect(302, '/drink/?utm_source=join&utm_medium=reply');
+});
+
+// Vanity link for the SMS drop blast: /buy-sms → the buy page, and stamps this
+// device as "from SMS" via a 30-day first-party cookie that checkout reads, so a
+// purchase that started from a text is attributed to SMS even if the buyer
+// reloads or the ?utm_source gets dropped along the way. The ?utm_source on the
+// redirect target also tags the page view for the Traffic breakdown. 302 so the
+// tagging can change without fighting browser caches.
+app.get(['/buy-sms', '/buy-sms/'], (_req, res) => {
+  res.cookie('wcb_src', 'sms', { maxAge: 30 * 86400000, httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.redirect(302, '/buy?utm_source=sms');
 });
 
 // Reddit ads land here: /reddit → the opt-in page tagged as a Reddit ad source,

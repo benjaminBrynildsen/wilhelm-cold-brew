@@ -2120,11 +2120,16 @@ async function showOrders() {
             ? `<a href="${esc(trackUrl(r.tracking_number, r.tracking_carrier))}" target="_blank" rel="noopener">${esc(String(r.tracking_number).slice(0, 14))}${String(r.tracking_number).length > 14 ? '…' : ''}</a>${r.ship_notified_at ? ' <span style="color:var(--good)" title="purchaser emailed">✓</span>' : ' <span class="note" title="tracking on file, not yet emailed">·</span>'}`
             : '<span class="note">—</span>'}${r.status === 'paid' ? ` <button class="btn ghost otrack" data-id="${r.id}" style="padding:0 7px" title="Edit tracking number">✎</button>` : ''}</td></tr>`).join('')
       : '<tr><td class="note" colspan="7">No orders yet.</td></tr>';
+    // For a two-bottle drop the cap is the SUM of the per-bottle caps (and sold
+    // the sum of per-bottle sales), not the drop-level bottle_cap — same as the
+    // buy page's sellout logic. Legacy single-bottle drops use the drop's own cap.
+    const dropCap = (d) => (d.products && d.products.length > 1) ? d.products.reduce((s, p) => s + (p.bottle_cap || 0), 0) : d.bottle_cap;
+    const dropSold = (d) => (d.products && d.products.length > 1) ? d.products.reduce((s, p) => s + (p.sold || 0), 0) : d.sold;
     const dropRows = dd.drops.length
       ? dd.drops.map((d) => `<tr>
           <td>${esc(d.name || '(unnamed)')}</td>
           <td class="num">${money(d.price_cents)}</td>
-          <td class="num">${num(d.sold)}/${num(d.bottle_cap)}</td>
+          <td class="num">${num(dropSold(d))}/${num(dropCap(d))}</td>
           <td>${esc(d.status)}</td>
           <td>${esc(fmtWhenCT(d.opens_at))}</td>
           <td>${dropActions(d)}</td></tr>`).join('')

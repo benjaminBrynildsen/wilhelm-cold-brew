@@ -2143,6 +2143,16 @@ async function showOrders() {
     const subBar = `<div class="winbar osubbar" style="margin:2px 0 16px">${SUBS.map(([k, l]) =>
       `<div class="win osub ${state.ordersSub === k ? 'active' : ''}" data-sec="${k}">${l}</div>`).join('')}</div>`;
 
+    // Shipping export mode (dropdown): one label per order, one box per bottle, or
+    // two boxes per poly mailer (one label per mailer). Builds the export + packing
+    // hrefs so the links and the on-change handler stay in sync.
+    const shipMode = state.shipMode || 'order';
+    const _dq = state.ordersDrop ? 'dropId=' + encodeURIComponent(state.ordersDrop) : '';
+    const shipQ = (extra) => { const p = [_dq, extra].filter(Boolean); return p.length ? '?' + p.join('&') : ''; };
+    const uspsExtra = shipMode === 'poly' ? 'pack=poly' : (shipMode === 'bottle' ? 'split=1' : '');
+    const psExtra = shipMode === 'bottle' ? 'split=1' : '';   // Pirate Ship has no poly-mailer concept
+    const packHref = '/api/admin/orders/' + (shipMode === 'poly' ? 'packing-mailers.html' : 'packing.html') + shipQ('');
+
     content().innerHTML = `
       <div class="row-actions" style="margin-bottom:14px;align-items:center">
         <label class="note">Viewing <select id="ordersDrop" style="${FLD_DARK}">${dropOpts}</select></label>
@@ -2179,10 +2189,14 @@ async function showOrders() {
       <div class="osec" data-sec="shipping" style="display:${dsp('shipping')}">
       <h3>Ship the orders${scoped && shown ? ` <span class="note">— ${esc(shown.name || 'this batch')}</span>` : ' <span class="note">— all batches</span>'}</h3>
       <div class="row-actions" style="flex-wrap:wrap;align-items:center;gap:10px">
-        <a class="btn" id="ps-export" href="/api/admin/orders/pirateship.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
-        <a class="btn ghost" id="usps-export" href="/api/admin/orders/usps.csv${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}">Export for USPS${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
-        <a class="btn ghost" id="packing-list" target="_blank" rel="noopener" href="/api/admin/orders/packing.html${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}">Packing list by bottle</a>
-        <label class="note" style="cursor:pointer;white-space:nowrap"><input type="checkbox" id="ps-split" ${state.shipSplit ? 'checked' : ''}/> one box per bottle (doubles get two labels)</label>
+        <label class="note" style="white-space:nowrap">Packaging <select id="ship-mode" style="${FLD_DARK}">
+          <option value="order" ${shipMode === 'order' ? 'selected' : ''}>One label per order</option>
+          <option value="bottle" ${shipMode === 'bottle' ? 'selected' : ''}>One box per bottle</option>
+          <option value="poly" ${shipMode === 'poly' ? 'selected' : ''}>2 boxes per poly mailer</option>
+        </select></label>
+        <a class="btn ghost" id="usps-export" href="/api/admin/orders/usps.csv${shipQ(uspsExtra)}">Export for USPS${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
+        <a class="btn ${shipMode === 'poly' ? 'ghost disabled' : ''}" id="ps-export" ${shipMode === 'poly' ? 'title="Pirate Ship can’t bundle a poly mailer — use the USPS export for 2-per-mailer"' : ''} href="/api/admin/orders/pirateship.csv${shipQ(psExtra)}">Export for Pirate Ship${o.unshipped ? ` (${num(o.unshipped)})` : ''}</a>
+        <a class="btn ghost" id="packing-list" target="_blank" rel="noopener" href="${packHref}">${shipMode === 'poly' ? 'Poly-mailer packing sheet' : 'Packing list by bottle'}</a>
         <button class="btn ghost" id="markshipped">Mark ${scoped ? 'this batch' : 'all'} as shipped</button>
         <span class="note">${o.unshipped ? num(o.unshipped) + ' order' + (o.unshipped === 1 ? '' : 's') + ' still to ship' + (scoped ? ' in this batch' : '') + '.' : (scoped ? 'This batch is fully shipped.' : 'All paid orders shipped.')}</span>
         <span class="note" id="shipmsg"></span>
@@ -2200,7 +2214,9 @@ async function showOrders() {
           ${prods.map((p) => `<a class="btn ghost" href="${base}&productId=${p.id}">USPS — ${esc(p.name || 'Bottle')}</a>`).join('')}
         </div>`;
       })()}
-      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Both assume 3 lbs/bottle — override with <code>?lbs=</code> if that's off. With <b>one box per bottle</b> ticked, a 2-bottle order becomes two rows (two labels, 1-bottle weight each). <b>Packing list by bottle</b> opens a printable sheet grouping every buyer under the bottle they ordered (anyone who bought both appears on both lists) — use it to pack the right bottles for the right people. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
+      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Assumes 3 lbs/bottle — override with <code>?lbs=</code> if that's off.
+      <br><b>Packaging:</b> <b>One label per order</b> = whole order on one label. <b>One box per bottle</b> = a label per bottle. <b>2 boxes per poly mailer</b> = each bottle in its own box, boxes bundled two-to-a-poly-mailer so one label covers two boxes (a 5-bottle order → 2 mailers + 1 single = 3 labels); the label prints what's inside (e.g. "POLY MAILER · Barrel + Coconut"). Pairing keeps same bottles together, then mixes the leftovers. <i>(Poly mailers are a USPS-postage trick — Pirate Ship doesn't bundle, so that mode exports to USPS.)</i>
+      <br>The <b>packing sheet</b> opens in the same order as the file: by bottle for the first two modes, or — in poly mode — every mailer with the two bottles to put in it, so you pack straight down the list. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
       ${scoped && shown ? `
       <h4 style="margin:18px 0 4px">Move a past order into this batch</h4>
@@ -2458,15 +2474,26 @@ async function showOrders() {
       });
     })();
 
-    // One-box-per-bottle toggle rewrites the export link in place (no reload).
-    const psSplit = document.getElementById('ps-split');
-    if (psSplit) psSplit.addEventListener('change', () => {
-      state.shipSplit = psSplit.checked;
-      const qs = `${state.ordersDrop ? '?dropId=' + encodeURIComponent(state.ordersDrop) : ''}${state.shipSplit ? (state.ordersDrop ? '&' : '?') + 'split=1' : ''}`;
-      const a = document.getElementById('ps-export');
-      if (a) a.href = `/api/admin/orders/pirateship.csv${qs}`;
+    // Packaging dropdown rewrites the export + packing links in place (no reload).
+    const shipModeSel = document.getElementById('ship-mode');
+    if (shipModeSel) shipModeSel.addEventListener('change', () => {
+      state.shipMode = shipModeSel.value;
+      const m = state.shipMode;
+      const dq = state.ordersDrop ? 'dropId=' + encodeURIComponent(state.ordersDrop) : '';
+      const q = (extra) => { const p = [dq, extra].filter(Boolean); return p.length ? '?' + p.join('&') : ''; };
       const u = document.getElementById('usps-export');
-      if (u) u.href = `/api/admin/orders/usps.csv${qs}`;
+      if (u) u.href = `/api/admin/orders/usps.csv${q(m === 'poly' ? 'pack=poly' : (m === 'bottle' ? 'split=1' : ''))}`;
+      const a = document.getElementById('ps-export');
+      if (a) {
+        a.href = `/api/admin/orders/pirateship.csv${q(m === 'bottle' ? 'split=1' : '')}`;
+        a.classList.toggle('disabled', m === 'poly');
+        a.title = m === 'poly' ? 'Pirate Ship can’t bundle a poly mailer — use the USPS export for 2-per-mailer' : '';
+      }
+      const pk = document.getElementById('packing-list');
+      if (pk) {
+        pk.href = `/api/admin/orders/${m === 'poly' ? 'packing-mailers.html' : 'packing.html'}${q('')}`;
+        pk.textContent = m === 'poly' ? 'Poly-mailer packing sheet' : 'Packing list by bottle';
+      }
     });
     const markShipped = document.getElementById('markshipped');
     if (markShipped) markShipped.addEventListener('click', async () => {

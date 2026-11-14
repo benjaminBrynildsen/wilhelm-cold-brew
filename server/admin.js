@@ -246,6 +246,63 @@ export async function extractUspsLabels(buffer) {
   return out;
 }
 
+// ───────── Poly-mailer packaging ─────────
+// Each bottle ships in its own box; boxes travel two-to-a-poly-mailer, so one
+// postage label covers two boxes. Pairing rule "A": pair same-bottle boxes
+// first, then combine the odd leftovers across bottle types, leaving at most one
+// single box. `boxes` is [{ bottle, sort }]; returns packages in pack order
+// (same-type pairs, then mixed pairs, then the lone single), each
+// { kind: 'poly'|'single', boxes:[...] }.
+function pairBoxesA(boxes) {
+  const byBottle = new Map();
+  for (const b of boxes) {
+    const key = b.bottle || 'Bottle';
+    if (!byBottle.has(key)) byBottle.set(key, { sort: b.sort ?? 0, list: [] });
+    byBottle.get(key).list.push({ bottle: key, sort: b.sort ?? 0 });
+  }
+  // Bottle groups in a stable order: admin sort, then name.
+  const groups = [...byBottle.entries()].sort((a, b) =>
+    (a[1].sort - b[1].sort) || String(a[0]).localeCompare(String(b[0])));
+  const packages = [];
+  const leftovers = [];
+  for (const [, g] of groups) {
+    let i = 0;
+    for (; i + 1 < g.list.length; i += 2) packages.push({ kind: 'poly', boxes: [g.list[i], g.list[i + 1]] });
+    if (i < g.list.length) leftovers.push(g.list[i]);   // one odd box for this bottle
+  }
+  let j = 0;
+  for (; j + 1 < leftovers.length; j += 2) packages.push({ kind: 'poly', boxes: [leftovers[j], leftovers[j + 1]] });
+  if (j < leftovers.length) packages.push({ kind: 'single', boxes: [leftovers[j]] });
+  return packages;
+}
+
+// Turn a list of orders (each { id, created_at, boxes:[{bottle,sort}] }) into the
+// flat, print-ordered list of shipping packages: every poly mailer first, then
+// every single box, each group by purchase time then order id then the package's
+// index within its order. The CSV export and the packing sheet both build from
+// this, so a printed label and its sheet row line up one-to-one. Each package
+// carries ref (WCB-<order>-<n>), a human comment, and its box count.
+function orderPackages(orders) {
+  const out = [];
+  for (const o of orders) {
+    const pkgs = pairBoxesA(o.boxes || []);
+    pkgs.forEach((p, i) => {
+      const names = p.boxes.map((b) => b.bottle);
+      out.push({
+        orderId: o.id, createdAt: o.created_at, seq: i + 1, kind: p.kind,
+        bottles: names, boxCount: p.boxes.length,
+        ref: 'WCB-' + o.id + '-' + (i + 1),
+        comment: p.kind === 'poly' ? 'POLY MAILER · ' + names.join(' + ') : 'SINGLE BOX · ' + names[0],
+      });
+    });
+  }
+  const t = (x) => new Date(x || 0).getTime();
+  out.sort((a, b) =>
+    ((a.kind === 'poly' ? 0 : 1) - (b.kind === 'poly' ? 0 : 1)) ||
+    (t(a.createdAt) - t(b.createdAt)) || (a.orderId - b.orderId) || (a.seq - b.seq));
+  return out;
+}
+
 // Parse a USPS label PDF and match each label to its paid order by the
 // WCB-<order> reference, scoped to a batch. No DB writes, no emails — just the
 // plan: who gets notified, who's already been notified, and which labels didn't
@@ -3157,6 +3214,7 @@ export function mountAdmin(app) {
       // can be imported into USPS as its own file. It implies per-bottle rows.
       const productId = parseInt(req.query?.productId, 10) || null;
       const split = req.query?.split === '1' || !!productId;
+      const packPoly = req.query?.pack === 'poly';   // 2 boxes per poly mailer, one label per mailer
       const service = req.query?.service ? String(req.query.service).slice(0, 60) : 'USPS Ground Advantage';
       const pkgType = req.query?.package ? String(req.query.package).slice(0, 40) : 'Custom Packaging';
       // Return address — USPS's bulk file requires the sender in-file (it doesn't
@@ -3180,6 +3238,87 @@ export function mountAdmin(app) {
                 o.created_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ${where.join(' AND ')} ORDER BY o.created_at ASC, o.id ASC`, params)).rows;
+
+      // ── "2 boxes per poly mailer": one postage label per PACKAGE ──────────────
+      // Each bottle ships in its own box; boxes pair two-to-a-poly-mailer (rule A:
+      // same bottle first, then mix the leftovers), so a 5-bottle order = 2 poly
+      // mailers + 1 single box = 3 labels, not 5. Each label is weighted by its box
+      // count (2 boxes = 2×lbs) and prints what's inside; all poly mailers sort
+      // ahead of the singles, and packing-mailers.html prints in the same order.
+      if (packPoly) {
+        const esc = (v) => { const s = String(v ?? ''); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+        const lines = [USPS_HEADER.join(',')];
+        const items = (await q(
+          `SELECT oi.order_id, COALESCE(NULLIF(btrim(oi.name),''), p.name, 'Bottle') AS bottle,
+                  oi.quantity AS qty, COALESCE(p.sort, 0) AS sort
+             FROM order_items oi JOIN orders o ON o.id = oi.order_id
+             LEFT JOIN drop_products p ON p.id = oi.product_id
+            WHERE ${where.join(' AND ')} AND oi.quantity > 0`, params)).rows;
+        const boxesByOrder = new Map();
+        for (const it of items) {
+          const k = String(it.order_id);
+          if (!boxesByOrder.has(k)) boxesByOrder.set(k, []);
+          for (let b = 0; b < (it.qty || 0); b++) boxesByOrder.get(k).push({ bottle: it.bottle, sort: it.sort || 0 });
+        }
+        const recip = new Map();
+        const ordersForPkg = [];
+        for (const r of rows) {
+          let addr = r.shipping_address || null, name = r.shipping_name || null, phone = null;
+          if ((!addr || !addr.line1 || !name) && r.stripe_payment_intent) {
+            const s = await getShippingFromStripe(r.stripe_payment_intent);
+            if (s) { addr = (addr && addr.line1) ? addr : (s.address || addr); name = name || s.name; phone = s.phone || phone; }
+          }
+          addr = addr || {};
+          const toks = String(name || '').trim().split(/\s+/).filter(Boolean);
+          const first = toks.length >= 2 ? toks[0] : (toks[0] || '');
+          const last = toks.length >= 2 ? toks.slice(1).join(' ') : (toks[0] || '');
+          recip.set(String(r.id), { r, addr, first, last, phone });
+          let boxes = boxesByOrder.get(String(r.id));
+          if (!boxes || !boxes.length) {
+            boxes = [];
+            for (let b = 0; b < (r.quantity || 1); b++) boxes.push({ bottle: r.drop_name || '', sort: -1 });
+          }
+          ordersForPkg.push({ id: r.id, created_at: r.created_at, boxes });
+        }
+        for (const pkg of orderPackages(ordersForPkg)) {
+          const rc = recip.get(String(pkg.orderId)); if (!rc) continue;
+          const { r, addr, first, last, phone } = rc;
+          let wl = Math.floor(pkg.boxCount * lbsPerBottle);
+          let wo = Math.round((pkg.boxCount * lbsPerBottle - wl) * 16);
+          if (wo >= 16) { wl += 1; wo -= 16; }
+          const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
+          row['Reference ID'] = pkg.ref;
+          row['Reference ID 2'] = r.drop_name || '';
+          row['Sender Company/Org Name'] = SENDER.company;
+          row['Sender Address Line 1'] = SENDER.line1;
+          row['Sender Address Line 2'] = SENDER.line2;
+          row['Sender Address Town/City'] = SENDER.city;
+          row['Sender State'] = SENDER.state;
+          row['Sender Country'] = 'US';
+          row['Sender ZIP Code'] = SENDER.zip;
+          row['Sender Email'] = SENDER.email;
+          row['Sender Cell Phone'] = SENDER.phone;
+          row['Recipient Country'] = 'US';
+          row['Recipient First Name'] = first;
+          row['Recipient Last Name'] = last;
+          row['Recipient Address Line 1'] = addr.line1 || '';
+          row['Recipient Address Line 2'] = addr.line2 || '';
+          row['Recipient Address Town/City'] = addr.city || '';
+          row['Recipient State'] = String(addr.state || '').toUpperCase();
+          row['Recipient ZIP Code'] = addr.postal_code || '';
+          row['Recipient Phone'] = phone || '';
+          row['Recipient Email'] = r.email || '';
+          row['Service Type'] = service;
+          row['Package Type'] = pkgType;
+          row['Package Weight (lb)'] = String(wl);
+          row['Package Weight (oz)'] = String(wo);
+          row['Package Comments'] = pkg.comment;
+          lines.push(USPS_HEADER.map((h) => esc(row[h])).join(','));
+        }
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="wilhelm-usps-poly.csv"');
+        return res.send(lines.join('\n'));
+      }
 
       // When "one box per bottle" (split) is on, a two-bottle batch should come
       // out of the file grouped by bottle: every box of one bottle first, then
@@ -3518,6 +3657,143 @@ export function mountAdmin(app) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.send(html);
     } catch (e) { console.error('[packing]', e); res.status(500).send('Error building packing list.'); }
+  });
+
+  // ───────── Packing list (poly mailers) ─────────
+  // The pack-and-ship sheet for the "2 boxes per poly mailer" USPS export. It
+  // lists every package in the SAME order as that file (all poly mailers first,
+  // then the singles), so you print the labels, print this, and go straight down
+  // both: each row shows the label's package id and the exact 1–2 bottles that go
+  // into that mailer — even when the two bottles are different.
+  app.get('/api/admin/orders/packing-mailers.html', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const dropId = parseInt(req.query?.dropId, 10) || null;
+      const unshippedOnly = String(req.query?.scope || 'all') === 'unshipped';
+      const params = [];
+      const where = ["o.status = 'paid'"];
+      if (dropId) { params.push(dropId); where.push(`o.drop_id = $${params.length}`); }
+      if (unshippedOnly) where.push('o.shipped_at IS NULL');
+
+      const drop = dropId ? (await q(`SELECT id, name FROM drops WHERE id = $1`, [dropId])).rows[0] : null;
+      const dropLabel = drop ? (drop.name || ('Batch № ' + drop.id)) : 'All batches';
+
+      const orderRows = (await q(
+        `SELECT o.id, o.quantity, o.created_at, (o.shipped_at IS NOT NULL) AS shipped,
+                COALESCE(NULLIF(btrim(o.shipping_name),''), o.email) AS who,
+                INITCAP(NULLIF(btrim(o.shipping_address->>'city'),'')) AS city,
+                UPPER(NULLIF(btrim(o.shipping_address->>'state'),'')) AS state,
+                d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE ${where.join(' AND ')}`, params)).rows;
+      const itemRows = (await q(
+        `SELECT oi.order_id, COALESCE(NULLIF(btrim(oi.name),''), p.name, 'Bottle') AS bottle,
+                oi.quantity AS qty, COALESCE(p.sort, 0) AS sort
+           FROM order_items oi JOIN orders o ON o.id = oi.order_id
+           LEFT JOIN drop_products p ON p.id = oi.product_id
+          WHERE ${where.join(' AND ')} AND oi.quantity > 0`, params)).rows;
+
+      const boxesByOrder = new Map();
+      for (const it of itemRows) {
+        const k = String(it.order_id);
+        if (!boxesByOrder.has(k)) boxesByOrder.set(k, []);
+        for (let b = 0; b < (it.qty || 0); b++) boxesByOrder.get(k).push({ bottle: it.bottle, sort: it.sort || 0 });
+      }
+      const meta = new Map();
+      const ordersForPkg = [];
+      for (const r of orderRows) {
+        meta.set(String(r.id), r);
+        let boxes = boxesByOrder.get(String(r.id));
+        if (!boxes || !boxes.length) {
+          boxes = [];
+          for (let b = 0; b < (r.quantity || 1); b++) boxes.push({ bottle: r.drop_name || dropLabel, sort: -1 });
+        }
+        ordersForPkg.push({ id: r.id, created_at: r.created_at, boxes });
+      }
+      const packages = orderPackages(ordersForPkg);
+      const polys = packages.filter((p) => p.kind === 'poly');
+      const singles = packages.filter((p) => p.kind === 'single');
+
+      // Pick totals: how many boxes of each bottle to pull in all.
+      const pick = new Map();
+      for (const p of packages) for (const bn of p.bottles) pick.set(bn, (pick.get(bn) || 0) + 1);
+
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const stamp = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+      const place = (m) => [m && m.city, m && m.state].filter(Boolean).join(', ');
+      const rowsHtml = (list, offset) => list.map((p, i) => {
+        const m = meta.get(String(p.orderId)) || {};
+        const contents = p.kind === 'poly'
+          ? `<b>${esc(p.bottles[0])}</b> &nbsp;+&nbsp; <b>${esc(p.bottles[1])}</b>`
+          : `<b>${esc(p.bottles[0])}</b>`;
+        return `<tr class="${m.shipped ? 'shipped' : ''}">
+            <td class="chk">☐</td><td class="n">${offset + i + 1}</td>
+            <td class="ref">${esc(p.ref)}</td>
+            <td class="contents">${contents}</td>
+            <td class="who">${esc(m.who)}${m.shipped ? ' <span class="tag">shipped</span>' : ''}</td>
+            <td class="place">${esc(place(m))}</td></tr>`;
+      }).join('');
+      const section = (title, hint, list, offset) => `
+          <section>
+            <h2>${title} <span class="sum">${list.length} ${list.length === 1 ? 'package' : 'packages'}</span></h2>
+            <div class="hint">${hint}</div>
+            <table>
+              <thead><tr><th class="chk"></th><th class="n">#</th><th>Label</th><th>Put in the mailer</th><th>Ship to</th><th>City</th></tr></thead>
+              <tbody>${list.length ? rowsHtml(list, offset) : '<tr><td colspan="6" class="empty">None.</td></tr>'}</tbody>
+            </table>
+          </section>`;
+      const pickHtml = [...pick.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+        .map(([bn, n]) => `${esc(bn)}: <b>${n}</b>`).join(' &nbsp;·&nbsp; ') || '—';
+      const body = packages.length
+        ? section('Poly mailers', 'Two boxes per mailer — put <b>both</b> bottles shown into one poly mailer, then stick the matching label.', polys, 0)
+          + section('Single boxes', 'One box, ships on its own.', singles, polys.length)
+        : `<p class="empty">No paid orders${unshippedOnly ? ' left to ship' : ''} for this batch yet.</p>`;
+
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Poly-mailer packing — ${esc(dropLabel)}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:#1c1a17;background:#f6f4ef;margin:0;padding:24px 20px 60px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:820px;margin:0 auto}
+  .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  h1{font-size:22px;margin:0}
+  .meta{color:#6b665e;font-size:12px}
+  .note{background:#fff6da;border:1px solid #e6cf7a;border-radius:8px;padding:9px 12px;font-size:13px;color:#5a4a12;margin:12px 0 14px}
+  .pick{background:#eef4ff;border:1px solid #b9ccf0;border-radius:8px;padding:9px 12px;font-size:13px;color:#24406e;margin:0 0 18px}
+  .actions{margin:10px 0 4px}
+  button{font:inherit;font-size:13px;padding:8px 16px;border:1px solid #b9832a;background:#e8c24a;color:#231a05;border-radius:8px;cursor:pointer}
+  section{margin:0 0 26px;break-inside:avoid}
+  h2{font-size:17px;margin:18px 0 4px;padding-bottom:6px;border-bottom:2px solid #231a05;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  h2 .sum{font-size:12px;font-weight:500;color:#6b665e}
+  .hint{font-size:12px;color:#6b665e;margin:0 0 8px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #e2ded6;vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#8a847a;border-bottom:1px solid #cfc9bf}
+  td.chk{font-size:16px;color:#8a847a;width:22px}
+  td.n,th.n{width:30px;color:#8a847a;font-variant-numeric:tabular-nums}
+  td.ref,th.ref{font-variant-numeric:tabular-nums;color:#4a453d;white-space:nowrap}
+  td.contents{font-size:15px}
+  td.who{font-weight:600}
+  td.place{color:#4a453d}
+  tr.shipped td{color:#a49e93}
+  .tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;background:#e2ded6;color:#5a544a;padding:1px 6px;border-radius:999px;vertical-align:middle}
+  .grand{margin-top:8px;font-size:13px;color:#4a453d}
+  .empty{color:#8a847a;font-style:italic}
+  @media print{ body{background:#fff;padding:0} .actions{display:none} .note,.pick{background:#fff;border-color:#ccc} }
+</style></head><body><div class="wrap">
+  <div class="top"><h1>Poly-mailer packing — ${esc(dropLabel)}</h1><div class="meta">${esc(stamp)} CT${unshippedOnly ? ' · still to ship' : ''}</div></div>
+  <div class="note">Same order as the <b>2 boxes per poly mailer</b> USPS file: print the labels, print this, and work top-to-bottom down both. Each row's <b>Label</b> id matches the package id on its USPS label.</div>
+  <div class="pick">Pull in all: ${pickHtml}</div>
+  <div class="actions"><button onclick="window.print()">Print this list</button></div>
+  ${body}
+  <div class="grand">${polys.length} poly mailer${polys.length === 1 ? '' : 's'} · ${singles.length} single box${singles.length === 1 ? '' : 'es'} · ${packages.length} label${packages.length === 1 ? '' : 's'} total</div>
+</div></body></html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (e) { console.error('[packing-mailers]', e); res.status(500).send('Error building packing list.'); }
   });
 
   // Mark orders shipped so they drop off the export queue. Body: { ids: [..] } to

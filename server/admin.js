@@ -315,6 +315,38 @@ function orderPackages(orders) {
   return out;
 }
 
+// ───────── Label "what's inside" line (Reference ID 2) ─────────
+// A compact "what's in this box" string for the USPS label's Reference ID 2,
+// which prints under the barcode — so a box can be packed without a lookup. E.g.
+// "1x Buffalo Trace", "2x Buffalo Trace", "Buffalo Trace + Watermelon". Takes a
+// flat list of bottle names (with repeats) and groups + counts them.
+function contentsLabel(bottleNames) {
+  const counts = new Map();
+  for (const n of bottleNames) { const k = n || 'Bottle'; counts.set(k, (counts.get(k) || 0) + 1); }
+  const entries = [...counts.entries()];
+  if (!entries.length) return '';
+  if (entries.length === 1) return `${entries[0][1]}x ${entries[0][0]}`;
+  return entries.map(([n, c]) => (c > 1 ? `${c}x ${n}` : n)).join(' + ');
+}
+// Short batch tag for the label: "Batch 80" -> "B80"; falls back to the drop id.
+function batchTag(dropName, dropId) {
+  const m = String(dropName || '').match(/(\d+)/);
+  return 'B' + (m ? m[1] : (dropId != null ? dropId : ''));
+}
+// A free-text "ship X instead" note means pack a DIFFERENT bottle than the one
+// booked — return that substitute text so the label shows what really ships.
+function shipOverride(note) {
+  const m = String(note || '').match(/ship\s+(.+?)\s+instead\b/i);
+  return m ? m[1].trim().replace(/\s+/g, ' ') : null;
+}
+// The label's Reference ID 2 value: "<tag>: <contents>", where a "ship X instead"
+// note overrides the contents. Capped so it stays short under the barcode.
+function ref2Label(dropName, dropId, bottleNames, note) {
+  const body = shipOverride(note) || contentsLabel(bottleNames) || String(dropName || '');
+  const s = `${batchTag(dropName, dropId)}: ${body}`;
+  return s.length > 40 ? s.slice(0, 39) + '…' : s;
+}
+
 // Parse a USPS label PDF and match each label to its paid order by the
 // WCB-<order> reference, scoped to a batch. No DB writes, no emails — just the
 // plan: who gets notified, who's already been notified, and which labels didn't
@@ -3248,8 +3280,8 @@ export function mountAdmin(app) {
       if (scope !== 'all') where.push('o.shipped_at IS NULL');
       if (dropId > 0) { params.push(dropId); where.push(`o.drop_id = $${params.length}`); }
       const rows = (await q(
-        `SELECT o.id, o.email, o.quantity, o.shipping_name, o.shipping_address, o.stripe_payment_intent,
-                o.created_at, d.name AS drop_name
+        `SELECT o.id, o.drop_id, o.email, o.quantity, o.shipping_name, o.shipping_address, o.stripe_payment_intent,
+                o.note, o.created_at, d.name AS drop_name
            FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
           WHERE ${where.join(' AND ')} ORDER BY o.created_at ASC, o.id ASC`, params)).rows;
 
@@ -3302,7 +3334,9 @@ export function mountAdmin(app) {
           if (wo >= 16) { wl += 1; wo -= 16; }
           const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
           row['Reference ID'] = pkg.ref;
-          row['Reference ID 2'] = r.drop_name || '';
+          // Under-barcode line = what's actually in this mailer (or the note's
+          // "ship X instead"), so the box packs without a lookup.
+          row['Reference ID 2'] = ref2Label(r.drop_name, r.drop_id, pkg.bottles, r.note);
           row['Sender Company/Org Name'] = SENDER.company;
           row['Sender Address Line 1'] = SENDER.line1;
           row['Sender Address Line 2'] = SENDER.line2;
@@ -3363,6 +3397,23 @@ export function mountAdmin(app) {
           const key = String(it.order_id);
           if (!itemsByOrder.has(key)) itemsByOrder.set(key, []);
           itemsByOrder.get(key).push(it);
+        }
+      }
+
+      // For one-label-per-order mode, the under-barcode line lists the WHOLE
+      // order's bottles, so pull each order's items here (split mode instead uses
+      // the single bottle already tagged on each box).
+      const fullByOrder = new Map();
+      if (!split && rows.length) {
+        const fi = (await q(
+          `SELECT oi.order_id, COALESCE(NULLIF(btrim(oi.name),''), p.name, 'Bottle') AS bottle, oi.quantity AS qty
+             FROM order_items oi JOIN orders o ON o.id = oi.order_id
+             LEFT JOIN drop_products p ON p.id = oi.product_id
+            WHERE ${where.join(' AND ')} AND oi.quantity > 0`, params)).rows;
+        for (const it of fi) {
+          const k = String(it.order_id);
+          if (!fullByOrder.has(k)) fullByOrder.set(k, []);
+          for (let b = 0; b < (it.qty || 0); b++) fullByOrder.get(k).push(it.bottle);
         }
       }
 
@@ -3427,7 +3478,11 @@ export function mountAdmin(app) {
         {
           const row = Object.fromEntries(USPS_HEADER.map((h) => [h, '']));
           row['Reference ID'] = 'WCB-' + r.id;
-          row['Reference ID 2'] = r.drop_name || '';
+          // Under-barcode line = what's actually in this box (or the note's "ship X
+          // instead"): one bottle per box when split, else the whole order.
+          row['Reference ID 2'] = ref2Label(r.drop_name, r.drop_id,
+            split ? [box.bottle] : (fullByOrder.get(String(r.id)) || Array.from({ length: r.quantity || 1 }, () => r.drop_name || 'Bottle')),
+            r.note);
           // Sender / return address (required in USPS's bulk file). Company alone
           // satisfies the name requirement.
           row['Sender Company/Org Name'] = SENDER.company;

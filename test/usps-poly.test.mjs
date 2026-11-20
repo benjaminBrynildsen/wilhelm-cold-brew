@@ -29,6 +29,7 @@ const { q } = await import(mod('db.js'));
 await q(grab(/CREATE TABLE IF NOT EXISTS drops \([\s\S]*?\);/, 'drops'));
 await q(grab(/CREATE TABLE IF NOT EXISTS orders \([\s\S]*?\);/, 'orders'));
 await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ`);
+await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS note TEXT`);
 await q(grab(/CREATE TABLE IF NOT EXISTS drop_products \([\s\S]*?\);/, 'drop_products'));
 await q(grab(/CREATE TABLE IF NOT EXISTS order_items \([\s\S]*?\);/, 'order_items'));
 

@@ -287,18 +287,30 @@ function orderPackages(orders) {
   for (const o of orders) {
     const pkgs = pairBoxesA(o.boxes || []);
     pkgs.forEach((p, i) => {
-      const names = p.boxes.map((b) => b.bottle);
+      // Order the boxes inside the package by bottle sort, so a mixed mailer
+      // always reads low-bottle-first ("Barrel + Coconut", never the reverse).
+      const boxes = p.boxes.slice().sort((x, y) => (x.sort ?? 0) - (y.sort ?? 0));
+      const names = boxes.map((b) => b.bottle);
+      const sorts = boxes.map((b) => b.sort ?? 0);
       out.push({
         orderId: o.id, createdAt: o.created_at, seq: i + 1, kind: p.kind,
-        bottles: names, boxCount: p.boxes.length,
+        bottles: names, boxCount: boxes.length,
+        minSort: sorts[0], maxSort: sorts[sorts.length - 1],
         ref: 'WCB-' + o.id + '-' + (i + 1),
         comment: p.kind === 'poly' ? 'POLY MAILER · ' + names.join(' + ') : 'SINGLE BOX · ' + names[0],
       });
     });
   }
+  // Every poly mailer before any single, then grouped by contents so you pack a
+  // run of the same thing at a time: within the poly mailers, same-first-bottle
+  // pairs lead (A+A, then the A+B mixes), so a two-bottle drop reads
+  // Barrel+Barrel → Barrel+Coconut → Coconut+Coconut; the singles then run all
+  // Barrel, then all Coconut. Purchase order breaks any remaining tie. The CSV
+  // export uses this same list, so a printed label still lines up with its row.
   const t = (x) => new Date(x || 0).getTime();
   out.sort((a, b) =>
     ((a.kind === 'poly' ? 0 : 1) - (b.kind === 'poly' ? 0 : 1)) ||
+    (a.minSort - b.minSort) || (a.maxSort - b.maxSort) ||
     (t(a.createdAt) - t(b.createdAt)) || (a.orderId - b.orderId) || (a.seq - b.seq));
   return out;
 }

@@ -77,7 +77,15 @@ const weights = rows.map((x) => x.lb);
 ok('poly mailers (6lb) sorted before singles (3lb)', JSON.stringify(weights) === JSON.stringify(['6', '6', '6', '3', '3']), JSON.stringify(weights));
 ok('all weights whole pounds, 0 oz', rows.every((x) => x.oz === '0'), JSON.stringify(rows.map((x) => x.oz)));
 const refs = rows.map((x) => x.ref);
-ok('refs are per-package WCB-<order>-<n>, poly-first', JSON.stringify(refs) === JSON.stringify(['WCB-101-1', 'WCB-101-2', 'WCB-102-1', 'WCB-101-3', 'WCB-103-1']), JSON.stringify(refs));
+// Poly mailers grouped by contents: Barrel+Barrel, then the Barrel+Coconut mix,
+// then Coconut+Coconut; singles then run by bottle (both Barrel here, purchase
+// order). Refs still per-package WCB-<order>-<n>.
+ok('packages grouped by contents (A+A, mix, B+B; then singles by bottle)',
+  JSON.stringify(refs) === JSON.stringify(['WCB-101-1', 'WCB-102-1', 'WCB-101-2', 'WCB-101-3', 'WCB-103-1']), JSON.stringify(refs));
+const comments = rows.map((x) => x.comment);
+ok('poly contents ordered Barrel+Barrel → Barrel+Coconut → Coconut+Coconut',
+  /Barrel \+ Barrel/.test(comments[0]) && /Barrel \+ Coconut/.test(comments[1]) && /Coconut \+ Coconut/.test(comments[2]),
+  JSON.stringify(comments.slice(0, 3)));
 // Pairing A: order 101's barrels pair together, coconuts together, barrel leftover single.
 const c = (ref) => (rows.find((x) => x.ref === ref) || {}).comment || '';
 ok('101-1 = Barrel + Barrel', /POLY MAILER/.test(c('WCB-101-1')) && /Barrel \+ Barrel/.test(c('WCB-101-1')), c('WCB-101-1'));

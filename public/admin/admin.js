@@ -2137,7 +2137,7 @@ async function showOrders() {
 
     // Sub-tabs — the Orders page is long, so split it into sections you can jump
     // to. Toggled by show/hide (below), so every section stays wired.
-    const SUBS = [['summary', 'Summary'], ['orders', 'Orders'], ['shipping', 'Shipping'], ['batches', 'Batches'], ['races', '🏁 Races']];
+    const SUBS = [['summary', 'Summary'], ['orders', 'Orders'], ['refunds', 'Refunds'], ['shipping', 'Shipping'], ['batches', 'Batches'], ['races', '🏁 Races']];
     if (!SUBS.some(([k]) => k === state.ordersSub)) state.ordersSub = 'summary';
     const dsp = (k) => (state.ordersSub === k ? '' : 'none');
     const subBar = `<div class="winbar osubbar" style="margin:2px 0 16px">${SUBS.map(([k, l]) =>
@@ -2163,7 +2163,6 @@ async function showOrders() {
         </span>
       </div>
       ${subBar}
-      <div id="refund-approvals"></div>
       <div class="osec" data-sec="summary" style="display:${dsp('summary')}">
       <div class="cards">
         <div class="card"><div class="k">Paid orders${scoped ? ' (this drop)' : ''}</div><div class="v">${num(o.paid)}</div></div>
@@ -2302,6 +2301,19 @@ async function showOrders() {
       <h3>Recent orders</h3>
       <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th>Ship to</th><th class="num">Total</th><th>Status</th><th>Tracking</th></tr></thead>
         <tbody>${orderRows}</tbody></table>
+      </div>
+
+      <div class="osec" data-sec="refunds" style="display:${dsp('refunds')}">
+      <h3>Refunds</h3>
+      <div class="note" style="margin-bottom:10px">Refund requests your bot queues show up here to <b>approve or reject</b> — nothing is charged back until you approve. You can also refund any paid order yourself with the <b>↩</b> button in <b>Recent orders</b> (full amount, or type a smaller one for a partial).</div>
+      <div id="refund-approvals"><div class="note">Loading…</div></div>
+      ${(() => {
+        const refunded = (o.orders || []).filter((r) => r.status === 'refunded');
+        if (!refunded.length) return '';
+        return `<h4 style="margin:20px 0 6px">Recently refunded <span class="note">— in view</span></h4>
+          <table><thead><tr><th>Date</th><th>Email</th><th>Drop</th><th class="num">Order total</th></tr></thead>
+          <tbody>${refunded.map((r) => `<tr><td>${esc((r.created_at || '').slice(0, 10))}</td><td>${esc(r.email || '—')}</td><td>${esc(r.drop_name || '—')}</td><td class="num">${money(r.amount_total_cents)}</td></tr>`).join('')}</tbody></table>`;
+      })()}
       </div>
       <div class="osec" data-sec="races" style="display:${dsp('races')}">
       ${renderRaces(speed)}
@@ -2746,9 +2758,18 @@ async function showOrders() {
     // back until you approve. Same approve/reject pattern as the label drafts.
     (async function loadRefundApprovals() {
       const box = document.getElementById('refund-approvals'); if (!box) return;
-      let data; try { data = await api('/api/admin/refund-requests'); } catch (e) { return; }
+      // Badge the Refunds sub-tab with the pending count, so it's noticeable from
+      // any Orders sub-tab.
+      const setBadge = (n) => {
+        const tab = document.querySelector('.osub[data-sec="refunds"]'); if (!tab) return;
+        let b = tab.querySelector('.refund-badge');
+        if (n > 0) { if (!b) { b = document.createElement('span'); b.className = 'refund-badge'; b.style.cssText = 'color:var(--ink);background:var(--gold);border-radius:999px;padding:0 6px;margin-left:6px;font-size:11px;font-weight:700'; tab.appendChild(b); } b.textContent = n; }
+        else if (b) b.remove();
+      };
+      let data; try { data = await api('/api/admin/refund-requests'); } catch (e) { box.innerHTML = '<div class="note">Couldn’t load refund requests.</div>'; return; }
       const p = (data && data.requests) || [];
-      if (!p.length) { box.innerHTML = ''; return; }
+      setBadge(p.length);
+      if (!p.length) { box.innerHTML = '<div class="note">No refund requests waiting. When your bot queues one, it shows here to approve.</div>'; return; }
       box.innerHTML = `<div style="border:1px solid var(--gold);border-radius:8px;padding:12px 14px;margin:6px 0 16px;background:rgba(232,194,74,0.06)">
         <div style="font-weight:700;color:var(--gold);margin-bottom:6px">💸 Refunds awaiting your approval (${p.length})</div>
         ${p.map((d) => `<div style="padding:8px 0;border-top:1px solid rgba(232,194,74,0.15)">

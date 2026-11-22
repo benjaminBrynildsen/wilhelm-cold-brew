@@ -2795,22 +2795,71 @@ async function showOrders() {
       }));
     })();
 
-    // Direct refund from an order row (your own refund, with a confirm).
-    document.querySelectorAll('.orefund').forEach((b) => b.addEventListener('click', async () => {
-      const amt = Number(b.dataset.amt || 0);
-      const email = b.dataset.email || 'this customer';
-      const full = (amt / 100).toFixed(2);
-      const input = prompt(`Refund ${email} — dollar amount (max $${full}). Leave as ${full} for a full refund:`, full);
-      if (input == null) return;
-      const dollars = parseFloat(input);
-      if (!(dollars > 0)) { alert('Enter a positive amount.'); return; }
-      const cents = Math.round(dollars * 100);
-      if (cents > amt) { alert(`Can't refund more than $${full}.`); return; }
-      if (!confirm(`Refund $${(cents / 100).toFixed(2)} to ${email}? This can't be undone.`)) return;
-      try {
-        await api(`/api/admin/orders/${b.dataset.id}/refund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cents >= amt ? {} : { amountCents: cents }) });
-        showOrders();
-      } catch (e) { alert('Refund failed: ' + e.message); }
+    // Direct refund from an order row — a small dialog with quick-pick amounts
+    // (full, shipping, one of a bottle, etc.) so a partial refund takes no math.
+    const openRefundModal = (order) => {
+      const total = order.amount_total_cents || 0;
+      const already = order.refund_cents || 0;
+      const remaining = total - already;
+      const email = order.email || 'this customer';
+      const items = order.items || [];
+      const bottlesTotal = items.reduce((s, it) => s + (it.unit_price_cents || 0) * (it.quantity || 0), 0);
+      const shipping = items.length ? Math.max(0, total - bottlesTotal) : (o.shipCents || 0);
+      const d = (c) => '$' + (c / 100).toFixed(2);
+      // Quick-pick presets, each capped to the remaining balance.
+      const presets = [{ label: `Full ${already ? 'remaining' : ''} (${d(remaining)})`, cents: remaining }];
+      if (shipping > 0 && shipping <= remaining) presets.push({ label: `Shipping (${d(shipping)})`, cents: shipping });
+      if (items.length) {
+        items.forEach((it) => {
+          const p = it.unit_price_cents || 0;
+          if (p > 0 && p <= remaining) presets.push({ label: `1× ${it.name} (${d(p)})`, cents: p });
+          if ((it.quantity || 0) > 1 && p * it.quantity <= remaining) presets.push({ label: `${it.quantity}× ${it.name} (${d(p * it.quantity)})`, cents: p * it.quantity });
+        });
+      } else if (total - shipping > 0 && total - shipping <= remaining) {
+        presets.push({ label: `Bottle only (${d(total - shipping)})`, cents: total - shipping });
+      }
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px';
+      overlay.innerHTML = `<div style="background:var(--panel,#1a140a);border:1px solid var(--line);border-radius:12px;padding:18px 20px;max-width:440px;width:100%;color:var(--parch)">
+        <div style="font-weight:700;color:var(--gold);font-size:16px;margin-bottom:4px">Refund #${order.id}</div>
+        <div class="note" style="margin-bottom:12px">${esc(email)} · paid ${d(total)}${already ? ` · ${d(already)} already refunded · ${d(remaining)} left` : ''}</div>
+        <div class="note" style="margin-bottom:6px">Quick pick:</div>
+        <div id="rf-presets" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          ${presets.map((p, i) => `<button class="btn ghost sm rf-preset" data-cents="${p.cents}" data-i="${i}">${esc(p.label)}</button>`).join('')}
+        </div>
+        <label class="note" style="display:block">Amount to refund $
+          <input id="rf-amount" type="number" min="0.01" step="0.01" max="${(remaining / 100).toFixed(2)}" value="${(remaining / 100).toFixed(2)}" style="${FLD_DARK};width:110px"/>
+        </label>
+        <div class="row-actions" style="margin-top:16px;justify-content:flex-end;gap:10px">
+          <button class="btn ghost" id="rf-cancel">Cancel</button>
+          <button class="btn" id="rf-go">Refund</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      const amtInput = overlay.querySelector('#rf-amount');
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      overlay.querySelector('#rf-cancel').addEventListener('click', close);
+      overlay.querySelectorAll('.rf-preset').forEach((b) => b.addEventListener('click', () => {
+        amtInput.value = (Number(b.dataset.cents) / 100).toFixed(2);
+        overlay.querySelectorAll('.rf-preset').forEach((x) => x.classList.toggle('active', x === b));
+      }));
+      overlay.querySelector('#rf-go').addEventListener('click', async () => {
+        const dollars = parseFloat(amtInput.value);
+        if (!(dollars > 0)) { alert('Enter a positive amount.'); return; }
+        const cents = Math.round(dollars * 100);
+        if (cents > remaining) { alert(`Can't refund more than ${d(remaining)}.`); return; }
+        if (!confirm(`Refund ${d(cents)} to ${email}? This can't be undone.`)) return;
+        const go = overlay.querySelector('#rf-go'); go.disabled = true; go.textContent = 'Refunding…';
+        try {
+          await api(`/api/admin/orders/${order.id}/refund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cents >= remaining ? {} : { amountCents: cents }) });
+          close(); showOrders();
+        } catch (e) { go.disabled = false; go.textContent = 'Refund'; alert('Refund failed: ' + e.message); }
+      });
+    };
+    document.querySelectorAll('.orefund').forEach((b) => b.addEventListener('click', () => {
+      const order = (o.orders || []).find((x) => String(x.id) === b.dataset.id);
+      if (order) openRefundModal(order);
     }));
 
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {

@@ -7,7 +7,7 @@ import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
-import { getShippingFromStripe, activateDueScheduledDrops, payments } from './checkout.js';
+import { getShippingFromStripe, activateDueScheduledDrops, payments, SHIP_CENTS } from './checkout.js';
 import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcGetMemberSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { smsConfigured, smsCanSchedule, reachableNumbers, sendOne, broadcast, isUsMobile } from './sms.js';
 import { normalizePhone } from './util.js';
@@ -2560,7 +2560,7 @@ export function mountAdmin(app) {
       const orders = (await q(
         `SELECT o.id, o.email, o.quantity, o.amount_total_cents, o.status, o.shipping_name,
                 o.shipping_address, o.variant, o.created_at, o.paid_at, o.shipped_at, o.manual,
-                o.tracking_number, o.tracking_numbers, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name,
+                o.refund_cents, o.tracking_number, o.tracking_numbers, o.tracking_carrier, o.ship_notified_at, d.name AS drop_name,
                 -- how many distinct batches this buyer has paid for (>1 = recurring)
                 (SELECT COUNT(DISTINCT p.drop_id) FROM orders p
                   WHERE p.status='paid' AND p.email IS NOT NULL
@@ -2784,7 +2784,7 @@ export function mountAdmin(app) {
       const returningOut = returning
         ? { ...returning, returningBottles: returning.returning_bottles }
         : returning;
-      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, addrIssues, returning: returningOut, freshSignups, buyerCohorts, shipMap });
+      res.json({ paid: agg.paid, total: agg.total, revenueCents: Number(agg.revenue_cents), orders, liveDrop: live, selected, demand, unshipped, addrIssues, returning: returningOut, freshSignups, buyerCohorts, shipMap, shipCents: SHIP_CENTS });
     } catch (e) { console.error('[orders]', e); res.status(500).json({ error: e.message }); }
   });
 

@@ -8,7 +8,7 @@ import { pushToOwners } from './notify.js';
 import { awardPurchase } from './points.js';
 
 const SITE = process.env.SITE_URL || 'https://wilhelmcoldbrew.com';
-const SHIP_CENTS = parseInt(process.env.SHIP_CENTS || '800', 10); // flat US shipping (per order)
+export const SHIP_CENTS = parseInt(process.env.SHIP_CENTS || '800', 10); // flat US shipping (per order)
 const MAX_PER_ORDER = Math.max(1, parseInt(process.env.MAX_PER_ORDER || '6', 10)); // bottles per order cap
 // Stripe Tax must be enabled + an origin address set in the Stripe dashboard before
 // turning this on, otherwise Checkout creation errors. Flip STRIPE_TAX=1 once configured.

@@ -7,7 +7,7 @@ import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
-import { getShippingFromStripe, activateDueScheduledDrops } from './checkout.js';
+import { getShippingFromStripe, activateDueScheduledDrops, payments } from './checkout.js';
 import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcGetMemberSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { smsConfigured, smsCanSchedule, reachableNumbers, sendOne, broadcast, isUsMobile } from './sms.js';
 import { normalizePhone } from './util.js';
@@ -446,6 +446,7 @@ export function mountAdmin(app) {
     { method: 'POST', re: /^\/api\/admin\/orders\/\d+\/move$/ },               // move a paid order onto a batch so it ships with it
     { method: 'POST', re: /^\/api\/admin\/orders\/manual$/ },                  // add a manual / comp order (no charge)
     { method: 'POST', re: /^\/api\/admin\/orders\/\d+\/shipping$/ },           // fix a paid order's shipping address before labels print
+    { method: 'POST', re: /^\/api\/admin\/orders\/\d+\/refund-request$/ },     // QUEUE a refund for Ben to approve (never charges back itself)
   ];
   const dropIdFromPath = (p) => { const m = p.match(/\/drops\/(\d+)(?:\/|$)/); return m ? +m[1] : null; };
   app.use('/api/admin', (req, res, next) => {
@@ -517,8 +518,9 @@ export function mountAdmin(app) {
         { method: 'POST', path: '/api/admin/orders/:id/move', body: { dropId: 'int — the target batch' }, note: 'Move a PAID order onto another batch so it ships with it (e.g. a past order that never went out). Un-ships it, clears any stale tracking + the already-notified flag, so it re-enters that batch’s unshipped export and the buyer gets fresh tracking when shipped. Shifts the order’s revenue/sold from its old batch to the new one.' },
         { method: 'POST', path: '/api/admin/orders/manual', body: { dropId: 'int — the batch to add to', name: 'string — recipient (required)', email: 'string? — for the tracking email later', address: '{line1, line2?, city, state, postal_code}', items: '[{productId, quantity}] — for a two-bottle batch (GET /drops for product ids)', quantity: 'int? — bottle count when the batch has one bottle (default 1)', amountCents: 'int? — default 0 (a free comp; set it for a real amount)', note: 'string? — why it was added' }, note: 'Add a manual / COMP order with NO charge (no Stripe). Creates a paid order on the batch so it flows into the USPS export, label import and tracking email like any other. Marked manual (kept out of the sales-speed race). To search, read GET /api/admin/orders/search?q=.' },
         { method: 'POST', path: '/api/admin/orders/:id/shipping', body: { line1: 'string — street (required)', line2: 'string?', city: 'string (required)', state: 'string (required)', postal_code: 'string — zip (required)', country: 'string? — 2-letter, default US', name: 'string? — recipient; omit to keep the current name' }, note: 'Fix a paid order’s shipping address (e.g. a customer emailed a correction) before its label prints. Overwrites the stored address — street, city, state and zip are all required. Find the order id with GET /api/admin/orders/search?q=.' },
+        { method: 'POST', path: '/api/admin/orders/:id/refund-request', body: { amountCents: 'int? — omit for a FULL refund, else a partial amount in cents (≤ the remaining balance)', reason: 'string? — why (shown to Ben on the approval card)' }, note: 'QUEUE a refund for Ben to approve — it charges back NOTHING itself; it records the request on the order and pings Ben, who approves (or rejects) it in the admin. The bot CANNOT execute refunds. Comp/manual orders (no Stripe charge) and already-refunded orders are rejected. Find the order id with GET /api/admin/orders/search?q=.' },
       ],
-      blocked: ['go live / close a drop', 'publish a Ledger article', 'send marketing SMS or email blasts', 'send shipping emails directly (the bot prepares a label-import DRAFT; only Ben approves it)', 'approve/discard a label-import draft', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
+      blocked: ['go live / close a drop', 'publish a Ledger article', 'send marketing SMS or email blasts', 'send shipping emails directly (the bot prepares a label-import DRAFT; only Ben approves it)', 'approve/discard a label-import draft', 'EXECUTE or approve a refund (the bot only QUEUES a refund-request; only Ben approves it)', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
       notes: 'The bot can PREPARE a shipping batch by uploading a USPS label PDF to /orders/import-labels, which saves a pending draft and pings Ben to approve. The bot cannot send any customer email itself — Ben approves the draft to send.',
       rateLimit: '120 requests per minute',
     });
@@ -2834,6 +2836,139 @@ export function mountAdmin(app) {
       if (!r.rows.length) return res.status(404).json({ error: 'no such order' });
       res.json({ ok: true });
     } catch (e) { console.error('[orders] shipping update', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // ───────── Refunds ─────────
+  // Refunds run server-side through the existing Stripe key, so neither Ben nor
+  // the bot ever holds Stripe credentials. The bot can only QUEUE a refund
+  // (refund-request) for Ben to approve; executing one is admin-only.
+
+  // Shared executor: issue the Stripe refund, record it on the order, clear any
+  // pending request, and ping the owners. amountCents null = the full remaining.
+  async function doRefund(order, amountCents, who) {
+    const total = order.amount_total_cents || 0;
+    const already = order.refund_cents || 0;
+    const remaining = total - already;
+    if (remaining <= 0) { const e = new Error('order is already fully refunded'); e.code = 400; throw e; }
+    const amount = amountCents == null ? remaining : parseInt(amountCents, 10);
+    if (!(amount > 0)) { const e = new Error('refund amount must be positive'); e.code = 400; throw e; }
+    if (amount > remaining) { const e = new Error(`can't refund more than $${(remaining / 100).toFixed(2)} left on this order`); e.code = 400; throw e; }
+    const refund = await payments.refund(order.stripe_payment_intent, amount);
+    const newRefunded = already + amount;
+    const fully = newRefunded >= total;
+    await q(
+      `UPDATE orders SET refund_cents = $1, refunded_at = now(),
+              status = CASE WHEN $2 THEN 'refunded' ELSE status END,
+              refund_requested_cents = NULL, refund_requested_reason = NULL,
+              refund_requested_at = NULL, refund_requested_by = NULL
+        WHERE id = $3`, [newRefunded, fully, order.id]);
+    pushToOwners({
+      title: '💸 Refund issued',
+      body: `$${(amount / 100).toFixed(2)} to ${order.email || 'customer'}${who ? ' (' + who + ')' : ''}`,
+      url: '/admin/', tag: 'refund',
+    }).catch((e) => console.warn('[refund] push failed:', e?.message || e));
+    return { refundId: refund?.id || null, refundedCents: amount, fully };
+  }
+
+  const loadOrderForRefund = async (id) =>
+    (await q(`SELECT id, email, amount_total_cents, stripe_payment_intent, status, refund_cents FROM orders WHERE id = $1`, [id])).rows[0];
+
+  // Execute a refund now (admin only — the bot is NOT allowlisted for this path,
+  // so the bot gate 403s it). Body: { amountCents? } (omit = full remaining).
+  app.post('/api/admin/orders/:id/refund', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!payments.ready()) return res.status(503).json({ error: 'Stripe is not configured' });
+      const id = parseInt(req.params.id, 10);
+      const o = await loadOrderForRefund(id);
+      if (!o) return res.status(404).json({ error: 'no such order' });
+      if (!o.stripe_payment_intent) return res.status(400).json({ error: 'no Stripe charge to refund (manual/comp order)' });
+      const out = await doRefund(o, req.body?.amountCents, 'manual');
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      if (e.code === 400) return res.status(400).json({ error: e.message });
+      console.error('[refund]', e); res.status(500).json({ error: e.message || 'refund failed' });
+    }
+  });
+
+  // Bot-facing: QUEUE a refund for Ben to approve. Never touches Stripe — just
+  // records the request on the order and pings the owners. Body: { amountCents?,
+  // reason? }. (Admin can call it too, but normally uses the direct refund.)
+  app.post('/api/admin/orders/:id/refund-request', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const o = await loadOrderForRefund(id);
+      if (!o) return res.status(404).json({ error: 'no such order' });
+      if (!o.stripe_payment_intent) return res.status(400).json({ error: 'no Stripe charge to refund (manual/comp order)' });
+      if (o.status === 'refunded') return res.status(400).json({ error: 'order is already refunded' });
+      const remaining = (o.amount_total_cents || 0) - (o.refund_cents || 0);
+      if (remaining <= 0) return res.status(400).json({ error: 'order is already fully refunded' });
+      const amount = req.body?.amountCents != null ? parseInt(req.body.amountCents, 10) : remaining;
+      if (!(amount > 0) || amount > remaining) return res.status(400).json({ error: `refund amount must be between $0.01 and $${(remaining / 100).toFixed(2)}` });
+      const reason = req.body?.reason ? String(req.body.reason).slice(0, 300) : null;
+      const by = isBot(req) ? 'bot' : 'admin';
+      await q(
+        `UPDATE orders SET refund_requested_cents = $1, refund_requested_reason = $2,
+                refund_requested_at = now(), refund_requested_by = $3 WHERE id = $4`,
+        [amount, reason, by, id]);
+      pushToOwners({
+        title: '🧾 Refund requested',
+        body: `$${(amount / 100).toFixed(2)} for ${o.email || 'customer'}${reason ? ' — ' + reason : ''} — approve in the admin`,
+        url: '/admin/', tag: 'refund-req',
+      }).catch((e) => console.warn('[refund-request] push failed:', e?.message || e));
+      res.json({ ok: true, requestedCents: amount });
+    } catch (e) { console.error('[refund-request]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Approve a queued refund → executes it (admin only). Uses the amount Ben
+  // requested unless overridden in the body.
+  app.post('/api/admin/orders/:id/refund-approve', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      if (!payments.ready()) return res.status(503).json({ error: 'Stripe is not configured' });
+      const id = parseInt(req.params.id, 10);
+      const o = (await q(`SELECT id, email, amount_total_cents, stripe_payment_intent, status, refund_cents, refund_requested_cents FROM orders WHERE id = $1`, [id])).rows[0];
+      if (!o) return res.status(404).json({ error: 'no such order' });
+      if (o.refund_requested_cents == null) return res.status(400).json({ error: 'no pending refund request on this order' });
+      if (!o.stripe_payment_intent) return res.status(400).json({ error: 'no Stripe charge to refund (manual/comp order)' });
+      const amount = req.body?.amountCents != null ? parseInt(req.body.amountCents, 10) : o.refund_requested_cents;
+      const out = await doRefund(o, amount, 'approved');
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      if (e.code === 400) return res.status(400).json({ error: e.message });
+      console.error('[refund-approve]', e); res.status(500).json({ error: e.message || 'refund failed' });
+    }
+  });
+
+  // Reject / clear a queued refund request without refunding (admin only).
+  app.post('/api/admin/orders/:id/refund-reject', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const r = await q(
+        `UPDATE orders SET refund_requested_cents = NULL, refund_requested_reason = NULL,
+                refund_requested_at = NULL, refund_requested_by = NULL
+          WHERE id = $1 AND refund_requested_at IS NOT NULL RETURNING id`, [id]);
+      if (!r.rows.length) return res.status(404).json({ error: 'no pending refund request on this order' });
+      res.json({ ok: true });
+    } catch (e) { console.error('[refund-reject]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Pending refund requests (the bot-prepared drafts awaiting Ben's approval).
+  app.get('/api/admin/refund-requests', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const rows = (await q(
+        `SELECT o.id, o.email, o.amount_total_cents, o.refund_cents,
+                o.refund_requested_cents, o.refund_requested_reason,
+                o.refund_requested_at, o.refund_requested_by,
+                COALESCE(NULLIF(btrim(o.shipping_name),''), o.email) AS who, d.name AS drop_name
+           FROM orders o LEFT JOIN drops d ON d.id = o.drop_id
+          WHERE o.refund_requested_at IS NOT NULL
+          ORDER BY o.refund_requested_at ASC`)).rows;
+      res.json({ requests: rows });
+    } catch (e) { console.error('[refund-requests]', e); res.status(500).json({ error: e.message }); }
   });
 
   // ── Demo data (for previewing the customer Cellar) ──────────────────────────

@@ -2115,7 +2115,7 @@ async function showOrders() {
             : (r.quantity > 1 ? ` <span class="note">×${num(r.quantity)}</span>` : '')}</td>
           <td>${r.addressIssue ? `<span title="${esc(r.addressIssue)} — fix before exporting" style="color:#e0902a;cursor:default">⚠</span> ` : ''}${esc(r.shipping_name || '—')}${r.status === 'paid' ? ` <button class="btn ghost oaddr" data-id="${r.id}" style="padding:0 7px" title="Edit shipping address">✎</button>` : ''}</td>
           <td class="num">${money(r.amount_total_cents)}</td>
-          <td>${orderStatusBadge(r.status)}${r.manual ? ' <span class="chip" title="Manually added — no charge">comp</span>' : ''}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}</td>
+          <td>${orderStatusBadge(r.status)}${r.manual ? ' <span class="chip" title="Manually added — no charge">comp</span>' : ''}${r.status === 'paid' && r.shipped_at ? ' <span class="note">· shipped</span>' : ''}${r.status === 'paid' && !r.manual ? ` <button class="btn ghost orefund" data-id="${r.id}" data-amt="${r.amount_total_cents || 0}" data-email="${esc(r.email || '')}" style="padding:0 7px" title="Refund this order">↩</button>` : ''}</td>
           <td>${r.tracking_number
             ? `<a href="${esc(trackUrl(r.tracking_number, r.tracking_carrier))}" target="_blank" rel="noopener">${esc(String(r.tracking_number).slice(0, 14))}${String(r.tracking_number).length > 14 ? '…' : ''}</a>${r.ship_notified_at ? ' <span style="color:var(--good)" title="purchaser emailed">✓</span>' : ' <span class="note" title="tracking on file, not yet emailed">·</span>'}`
             : '<span class="note">—</span>'}${r.status === 'paid' ? ` <button class="btn ghost otrack" data-id="${r.id}" style="padding:0 7px" title="Edit tracking number">✎</button>` : ''}</td></tr>`).join('')
@@ -2163,6 +2163,7 @@ async function showOrders() {
         </span>
       </div>
       ${subBar}
+      <div id="refund-approvals"></div>
       <div class="osec" data-sec="summary" style="display:${dsp('summary')}">
       <div class="cards">
         <div class="card"><div class="k">Paid orders${scoped ? ' (this drop)' : ''}</div><div class="v">${num(o.paid)}</div></div>
@@ -2740,6 +2741,56 @@ async function showOrders() {
         } catch (e) { det.innerHTML = '<div class="note">Failed: ' + esc(e.message) + '</div>'; }
       }));
     })();
+
+    // Pending refund requests — the bot (or you) queued these; nothing is charged
+    // back until you approve. Same approve/reject pattern as the label drafts.
+    (async function loadRefundApprovals() {
+      const box = document.getElementById('refund-approvals'); if (!box) return;
+      let data; try { data = await api('/api/admin/refund-requests'); } catch (e) { return; }
+      const p = (data && data.requests) || [];
+      if (!p.length) { box.innerHTML = ''; return; }
+      box.innerHTML = `<div style="border:1px solid var(--gold);border-radius:8px;padding:12px 14px;margin:6px 0 16px;background:rgba(232,194,74,0.06)">
+        <div style="font-weight:700;color:var(--gold);margin-bottom:6px">💸 Refunds awaiting your approval (${p.length})</div>
+        ${p.map((d) => `<div style="padding:8px 0;border-top:1px solid rgba(232,194,74,0.15)">
+          <div class="row-actions" style="align-items:center;gap:10px;flex-wrap:wrap">
+            <span><b>${money(d.refund_requested_cents)}</b> to ${esc(d.who || d.email || 'customer')} <span class="note">— #${d.id}${d.amount_total_cents ? ' of ' + money(d.amount_total_cents) : ''} · ${esc(d.drop_name || '')}${d.refund_requested_by === 'bot' ? ' · requested by your bot' : ''}</span></span>
+            ${d.refund_requested_reason ? `<span class="note" style="flex-basis:100%">“${esc(d.refund_requested_reason)}”</span>` : ''}
+            <span style="flex:1;min-width:10px"></span>
+            <button class="btn sm rf-approve" data-id="${d.id}" data-amt="${d.refund_requested_cents}" data-email="${esc(d.email || '')}">Approve refund</button>
+            <button class="btn ghost sm rf-reject" data-id="${d.id}">Reject</button>
+          </div>
+        </div>`).join('')}
+      </div>`;
+      box.querySelectorAll('.rf-approve').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm(`Refund ${money(Number(b.dataset.amt))} to ${b.dataset.email || 'this customer'}? This sends the money back and can't be undone.`)) return;
+        b.disabled = true; b.textContent = 'Refunding…';
+        try { await api(`/api/admin/orders/${b.dataset.id}/refund-approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); showOrders(); }
+        catch (e) { b.disabled = false; b.textContent = 'Approve refund'; alert('Refund failed: ' + e.message); }
+      }));
+      box.querySelectorAll('.rf-reject').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm('Reject this refund request? No money is sent back.')) return;
+        try { await api(`/api/admin/orders/${b.dataset.id}/refund-reject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); loadRefundApprovals(); }
+        catch (e) { alert('Failed: ' + e.message); }
+      }));
+    })();
+
+    // Direct refund from an order row (your own refund, with a confirm).
+    document.querySelectorAll('.orefund').forEach((b) => b.addEventListener('click', async () => {
+      const amt = Number(b.dataset.amt || 0);
+      const email = b.dataset.email || 'this customer';
+      const full = (amt / 100).toFixed(2);
+      const input = prompt(`Refund ${email} — dollar amount (max $${full}). Leave as ${full} for a full refund:`, full);
+      if (input == null) return;
+      const dollars = parseFloat(input);
+      if (!(dollars > 0)) { alert('Enter a positive amount.'); return; }
+      const cents = Math.round(dollars * 100);
+      if (cents > amt) { alert(`Can't refund more than $${full}.`); return; }
+      if (!confirm(`Refund $${(cents / 100).toFixed(2)} to ${email}? This can't be undone.`)) return;
+      try {
+        await api(`/api/admin/orders/${b.dataset.id}/refund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cents >= amt ? {} : { amountCents: cents }) });
+        showOrders();
+      } catch (e) { alert('Refund failed: ' + e.message); }
+    }));
 
     document.querySelectorAll('.dstatus').forEach((b) => b.addEventListener('click', async () => {
       try {

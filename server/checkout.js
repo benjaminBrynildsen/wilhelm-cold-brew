@@ -33,6 +33,20 @@ else console.warn('[checkout] STRIPE_SECRET_KEY missing — checkout disabled.')
 
 export function stripeReady() { return !!stripe; }
 
+// Refunds, behind a small object so the admin never touches Stripe directly (and
+// so tests can stub it). `refund` issues a Stripe refund for a payment intent —
+// full when amountCents is null, else that partial amount — with an idempotency
+// key so a retried request can't double-refund.
+export const payments = {
+  ready() { return !!stripe; },
+  async refund(paymentIntentId, amountCents) {
+    if (!stripe) throw new Error('Stripe is not configured');
+    const params = { payment_intent: paymentIntentId };
+    if (amountCents != null) params.amount = amountCents;
+    return stripe.refunds.create(params, { idempotencyKey: `refund_${paymentIntentId}_${amountCents ?? 'full'}` });
+  },
+};
+
 // Pull the shipping block (name/phone/address) for a payment intent straight from
 // Stripe. Used to backfill any paid order whose shipping wasn't captured by the
 // webhook, so the Pirate Ship export is never missing an address.

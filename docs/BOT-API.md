@@ -77,8 +77,9 @@ Other `GET /api/admin/*` endpoints are readable too; the above are the useful da
 | `POST /api/admin/orders/:id/move` | `{dropId}` | Move a **paid** order onto another batch so it ships with it (e.g. one that never went out). Un-ships it, clears stale tracking + the notified flag. Shifts its revenue/sold to the new batch. |
 | `POST /api/admin/orders/import-labels` | raw PDF bytes, `Content-Type: application/pdf`; query `?dropId=` | Upload a USPS Click-N-Ship label PDF. The bot **always creates a DRAFT** for Ben to approve — it pulls each tracking # + `WCB-<order>` ref and matches to orders but **sends nothing**. Ben approves in the admin to record tracking + email buyers. |
 | `POST /api/admin/orders/:id/shipping` | `{line1, line2?, city, state, postal_code, country?, name?}` | **Fix a paid order's shipping address** (e.g. a customer emailed a correction) before its label prints. Overwrites the stored address — `line1`, `city`, `state`, `postal_code` are all required; omit `name` to keep the current recipient. |
+| `POST /api/admin/orders/:id/refund-request` | `{amountCents?, reason?}` | **Queue a refund for Ben to approve** — charges back **nothing** itself. Records the request on the order and pings Ben, who approves/rejects it in the admin. Omit `amountCents` for a full refund, else a partial (≤ remaining). Comp orders (no Stripe charge) and already-refunded orders are rejected. **The bot cannot execute or approve refunds.** |
 
-To find an order id for `move` or `shipping`, search first: `GET /api/admin/orders/search?q=<name|email|#>`.
+To find an order id for `move`, `shipping` or `refund-request`, search first: `GET /api/admin/orders/search?q=<name|email|#>`.
 
 ## Never allowed (always `403`)
 

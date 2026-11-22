@@ -351,6 +351,16 @@ export async function ensureSchema() {
     -- buy page, e.g. 'sms'). Null = untagged / direct. Lets the admin break
     -- purchases down by source the same way page-view traffic already is.
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_source TEXT;
+    -- Refunds. refund_cents is the total refunded so far (partial-refund aware),
+    -- stamped at refunded_at. The refund_requested_* fields hold a PENDING refund
+    -- the bot queued for Ben to approve (nothing is charged back until he does) —
+    -- cleared once approved (executed) or rejected.
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS refunded_at             TIMESTAMPTZ;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_cents            INTEGER;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_cents  INTEGER;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_reason TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_at     TIMESTAMPTZ;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_requested_by     TEXT;
 
     -- PROTOTYPE: two-bottle drops. A drop can carry MULTIPLE products (one row per
     -- bottle). When a drop has NO rows here it's a legacy single-product drop and

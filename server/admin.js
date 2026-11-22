@@ -518,10 +518,10 @@ export function mountAdmin(app) {
         { method: 'POST', path: '/api/admin/orders/:id/move', body: { dropId: 'int — the target batch' }, note: 'Move a PAID order onto another batch so it ships with it (e.g. a past order that never went out). Un-ships it, clears any stale tracking + the already-notified flag, so it re-enters that batch’s unshipped export and the buyer gets fresh tracking when shipped. Shifts the order’s revenue/sold from its old batch to the new one.' },
         { method: 'POST', path: '/api/admin/orders/manual', body: { dropId: 'int — the batch to add to', name: 'string — recipient (required)', email: 'string? — for the tracking email later', address: '{line1, line2?, city, state, postal_code}', items: '[{productId, quantity}] — for a two-bottle batch (GET /drops for product ids)', quantity: 'int? — bottle count when the batch has one bottle (default 1)', amountCents: 'int? — default 0 (a free comp; set it for a real amount)', note: 'string? — why it was added' }, note: 'Add a manual / COMP order with NO charge (no Stripe). Creates a paid order on the batch so it flows into the USPS export, label import and tracking email like any other. Marked manual (kept out of the sales-speed race). To search, read GET /api/admin/orders/search?q=.' },
         { method: 'POST', path: '/api/admin/orders/:id/shipping', body: { line1: 'string — street (required)', line2: 'string?', city: 'string (required)', state: 'string (required)', postal_code: 'string — zip (required)', country: 'string? — 2-letter, default US', name: 'string? — recipient; omit to keep the current name' }, note: 'Fix a paid order’s shipping address (e.g. a customer emailed a correction) before its label prints. Overwrites the stored address — street, city, state and zip are all required. Find the order id with GET /api/admin/orders/search?q=.' },
-        { method: 'POST', path: '/api/admin/orders/:id/refund-request', body: { amountCents: 'int? — omit for a FULL refund, else a partial amount in cents (≤ the remaining balance)', reason: 'string? — why (shown to Ben on the approval card)' }, note: 'QUEUE a refund for Ben to approve — it charges back NOTHING itself; it records the request on the order and pings Ben, who approves (or rejects) it in the admin. The bot CANNOT execute refunds. Comp/manual orders (no Stripe charge) and already-refunded orders are rejected. Find the order id with GET /api/admin/orders/search?q=.' },
+        { method: 'POST', path: '/api/admin/orders/:id/refund-request', body: { amountCents: 'int? in WHOLE CENTS — 700 means $7.00 (NOT 7, NOT "7.00", NOT dollars). OMIT the field entirely for a full refund. Must be ≤ the remaining balance. A dollars value or a mis-named field is rejected, never treated as a full refund.', reason: 'string? — why (shown to Ben on the approval card)' }, note: 'QUEUE a refund for Ben to approve — it charges back NOTHING itself; it records the request on the order and pings Ben, who approves (or rejects) it in the admin. The bot CANNOT execute refunds. Comp/manual orders (no Stripe charge) and already-refunded orders are rejected. Find the order id with GET /api/admin/orders/search?q=. Example: to refund $7.00 send {"amountCents":700}; for a full refund send {}.' },
       ],
       blocked: ['go live / close a drop', 'publish a Ledger article', 'send marketing SMS or email blasts', 'send shipping emails directly (the bot prepares a label-import DRAFT; only Ben approves it)', 'approve/discard a label-import draft', 'EXECUTE or approve a refund (the bot only QUEUES a refund-request; only Ben approves it)', 'delete anything', 'edit a drop or article while it is live/published', 'archive / modify subscribers', 'anything not listed under writes'],
-      notes: 'The bot can PREPARE a shipping batch by uploading a USPS label PDF to /orders/import-labels, which saves a pending draft and pings Ben to approve. The bot cannot send any customer email itself — Ben approves the draft to send.',
+      notes: 'The bot can PREPARE a shipping batch by uploading a USPS label PDF to /orders/import-labels, which saves a pending draft and pings Ben to approve. The bot cannot send any customer email itself — Ben approves the draft to send. MONEY IS ALWAYS IN WHOLE CENTS: every *Cents field (amountCents, priceCents, amountCents on a refund) is an integer number of cents — $7.00 is 700, never 7 and never "7.00". This manifest is the source of truth for request shapes; there are no doc pages served at a URL.',
       rateLimit: '120 requests per minute',
     });
   });
@@ -2843,6 +2843,25 @@ export function mountAdmin(app) {
   // the bot ever holds Stripe credentials. The bot can only QUEUE a refund
   // (refund-request) for Ben to approve; executing one is admin-only.
 
+  // Parse a refund amount from the request body. Returns the cents integer, or
+  // null for a FULL refund (amountCents omitted). The amount is ALWAYS in whole
+  // cents (700 = $7.00), matching priceCents/amountCents everywhere else. Throws a
+  // 400 with a hint if a dollars value or a mis-named field is sent — so a "$7"
+  // mistake can never silently fall through to a full refund (it did once: a $7
+  // request came back as the full $57 because the field name didn't match).
+  const refundAmountCents = (body) => {
+    const b = body || {};
+    if (b.amountCents == null) {
+      const stray = ['amount', 'amountDollars', 'dollars', 'amount_cents', 'refundCents', 'refund_cents', 'cents', 'refundAmount'].find((k) => b[k] != null);
+      if (stray) { const e = new Error(`send the refund amount as "amountCents" in whole cents (e.g. 700 for $7.00), not "${stray}". Omit it entirely for a full refund.`); e.code = 400; throw e; }
+      return null;   // full refund
+    }
+    if (String(b.amountCents).includes('.')) { const e = new Error('amountCents must be WHOLE cents with no decimal — send 700 for $7.00 (a dollars value like 7.00 is not accepted)'); e.code = 400; throw e; }
+    const n = Number(b.amountCents);
+    if (!Number.isInteger(n) || n <= 0) { const e = new Error('amountCents must be a whole number of cents greater than 0 (e.g. 700 for $7.00)'); e.code = 400; throw e; }
+    return n;
+  };
+
   // Shared executor: issue the Stripe refund, record it on the order, clear any
   // pending request, and ping the owners. amountCents null = the full remaining.
   async function doRefund(order, amountCents, who) {
@@ -2850,7 +2869,7 @@ export function mountAdmin(app) {
     const already = order.refund_cents || 0;
     const remaining = total - already;
     if (remaining <= 0) { const e = new Error('order is already fully refunded'); e.code = 400; throw e; }
-    const amount = amountCents == null ? remaining : parseInt(amountCents, 10);
+    const amount = amountCents == null ? remaining : amountCents;
     if (!(amount > 0)) { const e = new Error('refund amount must be positive'); e.code = 400; throw e; }
     if (amount > remaining) { const e = new Error(`can't refund more than $${(remaining / 100).toFixed(2)} left on this order`); e.code = 400; throw e; }
     const refund = await payments.refund(order.stripe_payment_intent, amount);
@@ -2883,7 +2902,7 @@ export function mountAdmin(app) {
       const o = await loadOrderForRefund(id);
       if (!o) return res.status(404).json({ error: 'no such order' });
       if (!o.stripe_payment_intent) return res.status(400).json({ error: 'no Stripe charge to refund (manual/comp order)' });
-      const out = await doRefund(o, req.body?.amountCents, 'manual');
+      const out = await doRefund(o, refundAmountCents(req.body), 'manual');
       res.json({ ok: true, ...out });
     } catch (e) {
       if (e.code === 400) return res.status(400).json({ error: e.message });
@@ -2904,8 +2923,9 @@ export function mountAdmin(app) {
       if (o.status === 'refunded') return res.status(400).json({ error: 'order is already refunded' });
       const remaining = (o.amount_total_cents || 0) - (o.refund_cents || 0);
       if (remaining <= 0) return res.status(400).json({ error: 'order is already fully refunded' });
-      const amount = req.body?.amountCents != null ? parseInt(req.body.amountCents, 10) : remaining;
-      if (!(amount > 0) || amount > remaining) return res.status(400).json({ error: `refund amount must be between $0.01 and $${(remaining / 100).toFixed(2)}` });
+      const parsed = refundAmountCents(req.body);           // throws 400 on a dollars / mis-named amount
+      const amount = parsed == null ? remaining : parsed;   // null = full remaining
+      if (amount > remaining) return res.status(400).json({ error: `refund amount can't exceed the $${(remaining / 100).toFixed(2)} left on this order (send amountCents in whole cents, e.g. 700 for $7.00)` });
       const reason = req.body?.reason ? String(req.body.reason).slice(0, 300) : null;
       const by = isBot(req) ? 'bot' : 'admin';
       await q(
@@ -2918,7 +2938,10 @@ export function mountAdmin(app) {
         url: '/admin/', tag: 'refund-req',
       }).catch((e) => console.warn('[refund-request] push failed:', e?.message || e));
       res.json({ ok: true, requestedCents: amount });
-    } catch (e) { console.error('[refund-request]', e); res.status(500).json({ error: e.message }); }
+    } catch (e) {
+      if (e.code === 400) return res.status(400).json({ error: e.message });
+      console.error('[refund-request]', e); res.status(500).json({ error: e.message });
+    }
   });
 
   // Approve a queued refund → executes it (admin only). Uses the amount Ben
@@ -2932,7 +2955,8 @@ export function mountAdmin(app) {
       if (!o) return res.status(404).json({ error: 'no such order' });
       if (o.refund_requested_cents == null) return res.status(400).json({ error: 'no pending refund request on this order' });
       if (!o.stripe_payment_intent) return res.status(400).json({ error: 'no Stripe charge to refund (manual/comp order)' });
-      const amount = req.body?.amountCents != null ? parseInt(req.body.amountCents, 10) : o.refund_requested_cents;
+      const override = refundAmountCents(req.body);   // throws 400 on a dollars / mis-named amount
+      const amount = override != null ? override : o.refund_requested_cents;
       const out = await doRefund(o, amount, 'approved');
       res.json({ ok: true, ...out });
     } catch (e) {

@@ -47,6 +47,8 @@ await q(`INSERT INTO orders (id,drop_id,email,quantity,amount_total_cents,status
          VALUES (701,9,'comp@x.com',1,0,'paid',true, now(), now())`);
 await q(`INSERT INTO orders (id,drop_id,email,quantity,amount_total_cents,status,stripe_payment_intent,shipping_name,paid_at,created_at)
          VALUES (702,9,'partial@x.com',1,5000,'paid','pi_702','Part Ial', now(), now())`);
+await q(`INSERT INTO orders (id,drop_id,email,quantity,amount_total_cents,status,stripe_payment_intent,shipping_name,paid_at,created_at)
+         VALUES (703,9,'greta@x.com',1,5700,'paid','pi_703','Greta', now(), now())`);
 
 const { mountAdmin } = await import(mod('admin.js'));
 const app = express(); app.use(express.json()); app.use(cookieParser('s')); mountAdmin(app);
@@ -97,6 +99,19 @@ ok('approve executes the refund', appr.status === 200 && appr.body.refundedCents
 ok('Stripe called for the approved amount', refundCalls.length === 2 && refundCalls[1].amt === 2500, JSON.stringify(refundCalls));
 row = await orderRow(702);
 ok('partial refund recorded, request cleared, not fully refunded', row.refund_cents === 2500 && row.refund_requested_cents == null && row.status === 'paid', JSON.stringify(row));
+
+console.log('\nAmount must be whole cents — a "$7" mistake can\'t become a full refund');
+// The exact bug Oscar hit on WCB-1480: a dollars value in a mis-named field
+// silently became a FULL refund ($7 → $57). Order 703 is a fresh $57 order.
+const stray = await call('/api/admin/orders/703/refund-request', { amount: 7.00, reason: 'damaged' }, true);
+ok('stray "amount" field rejected, NOT treated as a full refund', stray.status === 400 && /amountCents/.test(stray.body.error || ''), JSON.stringify(stray));
+const dollars = await call('/api/admin/orders/703/refund-request', { amountCents: '7.00' }, true);
+ok('decimal amountCents rejected', dollars.status === 400 && /whole/i.test(dollars.body.error || ''), JSON.stringify(dollars));
+let row703 = await orderRow(703);
+ok('no refund request was recorded from the bad calls', row703.refund_requested_cents == null, JSON.stringify(row703));
+const good = await call('/api/admin/orders/703/refund-request', { amountCents: 700 }, true);
+ok('amountCents:700 → a $7.00 request (cents, not full $57)', good.status === 200 && good.body.requestedCents === 700, JSON.stringify(good.body));
+await call('/api/admin/orders/703/refund-reject', {});   // clean up
 
 console.log('\nReject clears a request without refunding');
 await call('/api/admin/orders/702/refund-request', { amountCents: 1000 }, true);

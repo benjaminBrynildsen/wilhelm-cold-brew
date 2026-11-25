@@ -7,7 +7,7 @@ import { q, pool } from './db.js';
 import { getBanditReport, bustBanditCache, BANDIT_DEFAULTS } from './bandit.js';
 import { syncInbox, inboxSyncState } from './inbox.js';
 import { mailReady, sendBulk, sendWelcome, sendShippingNotice, renderShippingEmail, renderShippingEmailWith, getShipTemplate, SHIP_EMAIL_DEFAULTS } from './mailer.js';
-import { getShippingFromStripe, activateDueScheduledDrops, payments, SHIP_CENTS } from './checkout.js';
+import { getShippingFromStripe, activateDueScheduledDrops, payments, SHIP_CENTS, previewDropPayload, notifyDropLive, nextFridayNineCentral } from './checkout.js';
 import { mcConfigured, mcKeyProblem, mcLists, mcListId, mcMembers, mcEnsureMember, mcMarkUnsubscribed, mcSubscribeSms, mcGetMemberSms, mcPushSignup, mcPushUnsubscribe, isDropDayHold } from './mailchimp.js';
 import { smsConfigured, smsCanSchedule, reachableNumbers, sendOne, broadcast, isUsMobile } from './sms.js';
 import { normalizePhone } from './util.js';
@@ -47,7 +47,7 @@ const EXCL_EM = `AND LOWER(email) NOT IN (SELECT email FROM internal_emails) AND
 const BOT_API_KEY = (process.env.BOT_API_KEY || '').trim();
 function isBot(req) { return !!BOT_API_KEY && safeEqual(String(req.headers['x-bot-key'] || '').trim(), BOT_API_KEY); }
 
-function isAdmin(req) {
+export function isAdmin(req) {
   if (safeEqual(req.headers['x-admin-key'] || '', ADMIN_API_KEY)) return true;
   if (isBot(req)) return true;   // bot token — scoped further by botGate
   return req.signedCookies && req.signedCookies[COOKIE] === 'ok';
@@ -4461,9 +4461,12 @@ export function mountAdmin(app) {
       const id = parseInt(req.params.id, 10);
       const status = String(req.body?.status || '');
       if (!['scheduled', 'live', 'soldout', 'closed'].includes(status)) return res.status(400).json({ error: 'bad status' });
+      const before = (await q(`SELECT status, name FROM drops WHERE id=$1`, [id])).rows[0];
       // Only one drop is live at a time — close any other live drop first.
       if (status === 'live') await q(`UPDATE drops SET status='closed' WHERE status='live' AND id <> $1`, [id]);
       await q(`UPDATE drops SET status=$1 WHERE id=$2`, [status, id]);
+      // Push the owners when a batch actually BECOMES live (not on a repeat tap).
+      if (status === 'live' && before && before.status !== 'live') notifyDropLive({ id, name: before.name }, 'manual');
       res.json({ ok: true });
     } catch (e) { console.error('[drops/status]', e); res.status(500).json({ error: e.message }); }
   });
@@ -4612,10 +4615,12 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[drops/notes]', e); res.status(500).json({ error: e.message }); }
   });
 
-  // Duplicate a drop: clone all its content (name, price, cap, tasting card) into
-  // a fresh 'scheduled' drop so a repeat batch doesn't have to be re-entered. The
-  // new drop's opens_at auto-advances 7 days (a weekly drop lands next week at the
-  // same time). Sold/orders/stripe are NOT copied — those are derived from orders.
+  // Duplicate a drop: clone all its content (name, price, cap, photo, tasting card)
+  // into a fresh 'scheduled' drop so a repeat batch doesn't have to be re-entered.
+  // The copy is dated the NEXT Friday 9:00 AM Central. It used to be "source date
+  // + 7 days", but a drop's date is never stamped when it goes live, so sources
+  // were usually stale and the copy landed on a wrong (often past) date.
+  // Sold/orders/stripe are NOT copied — those are derived from orders.
   app.post('/api/admin/drops/:id/duplicate', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     try {
@@ -4624,11 +4629,11 @@ export function mountAdmin(app) {
       if (!src) return res.status(404).json({ error: 'drop not found' });
       const r = await q(
         `INSERT INTO drops (name, price_cents, bottle_cap, opens_at, status,
-                            tasting_notes, origin, varietal, elevation, roast)
-         VALUES ($1,$2,$3,$4,'scheduled',$5,$6,$7,$8,$9) RETURNING id`,
+                            tasting_notes, origin, varietal, elevation, roast, image)
+         VALUES ($1,$2,$3,$4,'scheduled',$5,$6,$7,$8,$9,$10) RETURNING id`,
         [src.name, src.price_cents, src.bottle_cap,
-         src.opens_at ? new Date(new Date(src.opens_at).getTime() + 7 * 86400000).toISOString() : null,
-         src.tasting_notes, src.origin, src.varietal, src.elevation, src.roast]);
+         nextFridayNineCentral().toISOString(),
+         src.tasting_notes, src.origin, src.varietal, src.elevation, src.roast, src.image || null]);
       const newId = r.rows[0].id;
       // Carry over the two-bottle setup too: copy every drop_products row (each
       // bottle's name/price/cap/photo/tasting card) into the new drop. Without
@@ -4639,6 +4644,20 @@ export function mountAdmin(app) {
            FROM drop_products WHERE drop_id = $2::int ORDER BY sort, id`, [newId, id]);
       res.json({ ok: true, id: newId });
     } catch (e) { console.error('[drops/duplicate]', e); res.status(500).json({ error: e.message }); }
+  });
+
+  // Preview a drop on the real storefront pages before it's live. Returns the same
+  // JSON the buy / sold-out pages read from /api/drop/current, for this one drop.
+  app.get('/api/admin/drops/:id/preview', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const id = parseInt(req.params.id, 10);
+      const view = ['buy', 'soldout', 'countdown'].includes(String(req.query?.view)) ? String(req.query.view) : 'buy';
+      const out = await previewDropPayload(id, view);
+      if (!out) return res.status(404).json({ error: 'drop not found' });
+      res.set('Cache-Control', 'no-store');
+      res.json(out);
+    } catch (e) { console.error('[drops/preview]', e); res.status(500).json({ error: e.message }); }
   });
 
   // Reschedule a drop (set/clear opens_at) — the only field with no edit path until

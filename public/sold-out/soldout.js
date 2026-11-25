@@ -19,6 +19,27 @@
   function variant() { try { return localStorage.getItem('wilhelm_drink_hl') || localStorage.getItem('wilhelm_drink_variant') || null; } catch (e) { return null; } }
   function fund(ev, data) { try { if (window.wilhelmTrack) window.wilhelmTrack(ev, data || {}); } catch (e) {} }
 
+  // ── Admin batch preview (/sold-out/?preview=1&drop=<id>[&view=countdown]) ──
+  // Shows this page for one chosen batch. Data comes from the admin-only preview
+  // endpoint; analytics and pixels are off (?preview=1) and the SMS signup is
+  // stopped, so nothing here reaches the list or the stats.
+  var PV = (function () {
+    try {
+      var q = new URLSearchParams(location.search), id = q.get('drop') || '';
+      if (q.get('preview') === '1' && /^\d+$/.test(id)) return { drop: id, view: q.get('view') === 'countdown' ? 'countdown' : 'soldout' };
+    } catch (e) {}
+    return null;
+  })();
+  var DROP_URL = PV ? '/api/admin/drops/' + PV.drop + '/preview?view=' + PV.view : '/api/drop/current';
+  var pvStatus = 0;
+  function previewBar(info) {
+    info.drop = PV.drop; info.view = PV.view;
+    if (window.wilhelmPreviewBar) return window.wilhelmPreviewBar(info);
+    var sc = document.createElement('script'); sc.src = '/preview-bar.js';
+    sc.onload = function () { if (window.wilhelmPreviewBar) window.wilhelmPreviewBar(info); };
+    document.head.appendChild(sc);
+  }
+
   fund('soldout_view', { variant: variant() });
 
   // The batch this visitor just missed — powers the demand vote + the batch card.
@@ -79,13 +100,14 @@
   }
 
   // Show the real batch identity + how fast it went, and the next-drop date.
-  var dropFetch = fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
-    .then(function (r) { return r.json(); })
+  var dropFetch = fetch(DROP_URL, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+    .then(function (r) { if (PV && !r.ok) { pvStatus = r.status; throw new Error('preview ' + r.status); } return r.json(); })
     .then(function (d) {
+      if (PV) previewBar({ name: d.previewName, status: d.previewStatus });
       // A batch is LIVE right now — they followed a stale /sold-out link (an old
       // drop email, a bookmark). Send them to the order page instead of showing a
       // sold-out prompt and recording a bogus "would've bought" vote on a live drop.
-      if (d && d.available) { location.replace('/buy'); return; }
+      if (d && d.available) { location.replace(PV ? '/buy/?preview=1&drop=' + PV.drop : '/buy'); return; }
       if (d && d.dropId != null) soldOutDropId = d.dropId;
       // Between batches: no last-batch talk — just a countdown to the next one.
       if (d && d.phase === 'countdown') { startCountdown(d.nextDropAt, d.nextBatch); return; }
@@ -110,7 +132,7 @@
         nextDate.textContent = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       }
     })
-    .catch(function () {})
+    .catch(function () { if (PV) previewBar({ error: pvStatus === 401 ? 'login' : 'load' }); })
     .then(function () { dropSettled = true; });
 
   // ── Tasting notes modal (same gold card as the buy page) ──
@@ -211,6 +233,7 @@
                                             : (digits.length === 10 || (digits.length === 11 && digits.charAt(0) === '1'));
         if (!EMAIL_RE.test(email)) { showErr('Enter a valid email.'); emailEl.focus(); return; }
         if (!phoneOk) { showErr(raw ? 'That mobile number doesn’t look right.' : 'Enter your mobile number.'); phoneEl.focus(); return; }
+        if (PV) { showErr('Preview — signup is disabled here.'); return; }
         clearErr();
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
         // Shared conversion id + Reddit click id (if this visitor ever came via a

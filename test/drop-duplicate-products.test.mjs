@@ -21,10 +21,13 @@ const grab = (re, w) => { const m = dbSrc.match(re); if (!m) { console.error('mi
 const { q } = await import(mod('db.js'));
 await q(grab(/CREATE TABLE IF NOT EXISTS drops \([\s\S]*?\);/, 'drops'));
 await q(grab(/CREATE TABLE IF NOT EXISTS drop_products \([\s\S]*?\);/, 'drop_products'));
+await q(`ALTER TABLE drops ADD COLUMN IF NOT EXISTS image TEXT`);   // an ALTER in db.js, not in the CREATE
 
 // A two-bottle drop with full per-bottle tasting cards.
 await q(`INSERT INTO drops (id,name,price_cents,bottle_cap,status,tasting_notes,origin,varietal,elevation,roast)
   VALUES (300,'Batch 78',5000,89,'soldout','Drop notes','Brazil','Catui','6000 ft','Light')`);
+// A stale date (the source never had its date stamped) and a batch photo.
+await q(`UPDATE drops SET opens_at = '2026-03-06T15:00:00Z', image = '/i/9' WHERE id = 300`);
 await q(`INSERT INTO drop_products (drop_id,sort,name,price_cents,bottle_cap,image,tasting_notes,origin,varietal,elevation,roast) VALUES
   (300,0,'1792 Barrel',5200,100,'/i/11','Barrel notes','Kentucky','Bourbon','900 ft','Medium'),
   (300,1,'Coconut Co-Ferment',4800,30,'/i/12','Coconut notes','Colombia','Caturra','1500 m','Light')`);
@@ -51,6 +54,17 @@ ok('sort order preserved', prods[0].sort === 0 && prods[1].sort === 1);
 // The original's bottles are untouched (copy, not move).
 const origCount = (await q(`SELECT COUNT(*)::int n FROM drop_products WHERE drop_id=300`)).rows[0].n;
 ok('original still has its 2 bottles', origCount === 2, String(origCount));
+
+console.log('\nThe copy is dated the next Friday 9:00 AM Central, not "source + 7 days"');
+const copy = (await q(`SELECT opens_at, image, status FROM drops WHERE id=$1`, [newId])).rows[0];
+const when = new Date(copy.opens_at);
+const ct = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', weekday: 'short', hour: '2-digit', minute: '2-digit' })
+  .formatToParts(when).map((x) => [x.type, x.value]));
+ok('date is in the future', when.getTime() > Date.now(), String(copy.opens_at));
+ok('date is within the next 7 days', when.getTime() - Date.now() <= 7 * 86400000, String(copy.opens_at));
+ok('it is a Friday at 9:00 AM Central', ct.weekday === 'Fri' && ct.hour === '09' && ct.minute === '00', JSON.stringify(ct));
+ok('batch photo is copied', copy.image === '/i/9', String(copy.image));
+ok('copy is scheduled (not live)', copy.status === 'scheduled', copy.status);
 
 console.log('\nDuplicating a single-bottle drop stays single-bottle');
 await q(`INSERT INTO drops (id,name,price_cents,bottle_cap,status) VALUES (301,'Solo',5000,50,'soldout')`);

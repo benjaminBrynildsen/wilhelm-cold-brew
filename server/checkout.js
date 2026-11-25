@@ -73,18 +73,39 @@ export async function getShippingFromStripe(paymentIntentId) {
 // scheduled drop won't spontaneously resurrect). Picks the most-recently-scheduled
 // due drop. No email/SMS is sent — going live just flips the storefront on.
 const ACTIVATE_GRACE_HOURS = Math.max(1, parseInt(process.env.ACTIVATE_GRACE_HOURS || '72', 10));
+// A scheduled drop goes live this many minutes BEFORE its "opens" time, so the
+// storefront is already open when the early-access texts and the list email land.
+const GO_LIVE_LEAD_MINUTES = Math.max(0, parseInt(process.env.GO_LIVE_LEAD_MINUTES || '30', 10));
 export async function activateDueScheduledDrops() {
   try {
-    await q(
+    const r = await q(
       `UPDATE drops SET status = 'live'
         WHERE id = (
           SELECT id FROM drops
            WHERE status = 'scheduled' AND opens_at IS NOT NULL
-             AND opens_at <= now() AND opens_at > now() - ($1 || ' hours')::interval
+             AND opens_at <= now() + ($2 || ' minutes')::interval
+             AND opens_at > now() - ($1 || ' hours')::interval
            ORDER BY opens_at DESC, id DESC LIMIT 1)
-          AND NOT EXISTS (SELECT 1 FROM drops WHERE status = 'live')`,
-      [String(ACTIVATE_GRACE_HOURS)]);
+          AND NOT EXISTS (SELECT 1 FROM drops WHERE status = 'live')
+        RETURNING id, name`,
+      [String(ACTIVATE_GRACE_HOURS), String(GO_LIVE_LEAD_MINUTES)]);
+    // The UPDATE is atomic, so only the caller that actually flipped the drop
+    // gets a row back: exactly one push, however many requests race here.
+    for (const d of (r && r.rows) || []) notifyDropLive(d, 'schedule');
   } catch (e) { console.error('[activateDueScheduledDrops]', e); }
+}
+
+// Tell the owners' phones a batch just became buyable, whether the schedule
+// opened it or someone pressed "Go live". Fire-and-forget; never blocks or throws.
+export function notifyDropLive(drop, how) {
+  try {
+    const name = (drop && drop.name) || ('Batch № ' + (drop && drop.id));
+    pushToOwners({
+      title: '🟢 Batch is live',
+      body: how === 'schedule' ? `${name} just opened on schedule — it can be bought now.` : `${name} is live — it can be bought now.`,
+      url: '/admin/', tag: 'drop-live',
+    }).catch((e) => console.warn('[drop-live] push failed:', e?.message || e));
+  } catch (e) { console.warn('[drop-live] push failed:', e?.message || e); }
 }
 
 // The currently-buyable drop (status='live') with its sold count + remaining.
@@ -221,7 +242,7 @@ function centralOffsetMs(date) {
   const p = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]));
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - date.getTime();
 }
-function nextFridayNineCentral(now = new Date()) {
+export function nextFridayNineCentral(now = new Date()) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Chicago', hourCycle: 'h23', weekday: 'short',
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit',
@@ -258,6 +279,77 @@ async function nextBatchLabel() {
   return n ? ('Batch ' + (n + 1)) : 'The next batch';
 }
 
+// What the buy page needs to render a purchasable drop. One shape for the real
+// storefront (/api/drop/current) and the admin preview, so they can't drift.
+function buyableShape(d, nextDropAt, nextBatch) {
+  return {
+    available: true, phase: 'live', dropId: d.id, name: d.name,
+    priceCents: d.price_cents, remaining: d.remaining,
+    maxPerOrder: Math.min(MAX_PER_ORDER, d.remaining),
+    tastingNotes: d.tasting_notes || null,
+    origin: d.origin || null, varietal: d.varietal || null,
+    elevation: d.elevation || null, roast: d.roast || null,
+    image: d.image || null,
+    shipCents: SHIP_CENTS, nextDropAt, nextBatch,
+    // Two-bottle prototype: the buy page renders one card per product. For a
+    // legacy drop this is a single synthesized product, so the UI is identical.
+    multi: d.multi,
+    products: d.products.map((p) => ({
+      id: p.id, name: p.name, priceCents: p.price_cents, remaining: p.remaining,
+      maxPerOrder: Math.min(MAX_PER_ORDER, p.remaining), image: p.image || null,
+      tastingNotes: p.tasting_notes || null, origin: p.origin || null,
+      varietal: p.varietal || null, elevation: p.elevation || null, roast: p.roast || null,
+    })),
+  };
+}
+
+// Admin preview: the same payloads the storefront pages read, built for ONE
+// chosen drop whatever its status, so a batch can be checked before it's live.
+//   view 'buy'       → as if it were live with full stock (nothing sold)
+//   view 'soldout'   → the sold-out page for this batch
+//   view 'countdown' → the between-batches countdown to this batch
+// Read-only. It never changes a drop and is never served to the public route.
+export async function previewDropPayload(id, view = 'buy') {
+  const d = (await q(`SELECT * FROM drops WHERE id = $1`, [id])).rows[0];
+  if (!d) return null;
+  const label = d.name || ('Batch № ' + d.id);
+  const base = { preview: true, previewView: view, previewStatus: d.status, previewName: label };
+  if (view === 'countdown') {
+    const future = d.opens_at && new Date(d.opens_at).getTime() > Date.now();
+    return {
+      ...base, available: false, phase: 'countdown', soldOut: false, dropId: d.id,
+      nextDropAt: future ? d.opens_at : nextFridayNineCentral().toISOString(),
+      nextBatch: label, shipCents: SHIP_CENTS, missed: null,
+    };
+  }
+  if (view === 'soldout') {
+    return {
+      ...base, available: false, phase: 'soldout', soldOut: true, dropId: d.id,
+      nextDropAt: await nextDropTarget(), nextBatch: await nextBatchLabel(), shipCents: SHIP_CENTS,
+      missed: {
+        name: label, tastingNotes: d.tasting_notes || null,
+        origin: d.origin || null, varietal: d.varietal || null,
+        elevation: d.elevation || null, roast: d.roast || null, soldOutSeconds: null,
+      },
+    };
+  }
+  const rows = await dropProducts(d.id);
+  if (rows.length) {
+    d.multi = true;
+    d.products = rows.map((p) => ({ ...p, sold: 0, remaining: p.bottle_cap }));
+    d.remaining = d.products.reduce((sum, p) => sum + p.remaining, 0);
+  } else {
+    d.multi = false;
+    d.remaining = d.bottle_cap;
+    d.products = [{
+      id: null, name: d.name, price_cents: d.price_cents, bottle_cap: d.bottle_cap, image: d.image || null,
+      tasting_notes: d.tasting_notes, origin: d.origin, varietal: d.varietal, elevation: d.elevation,
+      roast: d.roast, sold: 0, remaining: d.bottle_cap,
+    }];
+  }
+  return { ...base, ...buyableShape(d, d.opens_at || null, label) };
+}
+
 export function mountCheckout(app, payLimit = (req, res, next) => next()) {
   // Publishable key for Stripe.js on the buy page (safe to expose).
   app.get('/api/config', (_req, res) => {
@@ -271,25 +363,7 @@ export function mountCheckout(app, payLimit = (req, res, next) => next()) {
       const nextDropAt = await nextDropTarget();
       const nextBatch = await nextBatchLabel();
       if (d && d.remaining > 0) {
-        return res.json({
-          available: true, phase: 'live', dropId: d.id, name: d.name,
-          priceCents: d.price_cents, remaining: d.remaining,
-          maxPerOrder: Math.min(MAX_PER_ORDER, d.remaining),
-          tastingNotes: d.tasting_notes || null,
-          origin: d.origin || null, varietal: d.varietal || null,
-          elevation: d.elevation || null, roast: d.roast || null,
-          image: d.image || null,
-          shipCents: SHIP_CENTS, nextDropAt, nextBatch,
-          // Two-bottle prototype: the buy page renders one card per product. For a
-          // legacy drop this is a single synthesized product, so the UI is identical.
-          multi: d.multi,
-          products: d.products.map((p) => ({
-            id: p.id, name: p.name, priceCents: p.price_cents, remaining: p.remaining,
-            maxPerOrder: Math.min(MAX_PER_ORDER, p.remaining), image: p.image || null,
-            tastingNotes: p.tasting_notes || null, origin: p.origin || null,
-            varietal: p.varietal || null, elevation: p.elevation || null, roast: p.roast || null,
-          })),
-        });
+        return res.json(buyableShape(d, nextDropAt, nextBatch));
       }
       // Not buyable: the drop the visitor just missed is the most recent drop
       // that has actually OPENED — not the newest row, which is next week's

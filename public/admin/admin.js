@@ -1886,7 +1886,9 @@ function dropActions(d) {
   const dup = `<button class="btn ghost ddup" data-id="${d.id}">Duplicate</button>`;
   const resched = `<button class="btn ghost dopens" data-id="${d.id}" data-opens="${esc(d.opens_at || '')}">Reschedule</button>`;
   const del = `<button class="btn ghost ddelete" data-id="${d.id}" data-name="${esc(d.name || '')}" style="color:var(--bad)">Delete</button>`;
-  return status + ' ' + rename + ' ' + dup + ' ' + resched + ' ' + del;
+  // Opens the real buy page filled with this batch (admin login required; checkout disabled).
+  const preview = `<a class="btn ghost" href="/buy-preview?drop=${d.id}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none">Preview</a>`;
+  return status + ' ' + preview + ' ' + rename + ' ' + dup + ' ' + resched + ' ' + del;
 }
 
 // ───────── Shipping ─────────
@@ -2131,7 +2133,7 @@ async function showOrders() {
           <td class="num">${money(d.price_cents)}</td>
           <td class="num">${num(dropSold(d))}/${num(dropCap(d))}</td>
           <td>${esc(d.status)}</td>
-          <td>${esc(fmtWhenCT(d.opens_at))}</td>
+          <td>${esc(fmtWhenCT(d.opens_at))}${d.status === 'scheduled' ? `<div class="note">${d.opens_at && new Date(d.opens_at) > new Date() ? 'goes live by itself 30 min earlier' : (d.opens_at ? 'date has passed' : 'draft — no date, stays hidden')}</div>` : ''}</td>
           <td>${dropActions(d)}</td></tr>`).join('')
       : '<tr><td class="note" colspan="6">No drops yet — create one below.</td></tr>';
 
@@ -2406,7 +2408,7 @@ async function showOrders() {
         <button class="btn" id="dcreate">Create drop</button>
         <span class="note" id="dmsg"></span>
       </div>
-      <div class="note" style="margin-top:6px">Times are U.S. Central (CT) — pick any date &amp; time; defaults to the next Friday 9:00 AM. "Opens" is just a label/reminder — a drop only becomes buyable when you hit "Go live".</div>
+      <div class="note" style="margin-top:6px">Times are U.S. Central (CT) — pick any date &amp; time; defaults to the next Friday 9:00 AM. A scheduled drop goes live by itself 30 minutes before its "Opens" time (as long as no other drop is live), and you get a push when it does. To keep a drop as a draft, clear its date with Reschedule — it then stays hidden until you hit "Go live". Use Preview to see any drop on the real buy page first.</div>
       </div>`;
 
     const odSel = document.getElementById('ordersDrop');
@@ -3052,7 +3054,7 @@ async function showOrders() {
       } catch (e) { document.getElementById('dmsg').textContent = 'Rename failed: ' + e.message; }
     }));
     document.querySelectorAll('.ddup').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Duplicate this drop?\n\nCreates a new SCHEDULED copy — same name, price, bottle cap, and tasting card — dated one week later. Sold/orders are not copied. You can then edit it and "Go live" when ready.')) return;
+      if (!confirm('Duplicate this drop?\n\nCreates a new SCHEDULED copy — same name, price, bottles, photo and tasting card — dated the next Friday 9:00 AM Central. Sold/orders are not copied.\n\nA scheduled drop goes live by itself 30 minutes before that time. Use Reschedule to move the date, or clear it to keep the copy as a draft.')) return;
       try {
         await api(`/api/admin/drops/${b.dataset.id}/duplicate`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -3098,7 +3100,7 @@ async function showOrders() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, priceCents, bottleCap, opensAt }),
         });
-        msg.textContent = 'Drop created (scheduled). Click "Go live" when ready.';
+        msg.textContent = 'Drop created (scheduled). It goes live by itself 30 min before its Opens time — or hit "Go live".';
         showOrders();
       } catch (e) { msg.textContent = 'Create failed: ' + e.message; }
     });

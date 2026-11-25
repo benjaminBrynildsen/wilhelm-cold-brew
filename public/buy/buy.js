@@ -28,6 +28,31 @@
   function fund(ev, data) { try { if (window.wilhelmTrack) window.wilhelmTrack(ev, data || {}); } catch (e) {} }
   function money(c) { return '$' + (c / 100).toFixed(2); }
 
+  // ── Admin batch preview (/buy/?preview=1&drop=<id>[&view=countdown]) ──
+  // Renders this exact page for one chosen batch before it's live. The batch
+  // comes from the admin-only preview endpoint (so it needs the admin login),
+  // analytics and ad pixels are off (?preview=1), and every path that could
+  // take money or a signup is stopped in the browser: no payment intent, no
+  // hosted checkout, no SMS signup. The server would charge whichever batch is
+  // really live, so these blocks are what make a preview safe to tap around in.
+  var PV = (function () {
+    try {
+      var q = new URLSearchParams(location.search), id = q.get('drop') || '';
+      if (q.get('preview') === '1' && /^\d+$/.test(id)) return { drop: id, view: q.get('view') === 'countdown' ? 'countdown' : 'buy' };
+    } catch (e) {}
+    return null;
+  })();
+  var DROP_URL = PV ? '/api/admin/drops/' + PV.drop + '/preview?view=' + PV.view : '/api/drop/current';
+  var PV_MSG = 'Preview — checkout is disabled, nothing was charged.';
+  var pvStatus = 0;
+  function previewBar(info) {
+    info.drop = PV.drop; info.view = PV.view;
+    if (window.wilhelmPreviewBar) return window.wilhelmPreviewBar(info);
+    var sc = document.createElement('script'); sc.src = '/preview-bar.js';
+    sc.onload = function () { if (window.wilhelmPreviewBar) window.wilhelmPreviewBar(info); };
+    document.head.appendChild(sc);
+  }
+
   var state = { priceCents: 4900, shipCents: 800, max: 1, qty: 1, dropId: null,
                 multi: false, products: [], cart: {} };
   var stripe = null, elements = null, addrEl = null, emailEl = null, payEl = null, busy = false;
@@ -185,6 +210,7 @@
   // customer waiting on the page walks straight into the open store. Polling (vs a
   // blind reload) means no reload loop if it's not quite live yet.
   function onCountdownDone() {
+    if (PV) return;
     if (cdOpening) return; cdOpening = true;
     var soon = $('cd-soon'), grid = $('cd-grid'), whenWrap = $('cd-when-wrap');
     if (grid) grid.hidden = true;
@@ -261,6 +287,7 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       if (errEl) errEl.hidden = true;
+      if (PV) { showErr('Preview — signup is disabled here.'); return; }
       var raw = (phoneEl.value || '').trim(), d = digits(raw);
       var phoneOk = raw.charAt(0) === '+' ? (d.length >= 8 && d.length <= 15) : (d.length === 10 || (d.length === 11 && d.charAt(0) === '1'));
       var email = (emailEl && !emailEl.hidden) ? (emailEl.value || '').trim() : '';
@@ -293,18 +320,19 @@
   // /buy?preview or /buy?countdown. Uses the real next-drop date if one is
   // scheduled, else the next Friday 9AM.
   function nextFriday9() { var d = new Date(); d.setHours(9, 0, 0, 0); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7)); return d.toISOString(); }
-  var previewCountdown = /[?&](preview|countdown)\b/.test(location.search);
+  var previewCountdown = !PV && /[?&](preview|countdown)\b/.test(location.search);
 
   // ── 1) Availability ──
-  fetch('/api/drop/current', { headers: { Accept: 'application/json' } })
-    .then(function (r) { return r.json(); })
+  fetch(DROP_URL, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+    .then(function (r) { if (PV && !r.ok) { pvStatus = r.status; throw new Error('preview ' + r.status); } return r.json(); })
     .then(function (d) {
+      if (PV) previewBar({ name: d.previewName, status: d.previewStatus });
       if (previewCountdown) { showCountdown((d && d.nextDropAt) || nextFriday9(), d && d.nextBatch); return; }
       if (!d.available) {
         // Just-missed (first few days) → the sold-out demand page. Otherwise
         // (between batches) → show the next-batch countdown right here.
         if (d.phase === 'countdown') { showCountdown(d.nextDropAt, d.nextBatch); return; }
-        location.replace('/sold-out'); return;
+        location.replace(PV ? '/sold-out/?preview=1&drop=' + PV.drop : '/sold-out'); return;
       }
       state.shipCents = d.shipCents; state.dropId = d.dropId;
       if (els.batchNum) els.batchNum.textContent = d.name || ('Batch № ' + d.dropId);
@@ -357,7 +385,12 @@
       fund('buy_view', { dropId: d.dropId, remaining: d.remaining, variant: variant(), multi: !!state.multi });
       initStripe();
     })
-    .catch(function () { if (previewCountdown) { showCountdown(nextFriday9()); return; } els.card.hidden = false; initStripe(); });
+    .catch(function () {
+      // A preview that can't load shows why (not signed in / no such batch) — never the real store.
+      if (PV) { previewBar({ error: pvStatus === 401 ? 'login' : 'load' }); return; }
+      if (previewCountdown) { showCountdown(nextFriday9()); return; }
+      els.card.hidden = false; initStripe();
+    });
 
   // ── 2) Quantity stepper ──
   function updateQtyUI() {
@@ -417,6 +450,8 @@
       // leave the buyer staring at only a toggle — open the card form after 4s.
       setTimeout(function () { if (!expressReady) { if (els.express) els.express.hidden = true; expandCard(false); } }, 4000);
       ece.on('click', function (event) {
+        // Preview: don't open the wallet sheet at all (no resolve → Stripe ignores the tap).
+        if (PV) { showErr(PV_MSG); return; }
         var lineItems;
         if (state.multi) {
           lineItems = state.products.filter(function (p) { return (state.cart[p.key] || 0) > 0; })
@@ -499,6 +534,7 @@
   // ── 4) Unified pay: validate → create intent (deferred) → confirm ──
   function pay(info) {
     if (busy) return;
+    if (PV) { renderTotal(); showErr(PV_MSG); return; }
     setBusy(true); clearErr();
     fund('checkout_start', { variant: variant() });
     elements.submit().then(function (sub) {
@@ -541,6 +577,7 @@
   // ── 5) Emergency fallback: hosted Stripe Checkout ──
   function startClassic(e) {
     if (e) e.preventDefault();
+    if (PV) { showErr(PV_MSG); return; }
     fetch('/api/checkout', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(state.multi

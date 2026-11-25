@@ -12,12 +12,12 @@ import { sendWelcome } from './mailer.js';
 import { mcPushSignup } from './mailchimp.js';
 import { syncInbox, inboxConfigured } from './inbox.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
-import { mountAdmin, requireAdmin } from './admin.js';
+import { mountAdmin, requireAdmin, isAdmin } from './admin.js';
 import { mountJournal, publishedArticles } from './journal.js';
 import { seedJournal } from './journal-seed.js';
 import { mountPortal } from './portal.js';
 import { backfillPurchasePoints } from './points.js';
-import { mountCheckout, stripeWebhook, reconcilePendingOrders } from './checkout.js';
+import { mountCheckout, stripeWebhook, reconcilePendingOrders, activateDueScheduledDrops } from './checkout.js';
 import { mcPushUnsubscribe } from './mailchimp.js';
 import { deliveryEnabled, refreshDeliveryStatuses } from './delivery.js';
 import { verifyWebhook, handleInbound } from './sms.js';
@@ -68,7 +68,7 @@ app.use((req, _res, next) => {
     // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
     // below) — the visit is counted there, so don't also log the bounce here
     // (it would double-count every one of those visits).
-    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p.startsWith('/r/')) return next();
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p === '/buy-preview' || p === '/buy-preview/' || p.startsWith('/r/')) return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -243,6 +243,27 @@ app.get(['/join', '/join/'], (_req, res) => {
 // reloads or the ?utm_source gets dropped along the way. The ?utm_source on the
 // redirect target also tags the page view for the Traffic breakdown. 302 so the
 // tagging can change without fighting browser caches.
+// Admin-only batch preview: /buy-preview?drop=12&view=buy|countdown|soldout opens
+// the REAL storefront page filled with that batch, whatever its status. With no
+// ?drop it picks the newest scheduled batch. The pages then read the batch from
+// the admin-only /api/admin/drops/:id/preview, so nothing here is visible to the
+// public; a visitor who isn't signed in to the admin is sent to the login.
+app.get(['/buy-preview', '/buy-preview/'], async (req, res) => {
+  if (!isAdmin(req)) return res.redirect(302, '/admin/');
+  try {
+    let id = parseInt(req.query.drop, 10);
+    if (!(id > 0)) {
+      const r = await q(
+        `SELECT id FROM drops ORDER BY (status = 'scheduled') DESC, created_at DESC, id DESC LIMIT 1`);
+      id = r.rows[0] ? r.rows[0].id : 0;
+    }
+    if (!(id > 0)) return res.redirect(302, '/admin/');
+    const view = String(req.query.view || 'buy');
+    if (view === 'soldout') return res.redirect(302, `/sold-out/?preview=1&drop=${id}`);
+    res.redirect(302, `/buy/?preview=1&drop=${id}${view === 'countdown' ? '&view=countdown' : ''}`);
+  } catch (e) { console.error('[buy-preview]', e); res.redirect(302, '/admin/'); }
+});
+
 app.get(['/buy-sms', '/buy-sms/'], (_req, res) => {
   res.cookie('wcb_src', 'sms', { maxAge: 30 * 86400000, httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
   res.redirect(302, '/buy?utm_source=sms');
@@ -261,6 +282,13 @@ app.get(['/reddit', '/reddit/'], (req, res) => {
   res.redirect(302, '/drink/?' + out.toString());
 });
 
+// Render-only previews (?preview=1 — the admin batch preview and the Ad Fit embed)
+// must not report to the ad platforms. Each served pixel starts with this guard:
+// on a preview page it installs a do-nothing stub and skips the real bootstrap.
+// The guard opens an `else {` block that each pixel body closes.
+const PREVIEW_GUARD = (fn) =>
+  `if(/[?&]preview=1(?:&|$)/.test(location.search)){window.${fn}=window.${fn}||function(){};}else{`;
+
 // Reddit Pixel bootstrap, served from here so the exact Reddit snippet lives in
 // one place. The pixel id is a public identifier (it appears in the page source
 // regardless), so it defaults to the account's real id and REDDIT_PIXEL_ID can
@@ -275,11 +303,12 @@ app.get('/rdt-pixel.js', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
   if (!REDDIT_PIXEL_ID) return res.send('window.rdt=window.rdt||function(){};');
   res.send(
+    PREVIEW_GUARD('rdt') +
     `window.__RDT_PIXEL_ID=${JSON.stringify(REDDIT_PIXEL_ID)};` +
     '!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");' +
     `t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=${REDDIT_PIXEL_ID}";` +
     't.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);' +
-    `rdt('init','${REDDIT_PIXEL_ID}');rdt('track','PageVisit');`
+    `rdt('init','${REDDIT_PIXEL_ID}');rdt('track','PageVisit');}`
   );
 });
 
@@ -297,11 +326,12 @@ app.get('/meta-pixel.js', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
   if (!META_PIXEL_ID) return res.send('window.fbq=window.fbq||function(){};');
   res.send(
+    PREVIEW_GUARD('fbq') +
     `window.__META_PIXEL_ID=${JSON.stringify(META_PIXEL_ID)};` +
     "!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
     "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;" +
     "t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');" +
-    `fbq('init','${META_PIXEL_ID}');fbq('track','PageView');`
+    `fbq('init','${META_PIXEL_ID}');fbq('track','PageView');}`
   );
 });
 
@@ -468,6 +498,10 @@ ensureSchema()
       // every 2 minutes.
       reconcilePendingOrders().catch((e) => console.warn('[reconcile] boot run failed:', e?.message || e));
       setInterval(() => reconcilePendingOrders().catch(() => {}), 2 * 60 * 1000);
+      // Open a scheduled drop when its time comes even if nobody is loading the
+      // storefront at that moment (it used to open only on the next page view),
+      // so the go-live push to the owners arrives on time.
+      setInterval(() => activateDueScheduledDrops().catch(() => {}), 30 * 1000).unref();
       // Put the first Ledger article in on a fresh database. No-op once the
       // table has anything in it, so it never overwrites an edit.
       seedJournal();

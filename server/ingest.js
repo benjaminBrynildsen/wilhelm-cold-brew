@@ -5,6 +5,7 @@ import { sendWelcome, sendSignupAlert, sendSmsSignupAlert } from './mailer.js';
 import { mcPushSignup, mcPushSms } from './mailchimp.js';
 import { redditTrackAsync } from './reddit.js';
 import { pushToOwners } from './notify.js';
+import { signupPushTitle } from './source-label.js';
 
 // SMS opt-in happens on the confirmation screen a few seconds after signup, as a
 // separate request. To keep it to ONE notification, we hold the signup alert this
@@ -214,12 +215,15 @@ export async function subscribe(req, res) {
       // arrived on the confirmation screen in the meantime. UTM/variant are fixed
       // at signup, so capture them now; only sms_consent/phone can change.
       const alertMeta = { variant, country: countryFrom(req), utmSource: utm_source, utmCampaign: utm_campaign, utmContent: utm_content };
+      // The push title names where they came from ("New signup from Facebook"):
+      // the utm tag, or the ad click id when the link wasn't tagged.
+      const pushTitle = signupPushTitle({ utmSource: utm_source, fbclid, twclid, rdtCid: req.body?.rdt_cid });
       const alertTimer = setTimeout(() => {
         (async () => {
           const s = (await q(`SELECT sms_consent, phone FROM subscribers WHERE norm_email(email) = norm_email($1)`, [email])).rows[0] || {};
           await sendSignupAlert(email, { ...alertMeta, sms: !!s.sms_consent, phone: s.phone });
           pushToOwners({
-            title: '📣 New signup',
+            title: pushTitle,
             body: s.sms_consent ? `${email} (+ SMS)` : email,
             url: '/admin/', tag: 'signup',
           }).catch((e) => console.warn('[subscribe] signup push failed:', e?.message || e));

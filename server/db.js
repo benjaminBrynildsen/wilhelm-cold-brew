@@ -138,6 +138,7 @@ export async function ensureSchema() {
     ALTER TABLE page_views ADD COLUMN IF NOT EXISTS utm_term    TEXT;
     -- First-party ad attribution on signups (which ad/campaign drove each subscriber).
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS twclid       TEXT;
+    ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS fbclid       TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_source   TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_medium   TEXT;
     ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS utm_campaign TEXT;

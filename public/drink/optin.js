@@ -39,7 +39,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // wins even if they reload or come back later. Sent with the subscribe so we can
 // report "signups by ad" first-party — immune to the iOS Safari pixel loss that
 // makes X's own per-ad numbers unreliable.
-const ATTRIB_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'twclid', 'rdt_cid'];
+const ATTRIB_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'twclid', 'rdt_cid', 'fbclid'];
 function attribution() {
   const p = new URLSearchParams(location.search);
   const fromUrl = {}; let any = false;
@@ -489,7 +489,14 @@ function funnel(event, props) {
         await subscribeEmail(email, VARIANT, rdtEventId);
         if (!IS_PREVIEW) {
           funnel('subscribed', { variant: VARIANT });
-          try { if (window.fbq) window.fbq('track', 'Lead', { variant: VARIANT }); } catch (e) {}
+          // Meta: enrich the pixel with advanced matching (email) now that we have
+          // it, then fire Lead. eventID dedups with any server-side CAPI Lead.
+          try {
+            if (window.fbq) {
+              if (window.__META_PIXEL_ID) window.fbq('init', window.__META_PIXEL_ID, { em: email });
+              window.fbq('track', 'Lead', { variant: VARIANT }, { eventID: rdtEventId });
+            }
+          } catch (e) {}
           try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
           // Reddit: enrich the pixel with advanced matching (email) now that we have
           // it, then fire SignUp. conversionId dedups with the server-side CAPI event.

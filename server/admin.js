@@ -1297,11 +1297,18 @@ export function mountAdmin(app) {
          ),
          classified AS (
            SELECT ip_hash, CASE
+             -- Meta ads: fold the common source spellings (facebook/fb/meta/instagram/ig,
+             -- +_ads) into one "Facebook" channel so a FB ad never splits across lines,
+             -- while keeping campaign/content detail for per-ad conversion.
+             WHEN lower(utm_source) IN ('facebook','fb','meta','facebook_ads','meta_ads','fb_ads','instagram','ig','instagram_ads','ig_ads')
+                  AND utm_source NOT LIKE '%{{%' AND COALESCE(utm_campaign,'') NOT LIKE '%{{%' AND COALESCE(utm_content,'') NOT LIKE '%{{%'
+               THEN 'Facebook / '||COALESCE(NULLIF(utm_campaign,''),'-')||CASE WHEN COALESCE(utm_content,'')<>'' THEN ' / '||utm_content ELSE '' END
              WHEN utm_source IS NOT NULL AND utm_source NOT LIKE '%{{%' AND COALESCE(utm_campaign,'') NOT LIKE '%{{%' AND COALESCE(utm_content,'') NOT LIKE '%{{%'
                THEN utm_source||' / '||COALESCE(NULLIF(utm_campaign,''),'-')||CASE WHEN COALESCE(utm_content,'')<>'' THEN ' / '||utm_content ELSE '' END
              WHEN utm_source LIKE '%{{%' OR COALESCE(utm_campaign,'') LIKE '%{{%' OR COALESCE(utm_content,'') LIKE '%{{%' THEN 'X (broken tags)'
              WHEN referrer_host IN ('t.co','com.twitter.android','x.com','twitter.com','mobile.twitter.com') THEN 'X (untagged)'
              WHEN referrer_host IN ('google.com','www.google.com','bing.com','duckduckgo.com','search.brave.com','search.yahoo.com') THEN 'Search'
+             WHEN referrer_host IN ('facebook.com','www.facebook.com','m.facebook.com','l.facebook.com','lm.facebook.com','web.facebook.com','fb.com') THEN 'Facebook (untagged)'
              WHEN referrer_host = 'instagram.com' THEN 'Instagram (untagged)'
              WHEN referrer_host IS NULL OR referrer_host = '' THEN 'direct'
              ELSE referrer_host END channel

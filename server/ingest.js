@@ -100,6 +100,7 @@ export async function subscribe(req, res) {
   // First-party ad attribution (which ad/campaign drove this signup).
   const attr = (k) => (req.body?.[k] ? String(req.body[k]).slice(0, 200) : null);
   const twclid = attr('twclid');
+  const fbclid = attr('fbclid');   // Meta click id — first-party backup when a FB ad link lacks utm tags.
   const utm_source = attr('utm_source'), utm_medium = attr('utm_medium');
   const utm_campaign = attr('utm_campaign'), utm_content = attr('utm_content'), utm_term = attr('utm_term');
   // Bot Catcher signals — flag, never reject, so the bot learns nothing and a
@@ -162,14 +163,14 @@ export async function subscribe(req, res) {
     const r = await q(
       `INSERT INTO subscribers (email, variant, source, ip_hash, country,
                                 twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, bot_flag, elapsed_ms,
-                                phone, sms_consent, sms_consent_at, session_id)
+                                phone, sms_consent, sms_consent_at, session_id, fbclid)
        VALUES ($1,$2,'friday_drop',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-               $13,$14,CASE WHEN $14 THEN now() ELSE NULL END,$15)
+               $13,$14,CASE WHEN $14 THEN now() ELSE NULL END,$15,$16)
        ON CONFLICT (email) DO NOTHING
        RETURNING id`,
       [email, variant, hashIp(getClientIp(req)), countryFrom(req),
        twclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, botFlag, elapsedVal,
-       smsOptIn ? phone : null, smsOptIn, sessionId]
+       smsOptIn ? phone : null, smsOptIn, sessionId, fbclid]
     );
     // They passed the "try again" challenge — close out the matching attempt so
     // it counts as confirmed (not abandoned) in the Bot Catcher. Match on session

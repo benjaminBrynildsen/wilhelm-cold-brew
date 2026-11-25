@@ -282,6 +282,28 @@ app.get('/rdt-pixel.js', (_req, res) => {
   );
 });
 
+// Meta (Facebook) Pixel bootstrap, served from here for the same reasons as the
+// Reddit one above: the exact snippet lives in one place and the id is a public
+// identifier (it ships in the page either way), so it defaults to the account's
+// real pixel and META_PIXEL_ID can still override it. Pages include
+// <script src="/meta-pixel.js">; an empty id ("off") returns a harmless no-op
+// stub so fbq() calls never throw. window.__META_PIXEL_ID is exposed so the
+// signup code can re-init with advanced matching (the email) before Lead.
+const META_PIXEL_ID = (process.env.META_PIXEL_ID != null ? process.env.META_PIXEL_ID : '539688854485069')
+  .replace(/[^0-9]/g, '').slice(0, 32);
+app.get('/meta-pixel.js', (_req, res) => {
+  res.type('application/javascript');
+  res.set('Cache-Control', 'public, max-age=300');
+  if (!META_PIXEL_ID) return res.send('window.fbq=window.fbq||function(){};');
+  res.send(
+    `window.__META_PIXEL_ID=${JSON.stringify(META_PIXEL_ID)};` +
+    "!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
+    "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;" +
+    "t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');" +
+    `fbq('init','${META_PIXEL_ID}');fbq('track','PageView');`
+  );
+});
+
 // Member referral links: /r/CODE → the opt-in page tagged with the code, so the
 // portal can count the friends each member brings (and the dashboard sees the
 // channel). The redirect hop itself isn't counted (see the pageview skip above).

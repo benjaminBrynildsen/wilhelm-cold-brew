@@ -122,6 +122,7 @@ app.get('/sitemap.xml', async (req, res) => {
     { loc: '/journal/', pri: '0.8' },
     { loc: '/batches/', pri: '0.6' },
     { loc: '/recipe/', pri: '0.6' },
+    { loc: '/privacy/', pri: '0.3' },
   ];
   // Ledger articles come from the database, so publishing one from the admin
   // puts it in the sitemap immediately — no deploy, nothing to remember.
@@ -303,6 +304,9 @@ app.get('/meta-pixel.js', (_req, res) => {
     `fbq('init','${META_PIXEL_ID}');fbq('track','PageView');`
   );
 });
+
+// Common alternate addresses for the privacy policy (ad platforms and people guess these).
+app.get(['/privacy-policy', '/privacy-policy/'], (_req, res) => res.redirect(301, '/privacy/'));
 
 // Member referral links: /r/CODE → the opt-in page tagged with the code, so the
 // portal can count the friends each member brings (and the dashboard sees the

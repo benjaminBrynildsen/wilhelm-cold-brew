@@ -55,6 +55,31 @@ function attribution() {
   return fromUrl;
 }
 
+// Conversion pixels (Meta Lead, X, Reddit SignUp) fire once per email per browser.
+// The server deliberately answers a repeat signup exactly like a new one, so the
+// page can't ask it "was this email new?". Remembering a short one-way hash of
+// each email that already converted here is what stops a re-submit on the same
+// device from being counted as a second conversion. If storage is unavailable
+// we fall back to firing (the old behaviour).
+const CONV_KEY = 'wilhelm_conv';
+function convHash(email) {
+  let h = 0x811c9dc5;
+  const str = 'wcb:' + String(email || '').trim().toLowerCase();
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+function convList() {
+  try { const v = JSON.parse(localStorage.getItem(CONV_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+function alreadyConverted(email) { return convList().indexOf(convHash(email)) !== -1; }
+function markConverted(email) {
+  try {
+    const list = convList(); const h = convHash(email);
+    if (list.indexOf(h) === -1) list.push(h);
+    localStorage.setItem(CONV_KEY, JSON.stringify(list.slice(-20)));
+  } catch (e) {}
+}
+
 // Bot signals, sent alongside the signup for server-side flagging (never
 // rejection): a monotonic page-open timer exposes impossibly-fast submits, and
 // the off-screen honeypot field is one no human can see or fill.
@@ -489,23 +514,28 @@ function funnel(event, props) {
         await subscribeEmail(email, VARIANT, rdtEventId);
         if (!IS_PREVIEW) {
           funnel('subscribed', { variant: VARIANT });
-          // Meta: enrich the pixel with advanced matching (email) now that we have
-          // it, then fire Lead. eventID dedups with any server-side CAPI Lead.
-          try {
-            if (window.fbq) {
-              if (window.__META_PIXEL_ID) window.fbq('init', window.__META_PIXEL_ID, { em: email });
-              window.fbq('track', 'Lead', { variant: VARIANT }, { eventID: rdtEventId });
-            }
-          } catch (e) {}
-          try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
-          // Reddit: enrich the pixel with advanced matching (email) now that we have
-          // it, then fire SignUp. conversionId dedups with the server-side CAPI event.
-          try {
-            if (window.rdt) {
-              if (window.__RDT_PIXEL_ID) window.rdt('init', window.__RDT_PIXEL_ID, { email: email });
-              window.rdt('track', 'SignUp', { conversionId: rdtEventId });
-            }
-          } catch (e) {}
+          // Ad-platform conversions: skipped when this browser already converted
+          // with this email (a re-submit is not a new lead).
+          if (!alreadyConverted(email)) {
+            markConverted(email);
+            // Meta: enrich the pixel with advanced matching (email) now that we have
+            // it, then fire Lead. eventID dedups with any server-side CAPI Lead.
+            try {
+              if (window.fbq) {
+                if (window.__META_PIXEL_ID) window.fbq('init', window.__META_PIXEL_ID, { em: email });
+                window.fbq('track', 'Lead', { variant: VARIANT }, { eventID: rdtEventId });
+              }
+            } catch (e) {}
+            try { if (window.twq) window.twq('event', 'tw-rcsfa-rcsk1', {}); } catch (e) {}
+            // Reddit: enrich the pixel with advanced matching (email) now that we have
+            // it, then fire SignUp. conversionId dedups with the server-side CAPI event.
+            try {
+              if (window.rdt) {
+                if (window.__RDT_PIXEL_ID) window.rdt('init', window.__RDT_PIXEL_ID, { email: email });
+                window.rdt('track', 'SignUp', { conversionId: rdtEventId });
+              }
+            } catch (e) {}
+          }
         }
         if (stateEl) stateEl.hidden = true;
         if (successEl) successEl.hidden = false;

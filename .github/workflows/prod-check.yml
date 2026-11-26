@@ -4,7 +4,13 @@
 # funnel queries. Safe to delete once the signup investigation closes.
 name: prod-check
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "full = everything incl. a test signup; timing = response times only (read-only, no signup, no ad-pixel events)"
+        type: choice
+        options: [full, timing]
+        default: full
   push:
     branches: [master]
     paths: ['.github/workflows/prod-check.yml', '.github/prodcheck.trigger']
@@ -13,7 +19,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: response times only (read-only; GETs with ?preview=1 so nothing is counted)
+        if: ${{ inputs.mode == 'timing' }}
+        run: |
+          UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
+          B='https://wilhelmcoldbrew.com'
+          date -u +"NOW_UTC=%Y-%m-%dT%H:%M:%SZ"
+          : > t.txt
+          for i in 1 2 3 4 5 6 7 8; do
+            for p in /healthz '/drink/?preview=1' '/buy/?preview=1' /api/drop/current /api/batches /api/config /admin/ /admin/admin.js /api/admin/me /api/admin/webauthn/available /meta-pixel.js; do
+              curl -sS -A "$UA" -o /dev/null -w "$p %{http_code} %{time_starttransfer} %{time_total}\n" "$B$p" >> t.txt || echo "$p ERR 0 0" >> t.txt
+            done
+            sleep 2
+          done
+          echo "endpoint | statuses | ttfb min/avg/max (s) | total max (s)"
+          awk '{ k=$1; st[k]=st[k] (index(st[k],$2)?"":$2" "); n[k]++; s[k]+=$3; if(!(k in mn)||$3<mn[k])mn[k]=$3; if($3>mx[k])mx[k]=$3; if($4>tx[k])tx[k]=$4 }
+               END { for (k in n) printf "TIMING %-34s %-8s %.3f / %.3f / %.3f   %.3f\n", k, st[k], mn[k], s[k]/n[k], mx[k], tx[k] }' t.txt | sort
+          echo "--- slowest 8 individual requests ---"
+          sort -k4 -n -r t.txt | head -8 | sed 's/^/SLOW /'
       - name: REAL browser signup on prod (JS errors, split config, full form flow)
+        if: ${{ inputs.mode != 'timing' }}
         run: |
           npm install playwright-core@1 --no-save --silent
           node - <<'EOF'
@@ -52,6 +77,7 @@ jobs:
           })().catch((e) => { console.log('FATAL', String(e).slice(0, 500)); process.exit(1); });
           EOF
       - name: is the latest admin build live? (deploy freshness check)
+        if: ${{ inputs.mode != 'timing' }}
         run: |
           B='https://wilhelmcoldbrew.com'
           # Grep the served admin bundle for markers of the two newest features.
@@ -64,6 +90,7 @@ jobs:
           curl -sS -o bc.css "$B/admin/index.html"
           grep -q 'redbadge\[hidden\]' bc.css && echo 'BADGE_FIX=LIVE' || echo 'BADGE_FIX=NOT_YET'
       - name: security — are default admin credentials live on prod? (read-only)
+        if: ${{ inputs.mode != 'timing' }}
         run: |
           B='https://wilhelmcoldbrew.com'
           # A SAFE, read-only probe: does the committed dev default password / API
@@ -77,6 +104,7 @@ jobs:
           echo "DEFAULT_API_KEY_ACCESS=$KEY (401=safe/overridden, 200=VULNERABLE)"
           if [ "$PW" = "200" ] || [ "$KEY" = "200" ]; then echo "RESULT=DEFAULTS_LIVE_SET_SECRETS_BEFORE_DEPLOY"; else echo "RESULT=DEFAULTS_ALREADY_OVERRIDDEN_SAFE_TO_DEPLOY"; fi
       - name: time the landing route repeatedly (is /drink slow to serve?)
+        if: ${{ inputs.mode != 'timing' }}
         run: |
           UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
           B='https://wilhelmcoldbrew.com'
@@ -86,6 +114,7 @@ jobs:
             curl -sS -A "$UA" -o /dev/null -w "batches  t=%{time_total}s\n" "$B/api/batches"
           done
       - name: probe public surface like an X ad click
+        if: ${{ inputs.mode != 'timing' }}
         run: |
           set -x
           UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
@@ -111,6 +140,7 @@ jobs:
             -d '{"email":"wilhelm-prod-probe-test-${{ github.run_id }}@example.com","variant":"probe","sessionId":"s_prodprobe_ci","utm_source":"probe","utm_medium":"ci"}' \
             "$B/api/subscribe"; echo
       - name: read-only funnel queries (only if a DATABASE_URL secret exists)
+        if: ${{ inputs.mode != 'timing' }}
         env:
           DB_URL: ${{ secrets.DATABASE_URL }}
         run: |

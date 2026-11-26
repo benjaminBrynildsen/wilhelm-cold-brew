@@ -503,7 +503,7 @@ export function mountAdmin(app) {
         { path: 'GET /api/admin/email/history  &  /api/admin/email/blasts', desc: 'Email send + open stats.' },
         { path: 'GET /api/admin/journal  &  /api/admin/journal/:id  &  /api/admin/journal/drops', desc: 'Ledger articles (list / one / linkable drops).' },
         { path: 'GET /api/admin/orders/packing.html?dropId=', desc: 'Printable per-bottle packing list (HTML).' },
-        { path: 'GET /api/admin/orders/pirateship.csv | usps.csv ?dropId=&scope=&split=', desc: 'Shipping label exports (CSV).' },
+        { path: 'GET /api/admin/orders/pirateship.csv | usps.csv ?dropId=&scope=&split=', desc: 'Shipping label exports (CSV). USPS rows carry Length/Width/Height by boxes per parcel (sizes: GET /api/admin/settings/usps-dims; changing them is admin-only).' },
       ],
       writes: [
         { method: 'POST', path: '/api/admin/drops', body: { name: 'string', priceCents: 'int', bottleCap: 'int', opensAt: 'ISO UTC (optional)', tastingNotes: 'string (optional)' }, note: "Creates the drop as 'scheduled'. You go live manually." },
@@ -3396,6 +3396,45 @@ export function mountAdmin(app) {
     } catch (e) { console.error('[pirateship]', e); res.status(500).json({ error: e.message }); }
   });
 
+  // ── Parcel dimensions for the USPS export ───────────────────────────────────
+  // USPS bills a postage adjustment when a label is bought with no dimensions, so
+  // every parcel row carries Length / Width / Height in whole inches, chosen by
+  // how many shipper boxes are in that parcel. Editable in the admin (Shipping
+  // tab) so a new box or mailer size needs no deploy. Stored as settings.usps_dims
+  // = { one:[L,W,H], two:[L,W,H] }.
+  const USPS_DIMS_DEFAULT = { one: [14, 6, 6], two: [14, 12, 6] };
+  const cleanDims = (v) => {
+    if (!Array.isArray(v) || v.length !== 3) return null;
+    const out = v.map((x) => (typeof x === 'number' || /^\d+$/.test(String(x).trim()) ? Number(x) : NaN));
+    return out.every((n) => Number.isInteger(n) && n >= 1 && n <= 108) ? out : null;
+  };
+  async function uspsDims() {
+    try {
+      const v = (await q(`SELECT value FROM settings WHERE key = 'usps_dims'`)).rows[0]?.value || {};
+      return { one: cleanDims(v.one) || USPS_DIMS_DEFAULT.one, two: cleanDims(v.two) || USPS_DIMS_DEFAULT.two };
+    } catch (e) { return USPS_DIMS_DEFAULT; }   // never let a settings hiccup block label printing
+  }
+  // [L, W, H] for a parcel holding `boxes` shipper boxes, or null when there is no
+  // agreed size for that count (3+ boxes on one label) — those rows stay blank.
+  const dimsForBoxes = (dims, boxes) => (boxes === 1 ? dims.one : boxes === 2 ? dims.two : null);
+  const setRowDims = (row, d) => { if (d) { row['Length'] = String(d[0]); row['Width'] = String(d[1]); row['Height'] = String(d[2]); } };
+
+  app.get('/api/admin/settings/usps-dims', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try { res.json({ dims: await uspsDims(), defaults: USPS_DIMS_DEFAULT }); }
+    catch (e) { console.error('[usps-dims]', e); res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/admin/settings/usps-dims', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const one = cleanDims(req.body?.one), two = cleanDims(req.body?.two);
+      if (!one || !two) return res.status(400).json({ error: 'Each size needs length, width and height as whole inches (1–108).' });
+      await q(`INSERT INTO settings (key, value, updated_at) VALUES ('usps_dims', $1, now())
+               ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [JSON.stringify({ one, two })]);
+      res.json({ ok: true, dims: { one, two } });
+    } catch (e) { console.error('[usps-dims/save]', e); res.status(500).json({ error: e.message }); }
+  });
+
   // USPS Click-N-Ship bulk import. Same options as the Pirate Ship export
   // (?scope=all, ?dropId=N, ?split=1, ?lbs=, plus ?service=) but emits USPS's
   // exact bulk-file header and maps each order into the Recipient + Package
@@ -3429,6 +3468,7 @@ export function mountAdmin(app) {
       const packPoly = req.query?.pack === 'poly';   // 2 boxes per poly mailer, one label per mailer
       const service = req.query?.service ? String(req.query.service).slice(0, 60) : 'USPS Ground Advantage';
       const pkgType = req.query?.package ? String(req.query.package).slice(0, 40) : 'Custom Packaging';
+      const dims = await uspsDims();   // Length/Width/Height per parcel, by box count
       // Return address — USPS's bulk file requires the sender in-file (it doesn't
       // pull from the account). Env overrides let it change without a deploy.
       const SENDER = {
@@ -3526,6 +3566,7 @@ export function mountAdmin(app) {
           row['Package Type'] = pkgType;
           row['Package Weight (lb)'] = String(wl);
           row['Package Weight (oz)'] = String(wo);
+          setRowDims(row, dimsForBoxes(dims, pkg.boxCount));   // 2 boxes side by side in a mailer, or 1 single
           row['Package Comments'] = pkg.comment;
           lines.push(USPS_HEADER.map((h) => esc(row[h])).join(','));
         }
@@ -3678,6 +3719,9 @@ export function mountAdmin(app) {
           row['Package Type'] = pkgType;
           row['Package Weight (lb)'] = String(wl);
           row['Package Weight (oz)'] = String(wo);
+          // perBox = bottles (one shipper box each) on this label: 1 when split,
+          // the whole order's quantity otherwise.
+          setRowDims(row, dimsForBoxes(dims, perBox));
           // The bottle this box holds — the product name on a split two-bottle
           // export, the batch name otherwise — so the printed label identifies it.
           row['Package Comments'] = box.bottle || r.drop_name || '';

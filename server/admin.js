@@ -963,7 +963,7 @@ export function mountAdmin(app) {
                COUNT(*) FILTER (WHERE b = 'direct')::int   direct
              FROM (
                SELECT CASE
-                 WHEN s.utm_source IN ('drinkup','fb_bio','ig_bio') THEN 'profile'
+                 WHEN s.utm_source IN ('drinkup','fb_bio','ig_bio','drinkup_direct') THEN 'profile'
                  WHEN s.utm_source = 'join'     THEN 'reply'
                  WHEN s.utm_source = 'referral' THEN 'referral'
                  WHEN s.utm_source IS NOT NULL  THEN 'ad'
@@ -1031,7 +1031,7 @@ export function mountAdmin(app) {
             // audience, so it counts organic, not ad.
             q(`SELECT day, COUNT(*) FILTER (WHERE b <> 'ad')::int n FROM (
                  SELECT TO_CHAR(s.created_at AT TIME ZONE '${REPORT_TZ}', 'YYYY-MM-DD') AS day,
-                        CASE WHEN s.utm_source IN ('drinkup','fb_bio','ig_bio','referral','join') OR s.utm_source IS NULL THEN 'organic'
+                        CASE WHEN s.utm_source IN ('drinkup','fb_bio','ig_bio','drinkup_direct','referral','join') OR s.utm_source IS NULL THEN 'organic'
                              ELSE 'ad' END b
                    FROM subscribers s
                   WHERE ${frag.replaceAll('created_at', 's.created_at')} ${EXCL_PV}${hourFrag}

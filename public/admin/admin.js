@@ -47,7 +47,7 @@ const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
 // Friendly display names for utm_source tags (the raw tag stays in the data;
 // only how it reads on the dashboard changes).
-const SOURCE_NAMES = { drinkup: 'Drink Up • X Profile link', join: 'Join • X replies', fb_bio: 'Facebook Profile link', ig_bio: 'Instagram Profile link' };
+const SOURCE_NAMES = { drinkup: 'Drink Up • X Profile link', join: 'Join • X replies', fb_bio: 'Drink Up • Facebook Profile link', ig_bio: 'Drink Up • Instagram Profile link', drinkup_direct: 'Drink Up • typed or unknown' };
 const srcName = (s) => SOURCE_NAMES[String(s || '').toLowerCase()] || s;
 
 async function api(path, opts) {

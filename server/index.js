@@ -13,6 +13,7 @@ import { mcPushSignup } from './mailchimp.js';
 import { syncInbox, inboxConfigured } from './inbox.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin, requireAdmin, isAdmin } from './admin.js';
+import { bioDoor } from './source-label.js';
 import { mountJournal, publishedArticles } from './journal.js';
 import { seedJournal } from './journal-seed.js';
 import { mountPortal } from './portal.js';
@@ -223,18 +224,23 @@ app.get('/', (req, res) => {
   res.redirect(302, '/drink/' + (i >= 0 ? req.originalUrl.slice(i) : ''));
 });
 
-// Vanity link for bios and saying out loud: /drinkup → the opt-in page, tagged
-// as its own source. The referrer still says which door (t.co = X bio,
-// instagram.com = IG bio, none = spoken/typed), so one link covers them all.
-// 302 so the tagging can change without fighting browser caches.
-app.get(['/drinkup', '/drinkup/'], (_req, res) => {
-  res.redirect(302, '/drink/?utm_source=drinkup&utm_medium=bio');
+// Vanity link for bios and saying out loud: /drinkup → the opt-in page. The SAME
+// link goes in the X, Facebook and Instagram bios; which one the visitor tapped
+// is read here from where they came from (bioDoor) and written into the tag, so
+// each profile reads as its own source: drinkup = X, fb_bio, ig_bio, and
+// drinkup_direct when it can't tell (typed, spoken, referrer hidden).
+// 302 + no-store so the tag is decided fresh on every tap.
+app.get(['/drinkup', '/drinkup/'], (req, res) => {
+  const src = bioDoor(req.headers.referer || req.headers.referrer, req.headers['user-agent']);
+  res.set('Cache-Control', 'no-store');
+  res.redirect(302, `/drink/?utm_source=${src}&utm_medium=bio`);
 });
 
-// Profile links for the Facebook page and the Instagram bio: /fb and /ig → the
-// opt-in page, each tagged as its own source. They are separate from /drinkup
-// (the X profile link) so the three bios read apart, and separate from the
-// 'facebook' / 'instagram' ad tags so a profile visit never counts as an ad.
+// Explicit per-profile links: /fb and /ig → the opt-in page, always tagged as the
+// Facebook / Instagram profile whatever the browser reports. /drinkup works these
+// out by itself; these are the certain version for anywhere that hides the
+// referrer. Separate from the 'facebook' / 'instagram' AD tags so a profile visit
+// never counts as an ad.
 app.get(['/fb', '/fb/'], (_req, res) => {
   res.redirect(302, '/drink/?utm_source=fb_bio&utm_medium=bio');
 });

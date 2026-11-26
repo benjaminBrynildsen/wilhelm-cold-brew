@@ -8,6 +8,7 @@ const NAMES = {
   instagram: 'Instagram', ig: 'Instagram', instagram_ads: 'Instagram', ig_ads: 'Instagram',
   x: 'X', twitter: 'X', x_ads: 'X', twitter_ads: 'X',
   drinkup: 'X profile link', join: 'X replies',
+  fb_bio: 'Facebook profile link', ig_bio: 'Instagram profile link',
   reddit: 'Reddit', reddit_ads: 'Reddit',
   sms: 'SMS', email: 'Email', newsletter: 'Email',
   referral: 'a referral', batches: 'the bottle QR code',

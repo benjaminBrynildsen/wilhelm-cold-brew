@@ -12,6 +12,8 @@ eq('x', signupSourceLabel({ utmSource: 'x' }), 'X');
 eq('twitter → X', signupSourceLabel({ utmSource: 'Twitter' }), 'X');
 eq('reddit', signupSourceLabel({ utmSource: 'reddit' }), 'Reddit');
 eq('profile link', signupSourceLabel({ utmSource: 'drinkup' }), 'X profile link');
+eq('facebook profile link (/fb)', signupSourceLabel({ utmSource: 'fb_bio' }), 'Facebook profile link');
+eq('instagram profile link (/ig)', signupSourceLabel({ utmSource: 'ig_bio' }), 'Instagram profile link');
 eq('referral', signupSourceLabel({ utmSource: 'referral' }), 'a referral');
 eq('unknown tag shown as written', signupSourceLabel({ utmSource: 'podcast-ad' }), 'podcast-ad');
 eq('odd characters stripped, kept short', signupSourceLabel({ utmSource: '<b>news</b>' + 'x'.repeat(60) }).length <= 30, true);

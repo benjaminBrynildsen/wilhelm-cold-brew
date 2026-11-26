@@ -68,7 +68,7 @@ app.use((req, _res, next) => {
     // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
     // below) — the visit is counted there, so don't also log the bounce here
     // (it would double-count every one of those visits).
-    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p === '/buy-preview' || p === '/buy-preview/' || p.startsWith('/r/')) return next();
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/fb' || p === '/fb/' || p === '/ig' || p === '/ig/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p === '/buy-preview' || p === '/buy-preview/' || p.startsWith('/r/')) return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -169,7 +169,7 @@ mountCheckout(app, payLimit);
 // Case-insensitive redirect for the marketing routes. The static handler is
 // case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos
 // and bounce them to the real lowercase path so an ad link can't dead-end.
-const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'batches', 'recipe', 'account'];
+const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'fb', 'ig', 'batches', 'recipe', 'account'];
 app.get(/^\/([A-Za-z-]+)\/?$/, (req, res, next) => {
   const slug = req.params[0].toLowerCase();
   if (CASE_ROUTES.includes(slug) && req.params[0] !== slug) return res.redirect(301, '/' + slug);
@@ -229,6 +229,17 @@ app.get('/', (req, res) => {
 // 302 so the tagging can change without fighting browser caches.
 app.get(['/drinkup', '/drinkup/'], (_req, res) => {
   res.redirect(302, '/drink/?utm_source=drinkup&utm_medium=bio');
+});
+
+// Profile links for the Facebook page and the Instagram bio: /fb and /ig → the
+// opt-in page, each tagged as its own source. They are separate from /drinkup
+// (the X profile link) so the three bios read apart, and separate from the
+// 'facebook' / 'instagram' ad tags so a profile visit never counts as an ad.
+app.get(['/fb', '/fb/'], (_req, res) => {
+  res.redirect(302, '/drink/?utm_source=fb_bio&utm_medium=bio');
+});
+app.get(['/ig', '/ig/'], (_req, res) => {
+  res.redirect(302, '/drink/?utm_source=ig_bio&utm_medium=bio');
 });
 
 // Vanity link for dropping in X replies/posts: /join → the opt-in page, tagged

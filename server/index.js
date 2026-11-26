@@ -13,6 +13,7 @@ import { mcPushSignup } from './mailchimp.js';
 import { syncInbox, inboxConfigured } from './inbox.js';
 import { getBanditWeights, getComboServe } from './bandit.js';
 import { mountAdmin, requireAdmin, isAdmin } from './admin.js';
+import { bioDoor } from './source-label.js';
 import { mountJournal, publishedArticles } from './journal.js';
 import { seedJournal } from './journal-seed.js';
 import { mountPortal } from './portal.js';
@@ -68,7 +69,7 @@ app.use((req, _res, next) => {
     // Root and the /drinkup vanity link both redirect to /drink/ (see the routes
     // below) — the visit is counted there, so don't also log the bounce here
     // (it would double-count every one of those visits).
-    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p === '/buy-preview' || p === '/buy-preview/' || p.startsWith('/r/')) return next();
+    if (p === '/' || p === '/drinkup' || p === '/drinkup/' || p === '/join' || p === '/join/' || p === '/fb' || p === '/fb/' || p === '/ig' || p === '/ig/' || p === '/reddit' || p === '/reddit/' || p === '/buy-sms' || p === '/buy-sms/' || p === '/buy-preview' || p === '/buy-preview/' || p.startsWith('/r/')) return next();
     if (p !== '/drink/' && p !== '/drink' && SKIP_PREFIXES.some((x) => p.startsWith(x))) return next();
     // only count page-ish paths (no file extension, or known pages)
     if (/\.[a-z0-9]{2,5}$/i.test(p) && !p.endsWith('.html')) return next();
@@ -169,7 +170,7 @@ mountCheckout(app, payLimit);
 // Case-insensitive redirect for the marketing routes. The static handler is
 // case-sensitive on Linux, so /Drink (capital D) 404s — catch common-case typos
 // and bounce them to the real lowercase path so an ad link can't dead-end.
-const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'batches', 'recipe', 'account'];
+const CASE_ROUTES = ['drink', 'buy', 'sold-out', 'thank-you', 'drinkup', 'join', 'fb', 'ig', 'batches', 'recipe', 'account'];
 app.get(/^\/([A-Za-z-]+)\/?$/, (req, res, next) => {
   const slug = req.params[0].toLowerCase();
   if (CASE_ROUTES.includes(slug) && req.params[0] !== slug) return res.redirect(301, '/' + slug);
@@ -223,12 +224,28 @@ app.get('/', (req, res) => {
   res.redirect(302, '/drink/' + (i >= 0 ? req.originalUrl.slice(i) : ''));
 });
 
-// Vanity link for bios and saying out loud: /drinkup → the opt-in page, tagged
-// as its own source. The referrer still says which door (t.co = X bio,
-// instagram.com = IG bio, none = spoken/typed), so one link covers them all.
-// 302 so the tagging can change without fighting browser caches.
-app.get(['/drinkup', '/drinkup/'], (_req, res) => {
-  res.redirect(302, '/drink/?utm_source=drinkup&utm_medium=bio');
+// Vanity link for bios and saying out loud: /drinkup → the opt-in page. The SAME
+// link goes in the X, Facebook and Instagram bios; which one the visitor tapped
+// is read here from where they came from (bioDoor) and written into the tag, so
+// each profile reads as its own source: drinkup = X, fb_bio, ig_bio, and
+// drinkup_direct when it can't tell (typed, spoken, referrer hidden).
+// 302 + no-store so the tag is decided fresh on every tap.
+app.get(['/drinkup', '/drinkup/'], (req, res) => {
+  const src = bioDoor(req.headers.referer || req.headers.referrer, req.headers['user-agent']);
+  res.set('Cache-Control', 'no-store');
+  res.redirect(302, `/drink/?utm_source=${src}&utm_medium=bio`);
+});
+
+// Explicit per-profile links: /fb and /ig → the opt-in page, always tagged as the
+// Facebook / Instagram profile whatever the browser reports. /drinkup works these
+// out by itself; these are the certain version for anywhere that hides the
+// referrer. Separate from the 'facebook' / 'instagram' AD tags so a profile visit
+// never counts as an ad.
+app.get(['/fb', '/fb/'], (_req, res) => {
+  res.redirect(302, '/drink/?utm_source=fb_bio&utm_medium=bio');
+});
+app.get(['/ig', '/ig/'], (_req, res) => {
+  res.redirect(302, '/drink/?utm_source=ig_bio&utm_medium=bio');
 });
 
 // Vanity link for dropping in X replies/posts: /join → the opt-in page, tagged

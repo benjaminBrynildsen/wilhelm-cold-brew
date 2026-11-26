@@ -55,7 +55,7 @@ The ones a bot will actually use:
 | `GET /api/admin/email/history` · `/email/blasts` | Email send + open stats |
 | `GET /api/admin/journal` · `/journal/:id` · `/journal/drops` | Ledger articles (list / one / linkable drops) |
 | `GET /api/admin/orders/packing.html?dropId=` | Printable per-bottle packing list (HTML) |
-| `GET /api/admin/orders/pirateship.csv` · `usps.csv` `?dropId=&scope=&split=` | Shipping label exports (CSV) |
+| `GET /api/admin/orders/pirateship.csv` · `usps.csv` `?dropId=&scope=&split=` | Shipping label exports (CSV). USPS rows carry Length/Width/Height by boxes per parcel (1 box 14×6×6, 2 boxes 14×12×6 by default; read the current sizes at `GET /api/admin/settings/usps-dims`, changing them is admin-only). A single label covering 3+ boxes has no set size and is left blank. |
 
 Other `GET /api/admin/*` endpoints are readable too; the above are the useful data ones.
 

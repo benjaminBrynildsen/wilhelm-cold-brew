@@ -47,7 +47,7 @@ const money = (c) => (c == null ? '—' : '$' + (c / 100).toFixed(2));
 
 // Friendly display names for utm_source tags (the raw tag stays in the data;
 // only how it reads on the dashboard changes).
-const SOURCE_NAMES = { drinkup: 'Drink Up • X Profile link', join: 'Join • X replies' };
+const SOURCE_NAMES = { drinkup: 'Drink Up • X Profile link', join: 'Join • X replies', fb_bio: 'Drink Up • Facebook Profile link', ig_bio: 'Drink Up • Instagram Profile link', drinkup_direct: 'Drink Up • typed or unknown' };
 const srcName = (s) => SOURCE_NAMES[String(s || '').toLowerCase()] || s;
 
 async function api(path, opts) {
@@ -2216,7 +2216,20 @@ async function showOrders() {
           ${prods.map((p) => `<a class="btn ghost" href="${base}&productId=${p.id}">USPS — ${esc(p.name || 'Bottle')}</a>`).join('')}
         </div>`;
       })()}
-      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Assumes 3 lbs/bottle — override with <code>?lbs=</code> if that's off.
+      <div class="row-actions" id="usps-dims" style="flex-wrap:wrap;align-items:center;gap:8px;margin-top:2px">
+        <span class="note" title="Written to the Length / Width / Height columns of the USPS file">USPS parcel size (in):</span>
+        <label class="note" style="white-space:nowrap">1 box
+          <input data-dim="one0" type="number" min="1" max="108" step="1" inputmode="numeric" aria-label="1 box length" style="width:54px;${FLD_DARK}"/> ×
+          <input data-dim="one1" type="number" min="1" max="108" step="1" inputmode="numeric" aria-label="1 box width" style="width:54px;${FLD_DARK}"/> ×
+          <input data-dim="one2" type="number" min="1" max="108" step="1" inputmode="numeric" aria-label="1 box height" style="width:54px;${FLD_DARK}"/></label>
+        <label class="note" style="white-space:nowrap">2 boxes
+          <input data-dim="two0" type="number" min="1" max="108" step="1" inputmode="numeric" aria-label="2 boxes length" style="width:54px;${FLD_DARK}"/> ×
+          <input data-dim="two1" type="number" min="1" max="108" step="1" inputmode="numeric" aria-label="2 boxes width" style="width:54px;${FLD_DARK}"/> ×
+          <input data-dim="two2" type="number" min="1" max="108" step="1" inputmode="numeric" aria-label="2 boxes height" style="width:54px;${FLD_DARK}"/></label>
+        <button class="btn ghost sm" id="usps-dims-save">Save size</button>
+        <span class="note" id="usps-dims-msg"></span>
+      </div>
+      <div class="note">Exports the unshipped paid orders ${scoped ? 'for the selected batch' : 'across all batches'}. <b>Pirate Ship</b>: upload at pirateship.com → Ship → Import a Spreadsheet. <b>USPS</b>: upload at Click-N-Ship → Bulk / Import a File (uses USPS's template; your saved return address fills the sender, and you pick the mail service during import). Assumes 3 lbs/bottle — override with <code>?lbs=</code> if that's off. Each row also carries the parcel size above (length × width × height), by how many boxes are in that parcel; a single label covering 3 or more boxes has no set size and is left blank.
       <br><b>Packaging:</b> <b>One label per order</b> = whole order on one label. <b>One box per bottle</b> = a label per bottle. <b>2 boxes per poly mailer</b> = each bottle in its own box, boxes bundled two-to-a-poly-mailer so one label covers two boxes (a 5-bottle order → 2 mailers + 1 single = 3 labels); the label prints what's inside (e.g. "POLY MAILER · Barrel + Coconut"). Pairing keeps same bottles together, then mixes the leftovers. <i>(Poly mailers are a USPS-postage trick — Pirate Ship doesn't bundle, so that mode exports to USPS.)</i>
       <br>The <b>packing sheet</b> opens in the same order as the file: by bottle for the first two modes, or — in poly mode — every mailer with the two bottles to put in it, so you pack straight down the list. (Switch the "Viewing" drop at the top to change which batch this covers.)</div>
 
@@ -2486,6 +2499,26 @@ async function showOrders() {
           });
           seMsg.textContent = `Saved + test sent to ${rr.sentTo}.`;
         } catch (e) { seMsg.textContent = 'Failed: ' + e.message; }
+      });
+    })();
+
+    // USPS parcel size: load the saved Length × Width × Height and let it be edited.
+    (() => {
+      const wrap = document.getElementById('usps-dims'); if (!wrap) return;
+      const msg = document.getElementById('usps-dims-msg');
+      const inp = (k) => wrap.querySelector(`[data-dim="${k}"]`);
+      const fill = (d) => ['one', 'two'].forEach((k) => [0, 1, 2].forEach((i) => { const el = inp(k + i); if (el && d && d[k]) el.value = d[k][i]; }));
+      api('/api/admin/settings/usps-dims').then((r) => fill(r.dims)).catch(() => { if (msg) msg.textContent = 'Could not load the saved size.'; });
+      document.getElementById('usps-dims-save').addEventListener('click', async () => {
+        const read = (k) => [0, 1, 2].map((i) => (inp(k + i).value || '').trim());
+        const body = { one: read('one'), two: read('two') };
+        const bad = [...body.one, ...body.two].some((v) => !/^\d+$/.test(v) || +v < 1 || +v > 108);
+        if (bad) { msg.textContent = 'Use whole inches, 1–108, in every box.'; return; }
+        msg.textContent = 'Saving…';
+        try {
+          const r = await api('/api/admin/settings/usps-dims', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          fill(r.dims); msg.textContent = 'Saved — the next USPS export uses it.';
+        } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
       });
     })();
 
